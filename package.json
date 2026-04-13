@@ -1,0 +1,25 @@
+{
+  "name": "chart-api",
+  "version": "1.0.0",
+  "main": "trade.js",
+  "scripts": {
+    "start": "node trade.js",
+    "chart-api": "node server.js",
+    "check": "node -c trade.js && node -c server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Aterum trading dashboard GUI, analytics and simulator",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "mysql2": "^3.20.0",
+    "openai": "^6.33.0",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "puppeteer": "^24.40.0",
+    "ws": "^8.20.0"
+  }
+}
