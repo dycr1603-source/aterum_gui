@@ -17,10 +17,10 @@ function getPlayHTML(user) { return `<!DOCTYPE html>
 ${getSharedHeadAssets()}
 <style>
 :root{
-  --bg:#0a1322;--bg2:#101b2d;--bg3:#152235;--bg4:#1d2e45;
-  --text:#dcecff;--text2:#8da8ca;--muted:#49627f;
-  --green:#00e5a0;--red:#ff536f;--blue:#57b0ff;--gold:#f5b84b;--cyan:#29d3ff;--purple:#b26fff;
-  --border:rgba(122,174,229,.16);--border-strong:rgba(122,174,229,.26);
+  --bg:#090b0a;--bg2:#111411;--bg3:#171c17;--bg4:#20261f;
+  --text:#f3f7ef;--text2:#9da89b;--muted:#687266;
+  --green:#82f06f;--red:#ff5d73;--blue:#5be7c4;--gold:#f5c45f;--cyan:#5be7c4;--purple:#b6a1ff;
+  --border:rgba(231,239,226,.14);--border-strong:rgba(231,239,226,.24);
   --display:'Inter Tight','Inter','SF Pro Display',sans-serif;
   --sans:'Inter','SF Pro Text','Segoe UI',sans-serif;
   --mono:'JetBrains Mono',monospace;
@@ -32,10 +32,9 @@ body{
   font:500 12px/1.5 var(--sans);
   color:var(--text);
   background:
-    radial-gradient(circle at 14% -4%,rgba(87,176,255,.18),transparent 28%),
-    radial-gradient(circle at 82% 0%,rgba(0,229,160,.11),transparent 22%),
-    radial-gradient(circle at 50% 120%,rgba(178,111,255,.08),transparent 26%),
-    linear-gradient(180deg,#091322 0%,#0d1728 46%,#08111f 100%);
+    linear-gradient(180deg,rgba(130,240,111,.05),transparent 30%),
+    linear-gradient(135deg,rgba(91,231,196,.07),transparent 42%),
+    linear-gradient(180deg,#090b0a 0%,#11140f 46%,#080a08 100%);
 }
 ${getSharedStyles()}
 .page{
@@ -53,13 +52,13 @@ ${getSharedStyles()}
 }
 .hero-card,.panel,.stat{
   border:1px solid var(--border);
-  background:linear-gradient(180deg,rgba(18,28,44,.95),rgba(11,18,29,.92));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 26px 62px rgba(3,8,16,.24);
+  background:linear-gradient(180deg,rgba(24,29,24,.95),rgba(10,13,10,.92));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 26px 62px rgba(0,0,0,.28);
 }
 .hero-card{
   position:relative;
   overflow:hidden;
-  border-radius:32px;
+  border-radius:8px;
   padding:30px;
 }
 .hero-card::before{
@@ -74,13 +73,11 @@ ${getSharedStyles()}
 .hero-card::after{
   content:'';
   position:absolute;
-  right:-80px;
-  bottom:-100px;
-  width:260px;
-  height:260px;
-  border-radius:50%;
-  background:radial-gradient(circle,rgba(87,176,255,.18),transparent 68%);
-  filter:blur(10px);
+  left:0;
+  right:0;
+  bottom:0;
+  height:4px;
+  background:linear-gradient(90deg,var(--green),var(--cyan),var(--gold),var(--red));
   pointer-events:none;
 }
 .eyebrow{

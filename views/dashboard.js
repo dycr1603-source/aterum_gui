@@ -16,19 +16,18 @@ function getDashboardHTML(symbol, user) { return `<!DOCTYPE html>
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
 <style>
-:root{--bg:#0b1321;--bg2:#101a2d;--bg3:#152236;--bg4:#1a2a40;--border:#21324b;--border2:#2b425f;--text:#e2eeff;--text2:#93aacb;--muted:#46607f;--green:#00e5a0;--green2:#00b880;--red:#ff536f;--red2:#db2d4f;--blue:#57b0ff;--gold:#f5b84b;--purple:#b26fff;--mono:'JetBrains Mono',monospace;--display:'Inter Tight','Inter','SF Pro Display',sans-serif;--sans:'Inter','SF Pro Text','Segoe UI',sans-serif;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px)}
+:root{--bg:#090b0a;--bg2:#111411;--bg3:#171c17;--bg4:#20261f;--border:rgba(231,239,226,.12);--border2:rgba(231,239,226,.2);--text:#f3f7ef;--text2:#9da89b;--muted:#687266;--green:#82f06f;--green2:#45c85e;--red:#ff5d73;--red2:#e23d5d;--blue:#5be7c4;--gold:#f5c45f;--purple:#b6a1ff;--mono:'JetBrains Mono',monospace;--display:'Inter Tight','Inter','SF Pro Display',sans-serif;--sans:'Inter','SF Pro Text','Segoe UI',sans-serif;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);--ease:cubic-bezier(.22,1,.36,1)}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{height:100%;overscroll-behavior:none}
 body{background:
-radial-gradient(circle at top left,rgba(87,176,255,.18),transparent 32%),
-radial-gradient(circle at top right,rgba(0,229,160,.1),transparent 24%),
-radial-gradient(circle at 50% 120%,rgba(87,176,255,.1),transparent 30%),
-linear-gradient(180deg,#0b1424 0%,#0d1728 42%,#09111e 100%);
+linear-gradient(180deg,rgba(130,240,111,.05),transparent 30%),
+linear-gradient(135deg,rgba(91,231,196,.07),transparent 42%),
+linear-gradient(180deg,#090b0a 0%,#11140f 48%,#080a08 100%);
 color:var(--text);font-family:var(--sans);font-size:12px;height:100%;overflow:hidden;-webkit-font-smoothing:antialiased;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
 /* NAV */
-.nav{height:48px;display:flex;align-items:center;padding:0 16px;gap:0;background:rgba(16,26,41,.86);border-bottom:1px solid rgba(87,176,255,.14);z-index:200;flex-shrink:0;position:relative;backdrop-filter:blur(16px);box-shadow:0 12px 30px rgba(3,8,16,.22)}
+.nav{height:48px;display:flex;align-items:center;padding:0 16px;gap:0;background:rgba(9,11,9,.84);border-bottom:1px solid var(--border);z-index:200;flex-shrink:0;position:relative;backdrop-filter:blur(16px) saturate(1.15);box-shadow:0 12px 30px rgba(0,0,0,.26)}
 .nav-logo{font-family:var(--display);font-size:13px;font-weight:800;letter-spacing:.1em;display:flex;align-items:center;gap:7px;margin-right:18px;flex-shrink:0}
-.nav-dot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:glow 2s ease-in-out infinite}
+.nav-dot{width:5px;height:5px;border-radius:2px;background:var(--green);box-shadow:0 0 8px var(--green);animation:glow 2s steps(2,end) infinite}
 @keyframes glow{0%,100%{box-shadow:0 0 4px var(--green)}50%{box-shadow:0 0 14px var(--green)}}
 .nav-sym{font-family:var(--display);font-size:14px;font-weight:700;margin-right:8px;flex-shrink:0}
 .nav-price{font-size:16px;font-weight:600;transition:color .2s;flex-shrink:0;min-width:80px}
@@ -53,7 +52,7 @@ color:var(--text);font-family:var(--sans);font-size:12px;height:100%;overflow:hi
 /* LAYOUT */
 .layout{display:flex;height:calc(100vh - 48px - var(--safe-top) - var(--safe-bot))}
 /* WATCHLIST */
-.wl{width:190px;min-width:190px;background:rgba(15,24,40,.8);border-right:1px solid rgba(87,176,255,.12);display:flex;flex-direction:column;overflow:hidden;transition:transform .25s ease;flex-shrink:0;backdrop-filter:blur(18px)}
+.wl{width:190px;min-width:190px;background:rgba(17,20,17,.82);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:transform .25s var(--ease);flex-shrink:0;backdrop-filter:blur(18px)}
 .wl-hdr{padding:10px 14px 8px;font-size:9px;font-weight:600;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border2);flex-shrink:0;display:flex;justify-content:space-between;align-items:center}
 .wl-count{background:var(--bg4);border:1px solid var(--border2);border-radius:10px;padding:1px 7px;font-size:9px;color:var(--text2)}
 .wl-scroll{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
