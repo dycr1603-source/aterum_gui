@@ -4,7 +4,8 @@ const shared  = require('./shared');
 const { setupAuth, requireAuth } = require('./middleware/auth');
 
 const app  = express();
-const PORT = 3001;
+const PORT = Number(process.env.DASHBOARD_PORT || process.env.PORT || 3001);
+const HOST = process.env.BIND_HOST || '0.0.0.0';
 
 app.use(express.json());
 
@@ -56,5 +57,5 @@ app.use(require('./routes/simulator'));
 app.use(require('./routes/cb'));
 app.use('/', cooldownRoutes);
 
-const server = app.listen(PORT, '0.0.0.0', () => console.log('αтεгυм Dashboard on port ' + PORT));
+const server = app.listen(PORT, HOST, () => console.log('αтεгυм Dashboard on ' + HOST + ':' + PORT));
 if (typeof accountRoutes.attachRealtimeServer === 'function') accountRoutes.attachRealtimeServer(server);

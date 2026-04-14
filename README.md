@@ -78,11 +78,20 @@ npm run check
 
 ## Rutas principales
 
-- `http://localhost:3001/dashboard`
-- `http://localhost:3001/analytics`
-- `http://localhost:3001/simulator`
-- `http://localhost:3001/ai-data`
-- `http://localhost:3000/chart`
+- `http://dashboard.internal:3001/dashboard`
+- `http://dashboard.internal:3001/analytics`
+- `http://dashboard.internal:3001/simulator`
+- `http://dashboard.internal:3001/ai-data`
+- `http://chart.internal:3000/chart`
+
+## PM2 (recomendado)
+
+Se incluye `ecosystem.config.cjs` para levantar ambos servicios sin depender de IP publica:
+
+```bash
+pm2 start ecosystem.config.cjs
+pm2 save
+```
 
 ## Simulador
 

@@ -1,7 +1,8 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.CHART_API_PORT || 3000);
+const HOST = process.env.BIND_HOST || '0.0.0.0';
 const CHROMIUM_PATH = '/usr/bin/chromium';
 
 app.get('/chart', async (req, res) => {
@@ -144,6 +145,6 @@ app.get('/', (req, res) => {
   res.send('Chart API running 🚀');
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Chart API running on port ${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Chart API running on ${HOST}:${PORT}`);
 });
