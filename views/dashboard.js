@@ -2995,6 +2995,7 @@ function refreshActiveInds(){
 }
 
 function drawZones(t){
+  if(!hasTradeLevels(t))return;
   try{if(slZone)chart.removeSeries(slZone)}catch(e){}
   try{if(tpZone)chart.removeSeries(tpZone)}catch(e){}
   if(!klineData.length)return;
@@ -3005,29 +3006,59 @@ function drawZones(t){
   tpZone=chart.addAreaSeries({topColor:'rgba(0,229,160,.02)',bottomColor:'rgba(0,229,160,.10)',lineColor:'transparent',lineWidth:0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
   tpZone.setData([{time:t0,value:Math.max(entry,tp)},{time:t1,value:Math.max(entry,tp)}]);
 }
+function hasTradeLevels(t){
+  const entry=+t?.entryPrice,sl=+t?.sl,tp=+t?.tp;
+  return Number.isFinite(entry) && entry>0 && Number.isFinite(sl) && sl>0 && Number.isFinite(tp) && tp>0;
+}
+function hasSLLevel(t){
+  const sl=+t?.sl;
+  return Number.isFinite(sl) && sl>0;
+}
+function hasTPLevel(t){
+  const tp=+t?.tp;
+  return Number.isFinite(tp) && tp>0;
+}
 function drawLevels(t,closed){
   try{if(entryLine)candles.removePriceLine(entryLine)}catch(e){}
   try{if(slLine)candles.removePriceLine(slLine)}catch(e){}
   try{if(tpLine)candles.removePriceLine(tpLine)}catch(e){}
-  entryLine=candles.createPriceLine({price:+t.entryPrice,color:closed?'#1a3a6a':'#3d9eff',lineWidth:closed?1:2,lineStyle:closed?2:0,axisLabelVisible:true,title:'ENTRY'});
-  slLine=candles.createPriceLine({price:+t.sl,color:closed?'#6a1020':'#ff3d5a',lineWidth:closed?1:2,lineStyle:1,axisLabelVisible:true,title:'SL ↑ STOP'});
-  tpLine=candles.createPriceLine({price:+t.tp,color:closed?'#0a4a2a':'#00e5a0',lineWidth:closed?1:2,lineStyle:1,axisLabelVisible:true,title:'TP ↓ TARGET'});
-  if(!closed)drawZones(t);
   const e=+t.entryPrice,s=+t.sl,p=+t.tp;
+  const hasLevels=hasTradeLevels(t);
+  const hasSL=hasSLLevel(t);
+  const hasTP=hasTPLevel(t);
+  if(Number.isFinite(e)&&e>0){
+    entryLine=candles.createPriceLine({price:e,color:closed?'#1a3a6a':'#3d9eff',lineWidth:closed?1:2,lineStyle:closed?2:0,axisLabelVisible:true,title:'ENTRY'});
+  }
+  if(hasSL){
+    slLine=candles.createPriceLine({price:s,color:closed?'#6a1020':'#ff3d5a',lineWidth:closed?1:2,lineStyle:1,axisLabelVisible:true,title:'SL ↑ STOP'});
+  }
+  if(hasTP){
+    tpLine=candles.createPriceLine({price:p,color:closed?'#0a4a2a':'#00e5a0',lineWidth:closed?1:2,lineStyle:1,axisLabelVisible:true,title:'TP ↓ TARGET'});
+  }
+  if(hasLevels){
+    if(!closed)drawZones(t);
+  } else {
+    try{if(slZone)chart.removeSeries(slZone)}catch(e){}
+    try{if(tpZone)chart.removeSeries(tpZone)}catch(e){}
+  }
   document.getElementById('lEntry').textContent=t.entryPrice;
-  document.getElementById('lSL').textContent=t.sl;
-  document.getElementById('lTP').textContent=t.tp;
+  document.getElementById('lSL').textContent=hasSL?t.sl:'—';
+  document.getElementById('lTP').textContent=hasTP?t.tp:'—';
   document.getElementById('sQty').textContent=t.qty;
   document.getElementById('sLev').textContent=(t.leverage||'—')+'x';
   document.getElementById('sScore').textContent=(t.finalScore||'—')+'/100';
   document.getElementById('sRegime').textContent=t.aiRegime||'—';
   const dist=(a,b)=>((Math.abs(a-b)/a)*100).toFixed(2)+'%';
-  document.getElementById('dSL').textContent=dist(e,s)+' del entry';
-  document.getElementById('dTP').textContent=dist(e,p)+' del entry';
-  document.getElementById('dEntry').textContent=lastPrice?dist(lastPrice,e)+' del precio':'—';
+  document.getElementById('dSL').textContent=hasSL?dist(e,s)+' del entry':'—';
+  document.getElementById('dTP').textContent=hasTP?dist(e,p)+' del entry':'—';
+  document.getElementById('dEntry').textContent=lastPrice&&e?dist(lastPrice,e)+' del precio':'—';
   const stage=t.stage||'INITIAL';
+  const isLiveOnly=t.source==='BINANCE_LIVE'||stage==='LIVE_ONLY';
   const slbl={INITIAL:'Inicial',BREAKEVEN:'Punto de equilibrio ⚖',LOCK:'Bloqueo +0.5R 🔒',TRAILING:'Seguimiento ATR 🎯',TIME_LOCK:'Bloqueo temporal ⏰'}[stage]||stage;
-  document.getElementById('sStage').innerHTML='<span class="stage-pill s-'+stage+'"><span class="stage-dot"></span>'+slbl+'</span>';
+  const protectionText = hasSL ? (hasTP ? 'SL+TP' : 'Solo SL') : (hasTP ? 'Solo TP' : 'Sin SL');
+  document.getElementById('sStage').innerHTML=isLiveOnly
+    ? '<span class="stage-pill"><span class="stage-dot"></span>Live Binance · '+protectionText+'</span>'
+    : '<span class="stage-pill s-'+stage+'"><span class="stage-dot"></span>'+slbl+'</span>';
   // Hours open
   const minsOpen=Math.floor((Date.now()-(t.openedAt||Date.now()))/60000);
   const hoursEl=document.getElementById('sHours');
@@ -3036,7 +3067,7 @@ function drawLevels(t,closed){
   const spEl=document.getElementById('stageProgress');
   const sbEl=document.getElementById('stageBar');
   const nsEl=document.getElementById('nextStageLabel');
-  spEl.style.display='block';
+  spEl.style.display=isLiveOnly?'none':'block';
   const stageOrder=['INITIAL','BREAKEVEN','TIME_LOCK','LOCK','TRAILING'];
   const stageIdx=stageOrder.indexOf(stage);
   const progress=((stageIdx+1)/stageOrder.length*100).toFixed(0);
@@ -3048,7 +3079,9 @@ function drawLevels(t,closed){
   const hd=document.getElementById('hDir');
   hd.textContent=t.side;
   hd.className='nav-pill '+(closed?'pill-closed':t.side==='SHORT'?'pill-short':'pill-long');
-  candles.applyOptions({autoscaleInfoProvider:()=>({priceRange:{minValue:Math.min(e,s,p)*.994,maxValue:Math.max(e,s,p)*1.006},margins:{above:10,below:10}})});
+  if(hasLevels){
+    candles.applyOptions({autoscaleInfoProvider:()=>({priceRange:{minValue:Math.min(e,s,p)*.994,maxValue:Math.max(e,s,p)*1.006},margins:{above:10,below:10}})});
+  }
   syncExecutionPanel();
 }
 // ── Account data ──────────────────────────────────────────────────────────────
@@ -3166,16 +3199,16 @@ function updatePnL(){
   if(!lastPrice||!currentTrade||isClosed)return;
   const e=+currentTrade.entryPrice,s=+currentTrade.sl,q=+currentTrade.qty,side=currentTrade.side;
   const tp=+currentTrade.tp;
-  const pnl=side==='SHORT'?(e-lastPrice)*q:(lastPrice-e)*q;
+  const fallbackUnrealized=+currentTrade.unrealized||0;
+  const pnl=(e>0&&q>0)?(side==='SHORT'?(e-lastPrice)*q:(lastPrice-e)*q):fallbackUnrealized;
   const pct=e>0?((pnl/(e*q))*100).toFixed(2):'0.00';
   const win=side==='SHORT'?lastPrice<e:lastPrice>e;
   // R: initialSL > SL actual > inferir desde TP asumiendo RR 1:2
   const initialSL=+(currentTrade.initialSL||0);
   const ir=initialSL>0 ? Math.abs(e-initialSL)
          : s>0         ? Math.abs(e-s)
-         : tp>0        ? Math.abs(e-tp)/2
-         : 1;
-  const curR=Math.abs(lastPrice-e)/ir;
+         : null;
+  const curR=ir?Math.abs(lastPrice-e)/ir:null;
   // PnL hero
   document.getElementById('pnlHero').className='pnl-hero'+(pnl<0?' loss':'');
   const pv=document.getElementById('pnlVal');
@@ -3193,20 +3226,20 @@ function updatePnL(){
   const hoursEl2=document.getElementById('sHours');
   if(hoursEl2){const ht=mins<60?mins+'m':Math.floor(mins/60)+'h '+(mins%60)+'m abierto';if(hoursEl2.textContent!==ht)hoursEl2.textContent=ht;}
   // R display
-  const rTxt=(win?'+':'-')+curR.toFixed(2)+'R';
+  const rTxt=curR==null?'—':(win?'+':'-')+curR.toFixed(2)+'R';
   const rv=document.getElementById('rVal');
   if(rv.textContent!==rTxt){writeAnimatedText(rv,rTxt,win?'green':'red',true);rv.className='r-big '+(win?'r-pos':'r-neg');}
-  const fillW=Math.min(curR/2*100,100).toFixed(0)+'%';
+  const fillW=curR==null?'0%':Math.min(curR/2*100,100).toFixed(0)+'%';
   const fill=document.getElementById('rFill');
   if(fill.style.width!==fillW){fill.style.width=fillW;fill.className='r-fill '+(win?'r-fill-p':'r-fill-n');}
   // Distancias niveles — solo actualizar si cambia
-  const slPct=((Math.abs(lastPrice-s)/lastPrice)*100).toFixed(2);
-  const tpPct=((Math.abs(lastPrice-tp)/lastPrice)*100).toFixed(2);
-  const ePct=((Math.abs(lastPrice-e)/lastPrice)*100).toFixed(2);
+  const slPct=s>0?((Math.abs(lastPrice-s)/lastPrice)*100).toFixed(2):null;
+  const tpPct=tp>0?((Math.abs(lastPrice-tp)/lastPrice)*100).toFixed(2):null;
+  const ePct=e>0?((Math.abs(lastPrice-e)/lastPrice)*100).toFixed(2):null;
   const dSL=document.getElementById('dSL'),dTP=document.getElementById('dTP'),dE=document.getElementById('dEntry');
-  if(dSL.dataset.v!==slPct){dSL.textContent=slPct+'% del precio';dSL.dataset.v=slPct;}
-  if(dTP.dataset.v!==tpPct){dTP.textContent=tpPct+'% del precio';dTP.dataset.v=tpPct;}
-  if(dE.dataset.v!==ePct){dE.textContent=ePct+'% del precio';dE.dataset.v=ePct;}
+  if(dSL.dataset.v!==(slPct||'—')){dSL.textContent=slPct?slPct+'% del precio':'—';dSL.dataset.v=slPct||'—';}
+  if(dTP.dataset.v!==(tpPct||'—')){dTP.textContent=tpPct?tpPct+'% del precio':'—';dTP.dataset.v=tpPct||'—';}
+  if(dE.dataset.v!==(ePct||'—')){dE.textContent=ePct?ePct+'% del precio':'—';dE.dataset.v=ePct||'—';}
   // Ocultar indicadores parpadeantes
   document.getElementById('sl-indicator').style.display='none';
   document.getElementById('tp-indicator').style.display='none';
@@ -3255,16 +3288,24 @@ function renderWatchlist(active,closed){
   document.getElementById('wl-open-lbl').style.display=Object.keys(active).length?'block':'none';
   document.getElementById('wl-close-lbl').style.display=Object.keys(closed).length?'block':'none';
   Object.entries(active).forEach(([sym,t])=>{
-    const price=wlPrices[sym]||+t.entryPrice;
-    const pnl=t.side==='SHORT'?(t.entryPrice-price)*t.qty:(price-t.entryPrice)*t.qty;
+    const entry=+t.entryPrice||0;
+    const qty=+t.qty||0;
+    const price=wlPrices[sym]||+t.markPrice||entry;
+    const hasCalc=entry>0&&qty>0&&price>0;
+    const pnl=hasCalc
+      ? (t.side==='SHORT'?(entry-price)*qty:(price-entry)*qty)
+      : (+t.unrealized||0);
     const initialSL=+(t.initialSL||t.sl);
-    const ir=Math.abs(t.entryPrice-initialSL),curR=ir>0?((Math.abs(price-t.entryPrice)/ir)*(pnl>=0?1:-1)).toFixed(2):'0.00';
+    const ir=initialSL>0&&entry>0?Math.abs(entry-initialSL):0;
+    const curR=ir>0?((Math.abs(price-entry)/ir)*(pnl>=0?1:-1)).toFixed(2):null;
     const isAct=sym===SYMBOL;
+    const protectionBadge = t.sl ? '' : ' · SIN SL';
+    const liveBadge=t.source==='BINANCE_LIVE'?'● LIVE BINANCE'+protectionBadge:'● LIVE';
     const el=document.createElement('div');
     el.className='wl-item'+(isAct?' active open-'+t.side.toLowerCase():' open-'+t.side.toLowerCase());
     el.innerHTML='<div class="wl-row1"><div class="wl-sym">'+sym.replace('USDT','')+'<span>/USDT</span></div><div class="wl-pnl '+(pnl>=0?'pp':'pn')+'">'+(pnl>=0?'+':'')+'$'+Math.abs(pnl).toFixed(2)+'</div></div>'+
-      '<div class="wl-row2"><span class="wl-badge live">● LIVE</span><span class="wl-r '+(+curR>=0?'c-green':'c-red')+'">'+(+curR>=0?'+':'')+curR+'R</span></div>'+
-      '<div class="wl-bar"><div class="wl-bar-fill '+(pnl>=0?'wl-bar-p':'wl-bar-n')+'" style="width:'+Math.min(Math.abs(+curR)/2*100,100)+'%"></div></div>';
+      '<div class="wl-row2"><span class="wl-badge live">'+liveBadge+'</span><span class="wl-r '+((curR==null||+curR>=0)?'c-green':'c-red')+'">'+(curR==null?'—':((+curR>=0?'+':'')+curR+'R'))+'</span></div>'+
+      '<div class="wl-bar"><div class="wl-bar-fill '+(pnl>=0?'wl-bar-p':'wl-bar-n')+'" style="width:'+(curR==null?0:Math.min(Math.abs(+curR)/2*100,100))+'%"></div></div>';
     el.onclick=()=>window.location.href='/dashboard?symbol='+sym;
     openEl.appendChild(el);
   });

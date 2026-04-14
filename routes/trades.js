@@ -5,6 +5,32 @@ const shared  = require('../shared');
 
 const { activeTrades, closedTrades, saveTrades } = shared;
 
+function buildLiveOnlyTrade(symbol, pos) {
+  const qty = Math.abs(parseFloat(pos?.qty ?? pos?.positionAmt ?? 0)) || 0;
+  const entryPrice = parseFloat(pos?.entryPrice || pos?.markPrice || 0) || 0;
+  return {
+    symbol,
+    side: pos?.side || 'LONG',
+    entryPrice,
+    sl: (Number.isFinite(parseFloat(pos?.sl)) && parseFloat(pos?.sl) > 0) ? parseFloat(pos.sl) : null,
+    tp: (Number.isFinite(parseFloat(pos?.tp)) && parseFloat(pos?.tp) > 0) ? parseFloat(pos.tp) : null,
+    qty,
+    leverage: parseFloat(pos?.leverage || 1) || 1,
+    openedAt: shared.accountState?.ts || Date.now(),
+    finalScore: null,
+    aiRegime: 'LIVE',
+    aiBias: pos?.side || 'N/A',
+    stage: 'LIVE_ONLY',
+    status: 'open',
+    initialSL: null,
+    source: 'BINANCE_LIVE',
+    unrealized: parseFloat(pos?.unrealized || 0) || 0,
+    markPrice: parseFloat(pos?.markPrice || 0) || 0,
+    hasSL: !!pos?.hasSL,
+    hasTP: !!pos?.hasTP
+  };
+}
+
 router.post('/trade', (req, res) => {
   const t = req.body;
   if (!t.symbol) return res.status(400).json({ error: 'symbol required' });
@@ -43,7 +69,20 @@ router.delete('/trade/:symbol', (req, res) => {
   res.json({ ok: true, closed: symbol });
 });
 
-router.get('/trades', (req, res) => res.json({ active: activeTrades, closed: closedTrades }));
+router.get('/trades', (req, res) => {
+  const mergedActive = { ...activeTrades };
+  const livePositions = shared.accountState?.positions || {};
+
+  Object.entries(livePositions).forEach(([symbol, pos]) => {
+    if (!mergedActive[symbol]) {
+      mergedActive[symbol] = buildLiveOnlyTrade(symbol, pos);
+    } else if (!mergedActive[symbol].source) {
+      mergedActive[symbol].source = 'WORKFLOW';
+    }
+  });
+
+  res.json({ active: mergedActive, closed: closedTrades });
+});
 
 router.post('/sync', (req, res) => {
   const activeSymbols = req.body.symbols || [];

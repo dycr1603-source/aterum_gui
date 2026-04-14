@@ -66,6 +66,9 @@ function stopWS(symbol) {
 function attachRealtimeServer(server) {
   if (realtimeWSS) return realtimeWSS;
   realtimeWSS = new WebSocketServer({ server, path: '/ws', perMessageDeflate: false });
+  realtimeWSS.on('error', (err) => {
+    console.error('[Realtime WS] disabled:', err.message);
+  });
   realtimeWSS.on('connection', (socket, req) => {
     socket.on('error', () => {
       try { socket.terminate(); } catch (e) {}
@@ -132,23 +135,85 @@ function httpsPost(url, headers = {}) {
 // ── Account state management ────────────────────────────────────────────────────
 let listenKey = null, accountWS = null, listenKeyInterval = null;
 
+function classifyExitOrder(positionSide, order) {
+  const closeSide = positionSide === 'LONG' ? 'SELL' : 'BUY';
+  const orderSide = String(order.side || '').toUpperCase();
+  if (orderSide !== closeSide) return null;
+
+  const type = String(order.type || order.origType || '').toUpperCase();
+  const stopPrice = parseFloat(order.stopPrice || 0) || 0;
+  const limitPrice = parseFloat(order.price || 0) || 0;
+  const price = stopPrice > 0 ? stopPrice : limitPrice;
+  if (price <= 0) return null;
+
+  if (type === 'STOP' || type === 'STOP_MARKET' || type === 'TRAILING_STOP_MARKET') {
+    return { kind: 'SL', price, type };
+  }
+  if (type === 'TAKE_PROFIT' || type === 'TAKE_PROFIT_MARKET') {
+    return { kind: 'TP', price, type };
+  }
+  if (type === 'LIMIT' && (order.reduceOnly || order.closePosition)) {
+    return { kind: 'TP', price, type };
+  }
+  if (stopPrice > 0) {
+    return { kind: 'SL', price, type: type || 'STOP' };
+  }
+  return null;
+}
+
 async function fetchAccountSnapshot() {
   try {
-    const [balances, positions] = await Promise.all([
+    const [balances, positions, openOrders] = await Promise.all([
       httpsGet(`https://fapi.binance.com/fapi/v2/balance?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT }),
-      httpsGet(`https://fapi.binance.com/fapi/v2/positionRisk?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT })
+      httpsGet(`https://fapi.binance.com/fapi/v2/positionRisk?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT }),
+      httpsGet(`https://fapi.binance.com/fapi/v1/openOrders?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT })
     ]);
     const usdt    = (Array.isArray(balances) ? balances : []).find(b => b.asset === 'USDT') || {};
     const openPos = (Array.isArray(positions) ? positions : []).filter(p => Math.abs(parseFloat(p.positionAmt || 0)) > 0);
+    const bySymbolOrders = {};
+    (Array.isArray(openOrders) ? openOrders : []).forEach((o) => {
+      if (String(o.status || '').toUpperCase() !== 'NEW') return;
+      const sym = String(o.symbol || '').toUpperCase();
+      if (!sym) return;
+      if (!bySymbolOrders[sym]) bySymbolOrders[sym] = [];
+      bySymbolOrders[sym].push(o);
+    });
     const posMap  = {};
     openPos.forEach(p => {
+      const positionAmt = parseFloat(p.positionAmt || 0);
+      const positionSide = positionAmt > 0 ? 'LONG' : 'SHORT';
+      let sl = null;
+      let tp = null;
+      let slType = null;
+      let tpType = null;
+      const orders = bySymbolOrders[p.symbol] || [];
+      orders.forEach((o) => {
+        const exit = classifyExitOrder(positionSide, o);
+        if (!exit) return;
+        if (exit.kind === 'SL' && (sl == null || o.updateTime > slType?.updateTime)) {
+          sl = exit.price;
+          slType = { kind: exit.type, updateTime: o.updateTime || 0 };
+        }
+        if (exit.kind === 'TP' && (tp == null || o.updateTime > tpType?.updateTime)) {
+          tp = exit.price;
+          tpType = { kind: exit.type, updateTime: o.updateTime || 0 };
+        }
+      });
       posMap[p.symbol] = {
-        side:        parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
+        side:        positionSide,
         unrealized:  parseFloat(p.unRealizedProfit || 0),
         margin:      parseFloat(p.isolatedWallet || 0),
         markPrice:   parseFloat(p.markPrice || 0),
         entryPrice:  parseFloat(p.entryPrice || 0),
-        leverage:    parseFloat(p.leverage || 1)
+        leverage:    parseFloat(p.leverage || 1),
+        qty:         Math.abs(positionAmt),
+        positionAmt,
+        sl,
+        tp,
+        slType: slType?.kind || null,
+        tpType: tpType?.kind || null,
+        hasSL: Number.isFinite(sl) && sl > 0,
+        hasTP: Number.isFinite(tp) && tp > 0
       };
     });
     const bal    = parseFloat(usdt.balance || 0);
@@ -194,7 +259,11 @@ async function startUserDataStream() {
                 ...shared.accountState.positions[sym],
                 unrealized: parseFloat(p.up || 0),
                 margin:     parseFloat(p.iw || 0),
-                side:       amt > 0 ? 'LONG' : 'SHORT'
+                side:       amt > 0 ? 'LONG' : 'SHORT',
+                qty:        Math.abs(amt),
+                positionAmt: amt,
+                entryPrice: parseFloat(p.ep || shared.accountState.positions[sym]?.entryPrice || 0),
+                leverage: parseFloat(p.l || shared.accountState.positions[sym]?.leverage || 1)
               };
             } else { delete shared.accountState.positions[sym]; }
           });
@@ -242,8 +311,11 @@ async function updateUnrealized() {
         const pos   = shared.accountState.positions[sym];
         const entry = pos.entryPrice || 0;
         const trade = activeTrades[sym];
-        if (trade && entry > 0) {
-          const q      = parseFloat(trade.qty || 0);
+        if (entry > 0) {
+          const q      = trade
+            ? parseFloat(trade.qty || 0)
+            : parseFloat(pos.qty || Math.abs(pos.positionAmt || 0) || 0);
+          if (q <= 0) return;
           const unreal = pos.side === 'SHORT' ? (entry - mark) * q : (mark - entry) * q;
           shared.accountState.positions[sym].unrealized = +unreal.toFixed(4);
           shared.accountState.positions[sym].markPrice  = mark;
@@ -330,7 +402,11 @@ router.get('/api/account/stream', (req, res) => {
 });
 
 router.get('/api/all-prices', async (req, res) => {
-  const symbols = [...Object.keys(shared.activeTrades), ...Object.keys(shared.closedTrades)];
+  const symbols = [
+    ...Object.keys(shared.activeTrades),
+    ...Object.keys(shared.closedTrades),
+    ...Object.keys(shared.accountState?.positions || {})
+  ];
   const results = {};
   const stale = [];
   symbols.forEach(sym => {
