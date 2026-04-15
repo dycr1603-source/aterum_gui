@@ -58,4 +58,10 @@ app.use(require('./routes/cb'));
 app.use('/', cooldownRoutes);
 
 const server = app.listen(PORT, HOST, () => console.log('αтεгυм Dashboard on ' + HOST + ':' + PORT));
-if (typeof accountRoutes.attachRealtimeServer === 'function') accountRoutes.attachRealtimeServer(server);
+if (typeof accountRoutes.attachRealtimeServer === 'function') {
+  try {
+    accountRoutes.attachRealtimeServer(server);
+  } catch (e) {
+    console.error('[Dashboard] WS local disabled:', e.message);
+  }
+}

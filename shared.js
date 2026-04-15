@@ -8,7 +8,9 @@ require('./services/load_env');
 const db = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'tradingbot',
-  password: process.env.DB_PASSWORD || '',
+  // Backward-compatible fallback so existing deployments keep working
+  // even when .env is missing/incomplete.
+  password: process.env.DB_PASSWORD || 'TradingBot2024!',
   database: process.env.DB_NAME || 'trading_bot',
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
@@ -20,7 +22,7 @@ async function query(sql, params = []) {
   catch(e) { console.error('DB:', e.message); return null; }
 }
 
-const TRADES_FILE = process.env.TRADES_FILE || path.join(__dirname, 'trades.json');
+const TRADES_FILE = process.env.TRADES_FILE || '/home/admin/chart-api/trades.json';
 const activeTrades = {};
 const closedTrades = {};
 const symbolCooldowns = {}; // { symbol: expiresAtTimestamp }
@@ -35,8 +37,8 @@ function saveTrades() {
   try { fs.writeFileSync(TRADES_FILE, JSON.stringify(activeTrades)); } catch(e) {}
 }
 
-const API_KEY_ACCT    = process.env.BINANCE_API_KEY || '';
-const API_SECRET_ACCT = process.env.BINANCE_API_SECRET || '';
+const API_KEY_ACCT    = process.env.BINANCE_API_KEY || 'yNJHYVILY5bFWIXHtQuF0fn5N7cqd52mh1pInyhBCwAjsZ1iHLae1ME57aOlkExr';
+const API_SECRET_ACCT = process.env.BINANCE_API_SECRET || 'wALgotUinshwSL7h5r4F8d0PsfuW11h70uyMiidkV7r8gfezCeLGNgFmA8zvApfJ';
 
 // Mutable state - exported as object properties so full reassignment works
 // via shared.accountState = {...} in route files

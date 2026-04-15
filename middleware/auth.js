@@ -3,7 +3,7 @@ const bcrypt  = require('bcrypt');
 const session = require('express-session');
 require('../services/load_env');
 
-const SESSION_SECRET  = process.env.SESSION_SECRET || 'change-me-in-env';
+const SESSION_SECRET  = process.env.SESSION_SECRET || 'aterum-session-secret-xK9mP2024';
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000;
 
 const loginAttempts = {};
