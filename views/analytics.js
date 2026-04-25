@@ -18,20 +18,20 @@ ${getSharedHeadAssets()}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root{
-  --bg:#090b0a;--bg2:#111411;--bg3:#171c17;--bg4:#20261f;--bg5:#293128;
-  --border:rgba(231,239,226,.1);--border2:rgba(231,239,226,.18);--border3:rgba(231,239,226,.28);
-  --text:#f3f7ef;--text2:#9da89b;--muted:#687266;
-  --green:#82f06f;--green2:#45c85e;--green3:rgba(130,240,111,.08);
-  --red:#ff5d73;--red2:#e23d5d;--red3:rgba(255,93,115,.08);
-  --blue:#5be7c4;--blue2:#32bba0;--blue3:rgba(91,231,196,.08);
-  --gold:#f5c45f;--gold2:rgba(245,196,95,.08);
-  --purple:#b6a1ff;--purple2:rgba(182,161,255,.08);
-  --orange:#ff8c42;
+  --bg:var(--ui-bg,#f5f5f7);--bg2:var(--ui-bg-raised,#ffffff);--bg3:#f4f7fc;--bg4:#e2e9f2;--bg5:#d7e0ec;
+  --border:rgba(29,29,31,.08);--border2:rgba(29,29,31,.14);--border3:rgba(29,29,31,.2);
+  --text:var(--ui-text,#1d1d1f);--text2:var(--ui-muted,#6e6e73);--muted:var(--ui-faint,#8f949d);
+  --green:#1f9e74;--green2:#1a8b66;--green3:rgba(31,158,116,.12);
+  --red:#d94f63;--red2:#c24558;--red3:rgba(217,79,99,.1);
+  --blue:#007aff;--blue2:#0064d9;--blue3:rgba(0,122,255,.12);
+  --gold:#cf9440;--gold2:rgba(207,148,64,.12);
+  --purple:#6f67d8;--purple2:rgba(111,103,216,.12);
+  --orange:#d4864c;
   --mono:'JetBrains Mono',monospace;--display:'Inter Tight','Inter','SF Pro Display',sans-serif;--sans:'Inter','SF Pro Text','Segoe UI',sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
 html{scroll-behavior:smooth}
-body{background:linear-gradient(180deg,#090b0a 0%,#11140f 46%,#080a08 100%);color:var(--text);font-family:var(--sans);font-size:12px;min-height:100vh}
+body{background:linear-gradient(180deg,#f8f9fb 0%,#f2f5fa 46%,#edf2f8 100%);color:var(--text);font-family:var(--sans);font-size:12px;min-height:100vh}
 
 /* ── NAV ── */
 .nav{height:56px;background:rgba(9,11,9,.9);border-bottom:1px solid var(--border2);
@@ -474,7 +474,7 @@ tr:hover td{
 ${getSharedStyles()}
 </style>
 </head>
-<body>
+<body class="analytics-v3">
 ${getSharedChrome({accent:'#3d9eff',accentSoft:'rgba(61,158,255,.18)',secondary:'rgba(0,229,160,.14)',loaderLabel:'Cargando mesa de análisis'})}
 <div class="page-shell">
 ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="live-dot on" id="navLiveDot"></span><span id="navLiveTs">conectando...</span></div>')}

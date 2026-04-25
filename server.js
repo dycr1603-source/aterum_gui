@@ -1,34 +1,57 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
+const fs = require('fs');
 const app = express();
 const PORT = Number(process.env.CHART_API_PORT || 3000);
 const HOST = process.env.BIND_HOST || '0.0.0.0';
 const CHROMIUM_PATH = '/usr/bin/chromium';
+const TMPDIR = process.env.TMPDIR || '/home/admin/chart-api/tmp';
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-app.get('/chart', async (req, res) => {
-  const symbol = (req.query.symbol || 'BTCUSDT').toUpperCase();
+process.env.TMPDIR = TMPDIR;
+process.env.TMP = process.env.TMP || TMPDIR;
+process.env.TEMP = process.env.TEMP || TMPDIR;
 
-  // Orden de fallback para TradingView
-  const TV_SYMBOLS = [
-    `BINANCE:${symbol}.P`,
-    `BINANCE:${symbol}`,
-    `BYBIT:${symbol}.P`,
-  ];
+try {
+  fs.mkdirSync(TMPDIR, { recursive: true });
+} catch (e) {
+  console.error('[Chart] tmp init error:', e.message);
+}
 
+async function renderChart(symbol) {
   let browser;
   try {
+    const TV_SYMBOLS = [
+      `BINANCE:${symbol}.P`,
+      `BINANCE:${symbol}`,
+      `BYBIT:${symbol}.P`,
+    ];
+
     browser = await puppeteer.launch({
       headless: true,
       executablePath: CHROMIUM_PATH,
+      protocolTimeout: 120000,
+      timeout: 120000,
+      pipe: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ]
+        '--disable-gpu',
+        '--no-zygote',
+        '--disable-crash-reporter'
+      ],
+      env: {
+        ...process.env,
+        TMPDIR,
+        TMP: process.env.TMP || TMPDIR,
+        TEMP: process.env.TEMP || TMPDIR
+      }
     });
 
     const page = await browser.newPage();
+    page.setDefaultNavigationTimeout(90000);
+    page.setDefaultTimeout(90000);
 
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
@@ -45,10 +68,10 @@ app.get('/chart', async (req, res) => {
 
       await page.goto(url, {
         waitUntil: 'domcontentloaded',
-        timeout: 60000
+        timeout: 90000
       });
 
-      await new Promise(resolve => setTimeout(resolve, 8000));
+      await sleep(8000);
 
       // Verificar si cargó correctamente
       const failed = await page.evaluate(() => {
@@ -84,13 +107,13 @@ app.get('/chart', async (req, res) => {
       if(canvas) canvas.click();
     });
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await sleep(500);
 
     await page.keyboard.down('Alt');
     await page.keyboard.press('Digit2');
     await page.keyboard.up('Alt');
 
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await sleep(1500);
 
     const chartArea = await page.$('canvas');
     if(chartArea){
@@ -102,11 +125,11 @@ app.get('/chart', async (req, res) => {
 
       for(let i = 0; i < 8; i++){
         await page.mouse.wheel({ deltaY: -120 });
-        await new Promise(r => setTimeout(r, 150));
+        await sleep(150);
       }
     }
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await sleep(2000);
 
     //------------------------------------
     // OCULTAR SIDEBAR DERECHO
@@ -123,22 +146,36 @@ app.get('/chart', async (req, res) => {
       });
     }).catch(() => {});
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await sleep(500);
 
-    const screenshot = await page.screenshot({
+    return await page.screenshot({
       type: 'jpeg',
       quality: 70
     });
-
-    res.set('Content-Type', 'image/jpeg');
-    res.send(screenshot);
-
-  } catch (error) {
-    console.error('❌ Screenshot error:', error.message);
-    res.status(500).json({ success: false, error: error.message });
   } finally {
     if (browser) await browser.close();
   }
+}
+
+app.get('/chart', async (req, res) => {
+  const symbol = (req.query.symbol || 'BTCUSDT').toUpperCase();
+  const errors = [];
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const screenshot = await renderChart(symbol);
+      res.set('Content-Type', 'image/jpeg');
+      res.send(screenshot);
+      return;
+    } catch (error) {
+      const message = error?.message || 'unknown error';
+      errors.push(message);
+      console.error(`❌ Screenshot attempt ${attempt} failed for ${symbol}:`, message);
+      await sleep(1500);
+    }
+  }
+
+  res.status(500).json({ success: false, error: errors[errors.length - 1], attempts: errors });
 });
 
 app.get('/', (req, res) => {
@@ -146,5 +183,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(`🚀 Chart API running on ${HOST}:${PORT}`);
+  console.log(`🚀 Chart API running on ${HOST}:${PORT} tmp=${TMPDIR}`);
 });

@@ -17,10 +17,10 @@ function getPlayHTML(user) { return `<!DOCTYPE html>
 ${getSharedHeadAssets()}
 <style>
 :root{
-  --bg:#090b0a;--bg2:#111411;--bg3:#171c17;--bg4:#20261f;
-  --text:#f3f7ef;--text2:#9da89b;--muted:#687266;
-  --green:#82f06f;--red:#ff5d73;--blue:#5be7c4;--gold:#f5c45f;--cyan:#5be7c4;--purple:#b6a1ff;
-  --border:rgba(231,239,226,.14);--border-strong:rgba(231,239,226,.24);
+  --bg:var(--ui-bg,#f5f5f7);--bg2:var(--ui-bg-raised,#ffffff);--bg3:#f4f7fc;--bg4:#e2e9f2;
+  --text:var(--ui-text,#1d1d1f);--text2:var(--ui-muted,#6e6e73);--muted:var(--ui-faint,#8f949d);
+  --green:#1f9e74;--red:#d94f63;--blue:#007aff;--gold:#cf9440;--cyan:#007aff;--purple:#6f67d8;
+  --border:rgba(29,29,31,.12);--border-strong:rgba(29,29,31,.2);
   --display:'Inter Tight','Inter','SF Pro Display',sans-serif;
   --sans:'Inter','SF Pro Text','Segoe UI',sans-serif;
   --mono:'JetBrains Mono',monospace;
@@ -32,11 +32,10 @@ body{
   font:500 12px/1.5 var(--sans);
   color:var(--text);
   background:
-    linear-gradient(180deg,rgba(130,240,111,.05),transparent 30%),
-    linear-gradient(135deg,rgba(91,231,196,.07),transparent 42%),
-    linear-gradient(180deg,#090b0a 0%,#11140f 46%,#080a08 100%);
+    linear-gradient(180deg,rgba(67,111,243,.06),transparent 30%),
+    linear-gradient(135deg,rgba(0,122,255,.08),transparent 42%),
+    linear-gradient(180deg,#f8f9fb 0%,#f2f5fa 46%,#edf2f8 100%);
 }
-${getSharedStyles()}
 .page{
   position:relative;
   z-index:1;
@@ -660,9 +659,10 @@ ${getSharedStyles()}
     border-radius:20px;
   }
 }
+${getSharedStyles()}
 </style>
 </head>
-<body>
+<body class="play-v3">
 ${getSharedChrome({accent:'#29d3ff',accentSoft:'rgba(41,211,255,.22)',secondary:'rgba(0,229,160,.16)',loaderLabel:'Cargando Crypto Mines'})}
 <div class="page-shell">
 ${getSharedNav('play', user, 'green')}

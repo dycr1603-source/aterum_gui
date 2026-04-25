@@ -3,26 +3,27 @@
 const {
   getSharedChrome,
   getSharedStyles,
-  getSharedScript
+  getSharedScript,
+  getSharedNav
 } = require('./ui_shared');
 
 function getDashboardHTML(symbol, user) { return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0f1830">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#f5f5f7">
 <title>αтεгυм — ${symbol}</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
 <style>
-:root{--bg:#090b0a;--bg2:#111411;--bg3:#171c17;--bg4:#20261f;--border:rgba(231,239,226,.12);--border2:rgba(231,239,226,.2);--text:#f3f7ef;--text2:#9da89b;--muted:#687266;--green:#82f06f;--green2:#45c85e;--red:#ff5d73;--red2:#e23d5d;--blue:#5be7c4;--gold:#f5c45f;--purple:#b6a1ff;--mono:'JetBrains Mono',monospace;--display:'Inter Tight','Inter','SF Pro Display',sans-serif;--sans:'Inter','SF Pro Text','Segoe UI',sans-serif;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);--ease:cubic-bezier(.22,1,.36,1)}
+:root{--bg:var(--ui-bg,#f5f5f7);--bg2:var(--ui-bg-raised,#ffffff);--bg3:#f4f7fc;--bg4:#e2e9f2;--border:rgba(29,29,31,.12);--border2:rgba(29,29,31,.2);--text:var(--ui-text,#1d1d1f);--text2:var(--ui-muted,#6e6e73);--muted:var(--ui-faint,#8f949d);--green:#1f9e74;--green2:#1a8b66;--red:#d94f63;--red2:#c24558;--blue:#007aff;--gold:#cf9440;--purple:#6f67d8;--mono:'JetBrains Mono',monospace;--display:'Inter Tight','Inter','SF Pro Display',sans-serif;--sans:'Inter','SF Pro Text','Segoe UI',sans-serif;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);--ease:cubic-bezier(.22,1,.36,1)}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{height:100%;overscroll-behavior:none}
 body{background:
-linear-gradient(180deg,rgba(130,240,111,.05),transparent 30%),
-linear-gradient(135deg,rgba(91,231,196,.07),transparent 42%),
-linear-gradient(180deg,#090b0a 0%,#11140f 48%,#080a08 100%);
+linear-gradient(180deg,rgba(67,111,243,.06),transparent 30%),
+linear-gradient(135deg,rgba(0,122,255,.08),transparent 42%),
+linear-gradient(180deg,#f8f9fb 0%,#f2f5fa 48%,#edf2f8 100%);
 color:var(--text);font-family:var(--sans);font-size:12px;height:100%;overflow:hidden;-webkit-font-smoothing:antialiased;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
 /* NAV */
 .nav{height:48px;display:flex;align-items:center;padding:0 16px;gap:0;background:rgba(9,11,9,.84);border-bottom:1px solid var(--border);z-index:200;flex-shrink:0;position:relative;backdrop-filter:blur(16px) saturate(1.15);box-shadow:0 12px 30px rgba(0,0,0,.26)}
@@ -1017,28 +1018,28 @@ body.chart-fullscreen-active .bnav{
 }
 /* ELITE UI REFRESH */
 :root{
-  --surface-0:rgba(12,19,31,.74);
-  --surface-1:rgba(16,25,40,.9);
-  --surface-2:rgba(20,30,47,.96);
-  --surface-3:rgba(24,36,56,.98);
-  --panel-border:rgba(122,174,229,.16);
-  --panel-border-strong:rgba(122,174,229,.28);
-  --panel-shadow:0 26px 64px rgba(4,10,18,.24);
-  --panel-shadow-hover:0 34px 78px rgba(4,10,18,.32);
-  --glass-line:rgba(255,255,255,.05);
-  --glow-blue:rgba(87,176,255,.22);
-  --glow-green:rgba(0,229,160,.16);
-  --glow-red:rgba(255,83,111,.16);
-  --glow-gold:rgba(245,184,75,.18);
+  --surface-0:rgba(255,255,255,.78);
+  --surface-1:rgba(255,255,255,.9);
+  --surface-2:rgba(250,252,255,.96);
+  --surface-3:rgba(248,251,255,.98);
+  --panel-border:rgba(19,33,54,.14);
+  --panel-border-strong:rgba(19,33,54,.22);
+  --panel-shadow:0 20px 52px rgba(17,30,48,.14);
+  --panel-shadow-hover:0 28px 64px rgba(17,30,48,.18);
+  --glass-line:rgba(19,33,54,.08);
+  --glow-blue:rgba(67,111,243,.18);
+  --glow-green:rgba(31,158,116,.14);
+  --glow-red:rgba(217,79,99,.14);
+  --glow-gold:rgba(207,148,64,.16);
 }
 body{
   font-family:var(--sans);
   letter-spacing:-.012em;
   background:
-    radial-gradient(circle at 12% -6%,rgba(87,176,255,.22),transparent 28%),
-    radial-gradient(circle at 88% 0%,rgba(0,229,160,.12),transparent 24%),
-    radial-gradient(circle at 50% 118%,rgba(255,255,255,.05),transparent 30%),
-    linear-gradient(180deg,#091322 0%,#0c1728 42%,#08111f 100%);
+    radial-gradient(circle at 12% -6%,rgba(67,111,243,.14),transparent 28%),
+    radial-gradient(circle at 88% 0%,rgba(31,158,116,.08),transparent 24%),
+    radial-gradient(circle at 50% 118%,rgba(255,255,255,.2),transparent 30%),
+    linear-gradient(180deg,#f8f9fb 0%,#f2f5fa 42%,#edf2f8 100%);
 }
 body::after{
   content:'';
@@ -1931,29 +1932,421 @@ body::after{
   }
 }
 ${getSharedStyles()}
+/* ── Dashboard V2 Stripe Layout (UI only) ───────────────────────────────── */
+.dashboard-v2{
+  overflow:auto !important;
+  height:auto !important;
+  background:var(--ui-bg) !important;
+}
+.dashboard-v2::before,
+.dashboard-v2::after{
+  display:none !important;
+}
+.dashboard-v2 .app-chrome{
+  display:none !important;
+}
+.dashboard-v2 .page-shell{
+  min-height:100vh;
+  padding:12px 20px 20px;
+  opacity:1 !important;
+  filter:none !important;
+  transform:none !important;
+}
+.dashboard-v2 .nav-shell{
+  margin:0 0 16px !important;
+  min-height:64px !important;
+  border:1px solid var(--ui-line) !important;
+  background:var(--ui-nav-bg) !important;
+  box-shadow:var(--ui-shadow) !important;
+}
+.dashboard-v2 .nav-shell .nav-market,
+.dashboard-v2 .nav-shell .nav-user{
+  background:var(--ui-bg-panel) !important;
+  border-color:var(--ui-line) !important;
+}
+.dashboard-v2 .layout{
+  display:grid !important;
+  grid-template-columns:minmax(260px,290px) minmax(0,1fr) minmax(300px,340px);
+  gap:24px;
+  align-items:start;
+  height:auto !important;
+  min-height:calc(100vh - 120px);
+  padding:0 !important;
+}
+.dashboard-v2 .wl,
+.dashboard-v2 .sb{
+  width:auto !important;
+  min-width:0 !important;
+  max-width:none !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  border-radius:0 !important;
+  padding:0 !important;
+  gap:16px;
+}
+.dashboard-v2 .wl{
+  position:sticky;
+  top:92px;
+  max-height:calc(100dvh - 112px);
+  overflow:auto;
+}
+.dashboard-v2 .sb{
+  position:sticky;
+  top:92px;
+  height:calc(100dvh - 112px) !important;
+  max-height:calc(100dvh - 112px) !important;
+  overflow:auto;
+}
+.dashboard-v2 #chart-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  min-width:0;
+  overflow:visible !important;
+  background:transparent !important;
+}
+.dashboard-v2 #chart-wrap::before{
+  display:none !important;
+}
+.dashboard-v2 .terminal-kpis{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:16px;
+}
+.dashboard-v2 .chart-shell,
+.dashboard-v2 .metric-card,
+.dashboard-v2 .market-card,
+.dashboard-v2 .side-card,
+.dashboard-v2 .terminal-card,
+.dashboard-v2 .stat-c,
+.dashboard-v2 .lv,
+.dashboard-v2 .result-row{
+  background:#fff !important;
+  border:1px solid var(--ui-line) !important;
+  border-radius:14px !important;
+  box-shadow:0 8px 24px rgba(15,23,42,.06) !important;
+}
+.dashboard-v2 .metric-card::before,
+.dashboard-v2 .metric-card::after,
+.dashboard-v2 .chart-shell::before,
+.dashboard-v2 .pnl-hero::after,
+.dashboard-v2 .sec::after{
+  display:none !important;
+}
+.dashboard-v2 .metric-card{
+  min-height:118px;
+  padding:18px 18px 16px;
+}
+.dashboard-v2 .metric-label,
+.dashboard-v2 .market-label,
+.dashboard-v2 .side-card-label,
+.dashboard-v2 .terminal-card-title,
+.dashboard-v2 .sec-ttl,
+.dashboard-v2 .stat-lbl,
+.dashboard-v2 .pm-lbl,
+.dashboard-v2 .workspace-stat-label,
+.dashboard-v2 .telemetry-row span:first-child{
+  color:var(--ui-muted) !important;
+  letter-spacing:.08em;
+}
+.dashboard-v2 .metric-sub,
+.dashboard-v2 .market-sub,
+.dashboard-v2 .workspace-sub,
+.dashboard-v2 .chart-sub,
+.dashboard-v2 .chart-eyebrow,
+.dashboard-v2 .live-txt,
+.dashboard-v2 .terminal-card-meta,
+.dashboard-v2 .r-mark,
+.dashboard-v2 #lastUpdate{
+  color:var(--ui-muted) !important;
+}
+.dashboard-v2 .metric-value,
+.dashboard-v2 .market-value,
+.dashboard-v2 .workspace-balance,
+.dashboard-v2 .chart-title,
+.dashboard-v2 .exec-symbol,
+.dashboard-v2 .pnl-val,
+.dashboard-v2 .stat-val{
+  color:var(--ui-text) !important;
+}
+.dashboard-v2 .metric-value{
+  margin-top:10px;
+  font-size:34px;
+  font-weight:800;
+  line-height:1;
+}
+.dashboard-v2 .workspace-balance{
+  font-size:50px;
+}
+.dashboard-v2 .wl-hdr{
+  padding:0 2px 2px !important;
+  border:none !important;
+  background:transparent !important;
+}
+.dashboard-v2 .wl-scroll{
+  min-height:0;
+  border:none !important;
+  border-radius:0 !important;
+  background:transparent !important;
+}
+.dashboard-v2 .wl-item{
+  margin:0 0 10px !important;
+  border:1px solid var(--ui-line) !important;
+  border-radius:12px !important;
+  background:#fff !important;
+  padding:12px !important;
+}
+.dashboard-v2 .wl-item.active{
+  border-color:var(--ui-line-strong) !important;
+  background:#fff !important;
+}
+.dashboard-v2 .chart-shell{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  padding:18px;
+}
+.dashboard-v2 .chart-head{
+  padding:0 !important;
+  align-items:flex-start;
+}
+.dashboard-v2 .chart-title{
+  font-size:34px;
+}
+.dashboard-v2 .chart-structure{
+  text-align:left;
+}
+.dashboard-v2 .ind-toolbar{
+  height:auto !important;
+  min-height:46px;
+  padding:8px !important;
+  border:1px solid var(--ui-line) !important;
+  border-radius:12px !important;
+  background:#fff !important;
+}
+.dashboard-v2 .ind-btn,
+.dashboard-v2 .chart-fs-btn{
+  border-radius:10px !important;
+  border:1px solid var(--ui-line) !important;
+  background:#fff !important;
+  color:var(--ui-muted) !important;
+  box-shadow:none !important;
+}
+.dashboard-v2 #chart-container{
+  height:56vh;
+  min-height:420px;
+  border-radius:12px;
+  border:1px solid var(--ui-line);
+  background:#fff;
+}
+.dashboard-v2 .sub-panel{
+  border-top:1px solid var(--ui-line) !important;
+  background:#fff !important;
+}
+.dashboard-v2 .market-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+.dashboard-v2 .market-card{
+  padding:14px;
+}
+.dashboard-v2 .market-value{
+  margin-top:8px;
+  font-size:26px;
+}
+.dashboard-v2 .terminal-card-hdr{
+  background:#fff !important;
+  border-bottom:1px solid var(--ui-line) !important;
+}
+.dashboard-v2 .exec-body{
+  padding:16px;
+}
+.dashboard-v2 .exec-btn,
+.dashboard-v2 .exec-mode-btn{
+  border:1px solid var(--ui-line) !important;
+  border-radius:10px !important;
+  background:#fff !important;
+  color:var(--ui-muted) !important;
+}
+.dashboard-v2 .exec-btn.active{
+  background:rgba(31,158,116,.12) !important;
+  border-color:rgba(31,158,116,.26) !important;
+  color:var(--ui-green) !important;
+}
+.dashboard-v2 .exec-btn.sell-active{
+  background:rgba(217,79,99,.12) !important;
+  border-color:rgba(217,79,99,.26) !important;
+  color:var(--ui-red) !important;
+}
+.dashboard-v2 .exec-mode-btn.active{
+  color:var(--ui-text) !important;
+}
+.dashboard-v2 .exec-slider,
+.dashboard-v2 .workspace-bar,
+.dashboard-v2 .r-track{
+  background:#eef2f7 !important;
+}
+.dashboard-v2 .exec-slider-fill,
+.dashboard-v2 .workspace-bar-fill,
+.dashboard-v2 #stageBar,
+.dashboard-v2 #acctMarginBar{
+  background:var(--ui-accent) !important;
+}
+.dashboard-v2 .exec-exposure,
+.dashboard-v2 .exec-pnl-panel,
+.dashboard-v2 .pnl-hero,
+.dashboard-v2 .lv,
+.dashboard-v2 .stat-c,
+.dashboard-v2 .result-row{
+  background:#fff !important;
+}
+.dashboard-v2 .exec-pill,
+.dashboard-v2 .exec-side,
+.dashboard-v2 .stage-pill,
+.dashboard-v2 .closed-banner{
+  background:#f6f8fb !important;
+  border:1px solid var(--ui-line) !important;
+  color:var(--ui-muted) !important;
+}
+.dashboard-v2 .no-trade-overlay{
+  background:rgba(245,245,247,.72) !important;
+  backdrop-filter:blur(3px);
+}
+.dashboard-v2 .no-sym{
+  color:#cad1dd !important;
+}
+.dashboard-v2 .no-txt{
+  color:var(--ui-muted) !important;
+}
+.dashboard-v2 #chart-wrap.is-fullscreen{
+  background:var(--ui-bg-soft) !important;
+  padding:14px !important;
+}
+.dashboard-v2 #chart-wrap.is-fullscreen .chart-shell{
+  background:#fff !important;
+  border:1px solid var(--ui-line) !important;
+  box-shadow:0 16px 38px rgba(15,23,42,.12) !important;
+}
+.dashboard-v2 #chart-wrap.is-fullscreen #chart-container{
+  border:1px solid var(--ui-line) !important;
+  background:#fff !important;
+}
+.dashboard-v2 .up,
+.dashboard-v2 .pp,
+.dashboard-v2 .rp,
+.dashboard-v2 .r-pos{
+  color:var(--ui-green) !important;
+}
+.dashboard-v2 .down,
+.dashboard-v2 .pn,
+.dashboard-v2 .rn,
+.dashboard-v2 .r-neg{
+  color:var(--ui-red) !important;
+}
+.dashboard-v2 .overlay{
+  display:none !important;
+}
+.dashboard-v2 .bnav{
+  border-top:1px solid var(--ui-line) !important;
+  background:rgba(255,255,255,.88) !important;
+}
+.dashboard-v2 .bnav-tab{
+  color:var(--ui-muted) !important;
+}
+.dashboard-v2 .bnav-tab.active{
+  color:var(--ui-accent) !important;
+}
+@media (max-width:1280px){
+  .dashboard-v2 .layout{
+    grid-template-columns:minmax(240px,270px) minmax(0,1fr) minmax(280px,320px);
+    gap:18px;
+  }
+  .dashboard-v2 .terminal-kpis{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .dashboard-v2 .market-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media (max-width:1024px){
+  .dashboard-v2 .layout{
+    grid-template-columns:minmax(0,1fr) minmax(280px,320px);
+    gap:16px;
+  }
+  .dashboard-v2 .wl{
+    grid-column:1/-1;
+    position:relative;
+    top:0;
+    max-height:72px;
+    overflow:hidden;
+    transition:max-height .28s ease;
+  }
+  .dashboard-v2 .wl.open{
+    max-height:68vh;
+  }
+  .dashboard-v2 #chart-wrap{
+    grid-column:1/2;
+  }
+  .dashboard-v2 .sb{
+    grid-column:2/3;
+    position:sticky;
+    top:82px;
+    height:calc(100dvh - 98px) !important;
+    max-height:calc(100dvh - 98px) !important;
+  }
+  .dashboard-v2 .bnav{
+    display:flex !important;
+  }
+}
+@media (max-width:840px){
+  .dashboard-v2 .page-shell{
+    padding:10px 12px 72px;
+  }
+  .dashboard-v2 .layout{
+    grid-template-columns:1fr;
+  }
+  .dashboard-v2 #chart-wrap,
+  .dashboard-v2 .sb,
+  .dashboard-v2 .wl{
+    grid-column:auto;
+  }
+  .dashboard-v2 .sb{
+    position:relative;
+    top:0;
+    height:auto !important;
+    max-height:none !important;
+  }
+  .dashboard-v2 .wl{
+    max-height:64px;
+  }
+  .dashboard-v2 .wl.open{
+    max-height:66vh;
+  }
+  .dashboard-v2 .terminal-kpis,
+  .dashboard-v2 .market-grid{
+    grid-template-columns:1fr;
+  }
+  .dashboard-v2 #chart-container{
+    min-height:320px;
+    height:46vh;
+  }
+}
 </style>
 </head>
-<body>
+<body class="dashboard-v3">
 ${getSharedChrome({accent:'#3d9eff',accentSoft:'rgba(61,158,255,.18)',secondary:'rgba(0,229,160,.14)',loaderLabel:'Cargando terminal de trading'})}
 <div class="page-shell">
-<div class="nav">
-  <div class="nav-logo"><div class="nav-dot"></div><span>αтεгυм</span></div>
-  <div class="nav-sym" id="hSym">${symbol}</div>
-  <div class="nav-price up" id="hPrice">—</div>
-  <div class="nav-pill pill-closed" id="hDir">—</div>
-  <div class="nav-live"><div class="live-dot" id="liveDot"></div><span class="live-txt" id="liveTxt">conectando</span></div>
-  <div class="nav-spacer"></div>
-  <div class="nav-actions">
-    <a href="/analytics" class="nav-btn">Análisis</a>
-    <a href="/ai-data" class="nav-btn">Inteligencia</a>
-    <a href="/crypto-play" class="nav-btn">Crypto Play</a>
-    <div style="flex:1"></div>
-    <span style="font-size:9px;color:#5a7a9a;padding:3px 8px;background:#0a0f18;border:1px solid #162030;border-radius:999px;margin-right:4px">${user?.username || ''}</span>
-    <a href="/logout" data-no-transition="true" style="font-size:10px;color:#5a7a9a;text-decoration:none;padding:5px 12px;border:1px solid #162840;border-radius:999px;font-family:var(--mono);transition:all .15s" onmouseover="this.style.color='#ff3d5a';this.style.borderColor='rgba(255,61,90,.3)'" onmouseout="this.style.color='#5a7a9a';this.style.borderColor='#162840'">Salir</a>
-    <div class="nav-time" id="hTime">—</div>
-  </div>
-  <button class="nav-menu-btn" id="menuBtn" aria-label="Menú"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
-</div>
+${getSharedNav('dashboard', user, 'blue',
+  '<div class="nav-market">'+
+    '<span class="nav-sym" id="hSym">'+symbol+'</span>'+
+    '<span class="nav-price up" id="hPrice">—</span>'+
+    '<span class="nav-pill pill-closed" id="hDir">—</span>'+
+    '<span class="nav-live"><span class="live-dot" id="liveDot"></span><span class="live-txt" id="liveTxt">conectando</span></span>'+
+    '<span class="nav-time" id="hTime">—</span>'+
+  '</div>'
+)}
 <div class="overlay" id="overlay"></div>
 <div class="layout">
   <div class="wl" id="watchlist">
@@ -2052,16 +2445,16 @@ ${getSharedChrome({accent:'#3d9eff',accentSoft:'rgba(61,158,255,.18)',secondary:
         <button class="ind-btn sqz" onclick="toggleInd('sqz',this)" title="Squeeze Momentum">SQZ</button>
         <button class="ind-btn adx" onclick="toggleInd('adx',this)" title="ADX">ADX</button>
       </div>
+      <div id="chart-container"></div>
+      <div id="vol-panel" class="sub-panel"><div class="panel-resize" onmousedown="startResize(event,'vol-panel')" ontouchstart="startResize(event,'vol-panel')"></div><div class="panel-label">VOL</div></div>
+      <div id="rsi-panel" class="sub-panel"><div class="panel-resize" onmousedown="startResize(event,'rsi-panel')" ontouchstart="startResize(event,'rsi-panel')"></div><div class="panel-label">RSI 14</div></div>
+      <div id="sqz-panel" class="sub-panel"><div class="panel-resize" onmousedown="startResize(event,'sqz-panel')" ontouchstart="startResize(event,'sqz-panel')"></div><div class="panel-label">SQUEEZE</div></div>
       <div class="market-grid">
         <div class="market-card"><div class="market-label">Último</div><div class="market-value" id="marketLast">—</div><div class="market-sub">precio en tiempo real</div></div>
         <div class="market-card"><div class="market-label">Máximo 24H</div><div class="market-value" id="marketHigh">—</div><div class="market-sub">zona de resistencia</div></div>
         <div class="market-card"><div class="market-label">Mínimo 24H</div><div class="market-value" id="marketLow">—</div><div class="market-sub">zona de soporte</div></div>
         <div class="market-card"><div class="market-label">Volumen 24H</div><div class="market-value" id="marketVolume">—</div><div class="market-sub">futuros perpetuos</div></div>
       </div>
-      <div id="chart-container"></div>
-      <div id="vol-panel" class="sub-panel"><div class="panel-resize" onmousedown="startResize(event,'vol-panel')" ontouchstart="startResize(event,'vol-panel')"></div><div class="panel-label">VOL</div></div>
-      <div id="rsi-panel" class="sub-panel"><div class="panel-resize" onmousedown="startResize(event,'rsi-panel')" ontouchstart="startResize(event,'rsi-panel')"></div><div class="panel-label">RSI 14</div></div>
-      <div id="sqz-panel" class="sub-panel"><div class="panel-resize" onmousedown="startResize(event,'sqz-panel')" ontouchstart="startResize(event,'sqz-panel')"></div><div class="panel-label">SQUEEZE</div></div>
       <div class="no-trade-overlay" id="noTrade" style="display:none">
         <div class="no-sym">${symbol}</div>
         <div class="no-txt">Sin posición activa</div>
@@ -2332,7 +2725,17 @@ function showPanel(p,{skipScroll=false}={}){
   if(isTablet()){
     wl.classList.remove('open');sb.classList.remove('open');ov.classList.remove('visible');
     [bnC,bnW,bnS].forEach(b=>b.classList.remove('active'));
-    bnC.classList.add('active');
+    if(p==='watch'){
+      wl.classList.add('open');
+      bnW.classList.add('active');
+      if(!skipScroll)setTimeout(()=>wl.scrollIntoView({behavior:'smooth',block:'start'}),30);
+    }else if(p==='stats'){
+      bnS.classList.add('active');
+      if(!skipScroll)setTimeout(()=>sb.scrollIntoView({behavior:'smooth',block:'start'}),30);
+    }else{
+      bnC.classList.add('active');
+      if(!skipScroll)setTimeout(()=>document.getElementById('chart-wrap').scrollIntoView({behavior:'smooth',block:'start'}),30);
+    }
     syncChartLayout({immediate:true});
     return;
   }
@@ -2353,7 +2756,8 @@ function showPanel(p,{skipScroll=false}={}){
   syncChartLayout({immediate:true});
 }
 document.getElementById('overlay').addEventListener('click',()=>showPanel('chart'));
-document.getElementById('menuBtn').addEventListener('click',()=>showPanel(currentPanel==='watch'?'chart':'watch'));
+const menuBtnEl=document.getElementById('menuBtn');
+if(menuBtnEl)menuBtnEl.addEventListener('click',()=>showPanel(currentPanel==='watch'?'chart':'watch'));
 fullscreenBtn.addEventListener('click',toggleChartFullscreen);
 document.addEventListener('keydown',handleFullscreenKeydown);
 function syncResponsiveState(){
@@ -2367,13 +2771,13 @@ syncFullscreenButton();
 const container=document.getElementById('chart-container');
 const chart=LightweightCharts.createChart(container,{
   width:container.clientWidth,height:container.clientHeight,
-  layout:{backgroundColor:'#060910',textColor:'#304560'},
-  grid:{vertLines:{color:'#0a1220'},horzLines:{color:'#0a1220'}},
-  crosshair:{mode:LightweightCharts.CrosshairMode.Normal,vertLine:{color:'#182030',labelBackgroundColor:'#162030'},horzLine:{color:'#182030',labelBackgroundColor:'#162030'}},
-  rightPriceScale:{borderColor:'#182030',scaleMargins:{top:.1,bottom:.1}},
-  timeScale:{borderColor:'#182030',timeVisible:true,secondsVisible:false}
+  layout:{backgroundColor:'#060910',textColor:'#a8b3c7'},
+  grid:{vertLines:{color:'#11192a'},horzLines:{color:'#11192a'}},
+  crosshair:{mode:LightweightCharts.CrosshairMode.Normal,vertLine:{color:'#304560',labelBackgroundColor:'#1a2336'},horzLine:{color:'#304560',labelBackgroundColor:'#1a2336'}},
+  rightPriceScale:{borderColor:'#1a2336',scaleMargins:{top:.1,bottom:.1}},
+  timeScale:{borderColor:'#1a2336',timeVisible:true,secondsVisible:false}
 });
-const candles=chart.addCandlestickSeries({upColor:'#00e5a0',downColor:'#ff3d5a',borderUpColor:'#00e5a0',borderDownColor:'#ff3d5a',wickUpColor:'#00c580',wickDownColor:'#cc2040'});
+const candles=chart.addCandlestickSeries({upColor:'#1f9e74',downColor:'#d94f63',borderUpColor:'#1f9e74',borderDownColor:'#d94f63',wickUpColor:'#1f9e74',wickDownColor:'#d94f63'});
 let entryLine=null,slLine=null,tpLine=null,slZone=null,tpZone=null;
 let klineData=[],lastPrice=null,currentTrade=null,isClosed=false,tradeMap={active:{},closed:{}},wlPrices={};
 let priceStream=null;

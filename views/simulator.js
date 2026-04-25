@@ -2,6 +2,7 @@
 
 const {
   getSharedHeadAssets,
+  getSharedStyles,
   getSharedNav
 } = require('./ui_shared');
 
@@ -14,18 +15,18 @@ function getSimulatorHTML(user) {
 ${getSharedHeadAssets()}
 <style>
 :root{
-  --bg:#090b0a;--panel:#111411;--panel2:#171c17;--line:rgba(231,239,226,.12);--line2:rgba(231,239,226,.2);
-  --text:#f3f7ef;--muted:#9da89b;--soft:#687266;--green:#82f06f;--red:#ff5d73;
-  --blue:#5be7c4;--gold:#f5c45f;--violet:#b6a1ff;--mono:'JetBrains Mono',monospace;
+  --bg:var(--ui-bg,#f5f5f7);--panel:var(--ui-bg-raised,#ffffff);--panel2:#f4f7fc;--line:rgba(29,29,31,.1);--line2:rgba(29,29,31,.16);
+  --text:var(--ui-text,#1d1d1f);--muted:var(--ui-muted,#6e6e73);--soft:var(--ui-faint,#8f949d);--green:#1f9e74;--red:#d94f63;
+  --blue:#007aff;--gold:#cf9440;--violet:#6f67d8;--mono:'JetBrains Mono',monospace;
   --display:'Inter Tight','Inter',sans-serif;--sans:'Inter','Segoe UI',sans-serif;
-  --shadow:0 24px 80px rgba(0,0,0,.34);--ease:cubic-bezier(.22,1,.36,1);
+  --shadow:0 14px 38px rgba(17,30,48,.12);--ease:cubic-bezier(.22,1,.36,1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{background:#090b0a;color-scheme:dark}
+html{background:#f5f5f7;color-scheme:light}
 body{min-height:100vh;background:
-  linear-gradient(180deg,rgba(130,240,111,.05),transparent 28%),
-  linear-gradient(135deg,rgba(91,231,196,.06),transparent 42%),
-  linear-gradient(180deg,#090b0a 0%,#11140f 48%,#080a08 100%) !important;
+  linear-gradient(180deg,rgba(67,111,243,.06),transparent 28%),
+  linear-gradient(135deg,rgba(0,122,255,.08),transparent 42%),
+  linear-gradient(180deg,#f8f9fb 0%,#f2f5fa 48%,#edf2f8 100%) !important;
   color:var(--text);font-family:var(--sans);font-size:12px;overflow-x:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(180deg,rgba(255,255,255,.035) 0 1px,transparent 1px 5px);opacity:.08}
 body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:linear-gradient(90deg,transparent,rgba(130,240,111,.1),transparent);height:2px;top:0;animation:simScan 6s var(--ease) infinite}
@@ -124,9 +125,10 @@ tr:hover td{background:rgba(130,240,111,.035)}
 @keyframes pixelPulse{0%,100%{opacity:.55}50%{opacity:1}}
 @media(max-width:1200px){.kpis,.real-summary{grid-template-columns:repeat(3,1fr)}.cards2,.cards3,.charts,.explain-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:720px){.hero{align-items:flex-start;flex-direction:column}.kpis,.charts,.real-summary,.glossary{grid-template-columns:1fr 1fr}.title{font-size:28px}.page{padding:20px 14px}.nav{overflow:auto}.split,.form-grid,.explain-grid{grid-template-columns:1fr}.input{width:100%}}
+${getSharedStyles()}
 </style>
 </head>
-<body>
+<body class="simulator-v3">
 <div class="sim-loading" id="simLoading" aria-live="polite" aria-hidden="true">
   <div class="sim-loading-card">
     <div class="sim-loading-title">Calculando escenarios</div>

@@ -30,7 +30,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         BIND_HOST: '0.0.0.0',
-        CHART_API_PORT: '3000'
+        CHART_API_PORT: '3000',
+        TMPDIR: '/home/admin/chart-api/tmp',
+        TEMP: '/home/admin/chart-api/tmp',
+        TMP: '/home/admin/chart-api/tmp'
       }
     }
   ]
