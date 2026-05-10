@@ -1,5 +1,27 @@
 # Aterum GUI
 
+Actualizado: 2026-04-29
+
+## Importante
+
+Este repo es el que actualmente sirve el dashboard live en `http://177.71.200.164:3001/dashboard`.
+
+Antes de hacer cambios visuales del dashboard, validar:
+
+```bash
+pm2 show dashboard
+```
+
+Si el `cwd` del proceso `dashboard` apunta a `/home/admin/aterum_gui`, este es el repo correcto.
+
+Repo similar que puede causar confusion:
+
+- `/home/admin/chart-api`
+
+Mapa rapido del workspace:
+
+- `/home/admin/DASHBOARD_WORKSPACE_MAP.md`
+
 Dashboard web para monitorear el bot de trading, revisar posiciones, analitica, inteligencia de mercado y simular senales de n8n.
 
 ## Que incluye

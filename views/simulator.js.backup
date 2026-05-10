@@ -1,10 +1,8 @@
 'use strict';
 
 const {
-  getSharedChrome,
   getSharedHeadAssets,
   getSharedStyles,
-  getSharedScript,
   getSharedNav
 } = require('./ui_shared');
 
@@ -131,7 +129,6 @@ ${getSharedStyles()}
 </style>
 </head>
 <body class="simulator-v3">
-${getSharedChrome({accent:'#57b0ff',accentSoft:'rgba(87,176,255,.18)',secondary:'rgba(46,230,166,.14)',loaderLabel:'Cargando laboratorio de señales'})}
 <div class="sim-loading" id="simLoading" aria-live="polite" aria-hidden="true">
   <div class="sim-loading-card">
     <div class="sim-loading-title">Calculando escenarios</div>
@@ -626,7 +623,6 @@ document.getElementById('clearBtn').addEventListener('click', clearView);
 clearView();
 });
 </script>
-<script>${getSharedScript()}</script>
 </body>
 </html>`;
 }

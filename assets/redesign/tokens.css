@@ -1,0 +1,441 @@
+/* =============================================================
+   ATERUM — DESIGN TOKENS
+   Extracted from: html/dashboard.html + screenshots/dashboard_desktop.png
+   Aesthetic: terminal / Bloomberg + Tron — dense, dark-first,
+              neon-accented, with light-mode parity.
+   ============================================================= */
+
+/* -------------------------------------------------------------
+   :root  →  BASE (mode-agnostic) + DARK (default)
+   Dark is the canonical mode, per BRIEF §"Estética actual".
+   ------------------------------------------------------------- */
+:root {
+  /* ---------- TYPOGRAPHY FAMILIES (only 3 — per BRIEF) ---------- */
+  --font-display : 'Inter Tight', 'Inter', 'SF Pro Display', system-ui, sans-serif;
+  --font-sans    : 'Inter', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono    : 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ---------- TYPE SCALE (numeric — px) ----------
+     Dashboard runs small/dense; display values can go very large
+     (workspace balance renders up to 56px on desktop).              */
+  --fs-9   : 9px;    /* micro labels, pill text                      */
+  --fs-10  : 10px;   /* section eyebrows, meta                       */
+  --fs-11  : 11px;   /* body meta, table cells                       */
+  --fs-12  : 12px;   /* body default (base)                          */
+  --fs-13  : 13px;   /* body strong, inputs                          */
+  --fs-14  : 14px;   /* small headings                               */
+  --fs-16  : 16px;   /* subheadings                                  */
+  --fs-18  : 18px;   /* card titles                                  */
+  --fs-22  : 22px;   /* metric values small                          */
+  --fs-26  : 26px;   /* chart title baseline                         */
+  --fs-32  : 32px;   /* metric values desktop                        */
+  --fs-40  : 40px;   /* headline                                     */
+  --fs-48  : 48px;   /* metric hero                                  */
+  --fs-56  : 56px;   /* balance hero                                 */
+  --fs-64  : 64px;   /* chart title desktop max                      */
+
+  /* ---------- TYPE WEIGHTS ---------- */
+  --fw-regular  : 400;
+  --fw-medium   : 500;
+  --fw-semibold : 600;
+  --fw-bold     : 700;
+  --fw-black    : 800;   /* display / metric values                  */
+  --fw-ultra    : 900;   /* logo only                                */
+
+  /* ---------- LINE-HEIGHTS ---------- */
+  --lh-tight    : 1;      /* metric values, hero numerics            */
+  --lh-snug     : 1.15;   /* headlines                               */
+  --lh-normal   : 1.4;    /* body                                    */
+  --lh-relaxed  : 1.6;    /* prose                                   */
+
+  /* ---------- TRACKING (letter-spacing) ---------- */
+  --ls-tightest : -0.07em;   /* hero numbers                         */
+  --ls-tighter  : -0.05em;   /* large display                        */
+  --ls-tight    : -0.03em;   /* headings                             */
+  --ls-normal   : -0.012em;  /* body                                 */
+  --ls-wide     : 0.06em;    /* ui chips                             */
+  --ls-wider    : 0.10em;    /* eyebrows                             */
+  --ls-widest   : 0.18em;    /* section labels, pills                */
+
+  /* ---------- SPACING SCALE (4-pt base) ---------- */
+  --sp-0   : 0;
+  --sp-1   : 2px;
+  --sp-2   : 4px;
+  --sp-3   : 6px;
+  --sp-4   : 8px;
+  --sp-5   : 10px;
+  --sp-6   : 12px;
+  --sp-7   : 14px;
+  --sp-8   : 16px;
+  --sp-9   : 18px;
+  --sp-10  : 20px;
+  --sp-12  : 24px;
+  --sp-14  : 28px;
+  --sp-16  : 32px;
+  --sp-18  : 36px;
+  --sp-20  : 40px;
+  --sp-24  : 48px;
+  --sp-28  : 56px;
+  --sp-32  : 64px;
+
+  /* ---------- RADII ---------- */
+  --r-xs   : 4px;    /* internal chips                               */
+  --r-sm   : 8px;    /* form inputs, small buttons                   */
+  --r-md   : 12px;   /* stat cards                                   */
+  --r-lg   : 16px;   /* levels, result rows                          */
+  --r-xl   : 20px;   /* watchlist items                              */
+  --r-2xl  : 24px;   /* metric / terminal cards                      */
+  --r-3xl  : 28px;   /* chart shell, panels                          */
+  --r-4xl  : 32px;   /* outer shells (wl, sb)                        */
+  --r-pill : 999px;  /* buttons, badges, sliders                     */
+
+  /* ---------- BORDER WIDTHS ---------- */
+  --bw-hairline : 1px;
+  --bw-regular  : 2px;
+  --bw-accent   : 3px;   /* left rail on lv-entry / lv-sl / lv-tp    */
+
+  /* ---------- Z-INDEX SCALE ---------- */
+  --z-base      : 0;
+  --z-chart     : 1;
+  --z-nav       : 200;
+  --z-overlay   : 150;
+  --z-drawer    : 160;
+  --z-fullscreen: 400;
+
+  /* ---------- MOTION ---------- */
+  --ease-out      : cubic-bezier(.22, 1, .36, 1);
+  --ease-in-out   : cubic-bezier(.4, 0, .2, 1);
+  --dur-fast      : 150ms;
+  --dur-base      : 220ms;
+  --dur-slow      : 320ms;
+  --dur-ambient   : 18s;    /* ambient drift                          */
+
+  /* ---------- SAFE AREAS ---------- */
+  --safe-top : env(safe-area-inset-top, 0px);
+  --safe-bot : env(safe-area-inset-bottom, 0px);
+
+  /* =============================================================
+     ░░  DARK THEME  ░░   (default)
+     ============================================================= */
+
+  /* ---------- SURFACES (bg) ---------- */
+  --bg-canvas      : #03050a;   /* page canvas                      */
+  --bg-base        : #070c14;   /* app base (login card, dark body) */
+  --bg-raised      : #0c1525;   /* inputs, cards on-canvas          */
+  --bg-sunken      : #050810;   /* chart container, inner sinks     */
+  --bg-panel       : rgba(17, 27, 43, 0.88);   /* wl, sb shells     */
+  --bg-panel-2     : rgba(20, 31, 48, 0.95);   /* terminal cards    */
+  --bg-panel-3     : rgba(12, 19, 31, 0.90);   /* nested panels     */
+  --bg-glass       : rgba(9, 11, 9, 0.84);     /* nav bar           */
+  --bg-glass-2     : rgba(10, 15, 24, 0.94);   /* bnav              */
+  --bg-hover       : rgba(18, 28, 44, 0.68);
+  --bg-active      : rgba(19, 30, 48, 0.86);
+  --bg-input       : rgba(13, 20, 33, 0.92);
+  --bg-chip        : rgba(13, 21, 34, 0.72);
+  --bg-code        : rgba(8, 13, 22, 0.72);
+  --overlay-scrim  : rgba(9, 15, 26, 0.66);
+
+  /* ---------- BORDERS ---------- */
+  --border-subtle   : rgba(122, 154, 209, 0.08);
+  --border-default  : rgba(122, 154, 209, 0.14);
+  --border-strong   : rgba(19, 33, 54, 0.22);
+  --border-accent   : rgba(61, 158, 255, 0.18);
+  --border-glass    : rgba(255, 255, 255, 0.08);
+
+  /* ---------- TEXT ---------- */
+  --text-primary    : #eef7ff;
+  --text-body       : #c8dff0;
+  --text-secondary  : #93a9c7;
+  --text-tertiary   : #7f95b5;
+  --text-muted      : #5a7a9a;
+  --text-faint      : #243548;
+  --text-inverse    : #0a0f18;
+
+  /* ---------- BRAND / ACCENTS ---------- */
+  --brand-primary   : #3d9eff;   /* signature cyan-blue             */
+  --brand-on        : #007aff;   /* saturated blue (CTA)             */
+  --brand-violet    : #a855f7;   /* login / AI accent                */
+  --brand-glow      : rgba(61, 158, 255, 0.18);
+
+  /* ---------- SEMANTIC ---------- */
+  --success        : #00e5a0;
+  --success-ink    : #00e5a0;
+  --success-bg     : rgba(0, 229, 160, 0.08);
+  --success-border : rgba(0, 229, 160, 0.22);
+  --success-glow   : rgba(0, 229, 160, 0.14);
+  --success-2      : #1a8b66;   /* gradient mate                    */
+
+  --danger         : #ff3d5a;
+  --danger-ink     : #ff3d5a;
+  --danger-bg      : rgba(255, 61, 90, 0.08);
+  --danger-border  : rgba(255, 61, 90, 0.22);
+  --danger-glow    : rgba(255, 61, 90, 0.14);
+  --danger-2       : #c24558;   /* gradient mate                    */
+
+  --warning        : #f5a623;
+  --warning-ink    : #f5a623;
+  --warning-bg     : rgba(245, 166, 35, 0.10);
+  --warning-border : rgba(245, 166, 35, 0.25);
+  --warning-glow   : rgba(245, 166, 35, 0.16);
+
+  --info           : #3d9eff;
+  --info-ink       : #3d9eff;
+  --info-bg        : rgba(61, 158, 255, 0.08);
+  --info-border    : rgba(61, 158, 255, 0.24);
+  --info-glow      : rgba(61, 158, 255, 0.18);
+
+  --muted          : #7f95b5;
+  --muted-bg       : rgba(48, 69, 96, 0.15);
+  --muted-border   : rgba(29, 29, 31, 0.20);
+
+  /* alias matches for legacy vars in existing HTML */
+  --green  : var(--success);
+  --green2 : var(--success-2);
+  --red    : var(--danger);
+  --red2   : var(--danger-2);
+  --blue   : var(--brand-primary);
+  --gold   : var(--warning);
+  --purple : var(--brand-violet);
+
+  /* ---------- CHART / INDICATOR COLORS ---------- */
+  --ind-ema8   : #00e5a0;
+  --ind-ema21  : #3d9eff;
+  --ind-ema50  : #f5a623;
+  --ind-vwap   : #a855f7;
+  --ind-rsi    : #ff8c42;
+  --ind-sqz    : #00e5a0;
+  --ind-adx    : #ff3d5a;
+
+  /* ---------- SHADOWS ---------- */
+  --shadow-xs     : 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-sm     : 0 4px 12px rgba(0, 0, 0, 0.20);
+  --shadow-md     : 0 12px 30px rgba(0, 0, 0, 0.26);
+  --shadow-lg     : 0 20px 52px rgba(17, 30, 48, 0.14);
+  --shadow-xl     : 0 28px 70px rgba(0, 0, 0, 0.30);
+  --shadow-2xl    : 0 24px 70px rgba(0, 0, 0, 0.42);
+  --shadow-inset  : inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-inset-2: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --shadow-panel  : var(--shadow-lg);
+  --shadow-panel-hover : 0 28px 64px rgba(17, 30, 48, 0.18);
+  --shadow-card-hover  : 0 0 0 1px var(--border-accent) inset,
+                         0 12px 26px rgba(61, 158, 255, 0.16);
+
+  /* ---------- GLOWS (neon accents) ---------- */
+  --glow-brand    : 0 0 18px rgba(61, 158, 255, 0.24);
+  --glow-success  : 0 0 14px rgba(0, 229, 160, 0.45);
+  --glow-danger   : 0 0 14px rgba(255, 61, 90, 0.45);
+  --glow-warning  : 0 0 12px rgba(245, 166, 35, 0.40);
+  --glow-violet   : 0 0 40px rgba(168, 85, 247, 0.22);
+  --glow-live-dot : 0 0 8px var(--success);
+
+  /* ---------- BLUR (backdrop) ---------- */
+  --blur-xs  : blur(6px);
+  --blur-sm  : blur(12px);
+  --blur-md  : blur(16px) saturate(1.15);
+  --blur-lg  : blur(18px);
+  --blur-xl  : blur(24px);
+
+  /* ---------- GRADIENTS ---------- */
+  --grad-brand-rim    : linear-gradient(90deg, #a855f7, #3d9eff, #00e5a0);
+  --grad-pnl-pos      : linear-gradient(90deg, var(--success-2), var(--success));
+  --grad-pnl-neg      : linear-gradient(90deg, var(--danger-2), var(--danger));
+  --grad-progress     : linear-gradient(90deg, var(--brand-primary), var(--success));
+  --grad-nav          : linear-gradient(180deg, rgba(9,15,25,.90), rgba(7,12,20,.82));
+  --grad-card         : linear-gradient(180deg, rgba(20,31,48,.95), rgba(12,19,31,.90));
+  --grad-input        : linear-gradient(180deg, rgba(14,22,36,.94), rgba(10,15,26,.88));
+  --grad-btn-success  : linear-gradient(180deg, rgba(0,229,160,.18), rgba(0,229,160,.08));
+  --grad-btn-danger   : linear-gradient(180deg, rgba(255,61,90,.18), rgba(255,61,90,.08));
+  --grad-ambient      : radial-gradient(circle at 12% -6%, rgba(67,111,243,.14), transparent 28%),
+                        radial-gradient(circle at 88% 0%, rgba(31,158,116,.08), transparent 24%),
+                        linear-gradient(180deg, #03050a 0%, #050914 100%);
+
+  /* ---------- EFFECTS (reusable patterns) ----------
+     Scanline grid overlay — apply to body::before with these vars:
+         background-image: var(--effect-grid);
+         background-size:  var(--effect-grid-size);
+         mask-image:       var(--effect-grid-mask);
+         opacity:          var(--effect-grid-opacity);                 */
+  --effect-grid        : linear-gradient(rgba(255,255,255,.012) 1px, transparent 1px),
+                         linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px);
+  --effect-grid-size   : 74px 74px;
+  --effect-grid-mask   : radial-gradient(circle at center, black 42%, transparent 92%);
+  --effect-grid-opacity: 0.18;
+
+  /* Diagonal glow wash — use on pnl-hero / metric cards */
+  --effect-pnl-pos-wash: linear-gradient(135deg, rgba(0,229,160,.04) 0%, transparent 60%);
+  --effect-pnl-neg-wash: linear-gradient(135deg, rgba(255,61,90,.05) 0%, transparent 60%);
+
+  /* Login rim-light gradient — 3px top bar */
+  --effect-rim-light   : linear-gradient(90deg, #a855f7, #3d9eff, #00e5a0);
+
+  /* Depth fill for book/tape rows — used with --depth:X% var */
+  --effect-bid-depth   : linear-gradient(90deg, transparent, var(--success));
+  --effect-ask-depth   : linear-gradient(90deg, transparent, var(--danger));
+}
+
+/* =============================================================
+   ░░  LIGHT THEME  ░░   [data-theme="light"]
+   Goal (BRIEF §Obj 5): real parity — not an afterthought.
+   Tinted whites, warm shadows, preserved neon identity on accents
+   but shifted toward 'deep' versions for AA contrast on light.
+   ============================================================= */
+[data-theme="light"] {
+  /* ---------- SURFACES ---------- */
+  --bg-canvas      : #f2f5fa;
+  --bg-base        : #f5f5f7;
+  --bg-raised      : #ffffff;
+  --bg-sunken      : #edf2f8;
+  --bg-panel       : rgba(255, 255, 255, 0.90);
+  --bg-panel-2     : rgba(255, 255, 255, 0.96);
+  --bg-panel-3     : rgba(250, 252, 255, 0.98);
+  --bg-glass       : rgba(248, 250, 253, 0.82);
+  --bg-glass-2     : rgba(245, 248, 252, 0.90);
+  --bg-hover       : rgba(15, 30, 60, 0.04);
+  --bg-active      : rgba(61, 158, 255, 0.08);
+  --bg-input       : #f4f7fc;
+  --bg-chip        : rgba(29, 29, 31, 0.04);
+  --bg-code        : #f4f7fc;
+  --overlay-scrim  : rgba(9, 15, 26, 0.40);
+
+  /* ---------- BORDERS ---------- */
+  --border-subtle  : rgba(29, 29, 31, 0.06);
+  --border-default : rgba(29, 29, 31, 0.12);
+  --border-strong  : rgba(29, 29, 31, 0.20);
+  --border-accent  : rgba(0, 122, 255, 0.35);
+  --border-glass   : rgba(29, 29, 31, 0.08);
+
+  /* ---------- TEXT ---------- */
+  --text-primary    : #0a0f18;
+  --text-body       : #1d1d1f;
+  --text-secondary  : #4a5568;
+  --text-tertiary   : #6e6e73;
+  --text-muted      : #8f949d;
+  --text-faint      : #c1c7cf;
+  --text-inverse    : #ffffff;
+
+  /* ---------- BRAND / ACCENTS ---------- */
+  --brand-primary   : #007aff;      /* saturated blue reads better on white */
+  --brand-on        : #0062cc;
+  --brand-violet    : #6f67d8;
+  --brand-glow      : rgba(0, 122, 255, 0.15);
+
+  /* ---------- SEMANTIC ----------
+     Shifted to deeper, AA-safe hues on light.                       */
+  --success        : #1f9e74;
+  --success-ink    : #1a8b66;
+  --success-bg     : rgba(31, 158, 116, 0.10);
+  --success-border : rgba(31, 158, 116, 0.28);
+  --success-glow   : rgba(31, 158, 116, 0.18);
+  --success-2      : #0f6d4e;
+
+  --danger         : #d94f63;
+  --danger-ink     : #c24558;
+  --danger-bg      : rgba(217, 79, 99, 0.10);
+  --danger-border  : rgba(217, 79, 99, 0.28);
+  --danger-glow    : rgba(217, 79, 99, 0.16);
+  --danger-2       : #a4364c;
+
+  --warning        : #cf9440;
+  --warning-ink    : #a87327;
+  --warning-bg     : rgba(207, 148, 64, 0.12);
+  --warning-border : rgba(207, 148, 64, 0.32);
+  --warning-glow   : rgba(207, 148, 64, 0.18);
+
+  --info           : #007aff;
+  --info-ink       : #0062cc;
+  --info-bg        : rgba(0, 122, 255, 0.08);
+  --info-border    : rgba(0, 122, 255, 0.28);
+  --info-glow      : rgba(0, 122, 255, 0.18);
+
+  --muted          : #6e6e73;
+  --muted-bg       : rgba(29, 29, 31, 0.05);
+  --muted-border   : rgba(29, 29, 31, 0.12);
+
+  --green  : var(--success);
+  --green2 : var(--success-2);
+  --red    : var(--danger);
+  --red2   : var(--danger-2);
+  --blue   : var(--brand-primary);
+  --gold   : var(--warning);
+  --purple : var(--brand-violet);
+
+  /* ---------- INDICATOR COLORS (re-tuned for light) ---------- */
+  --ind-ema8   : #0f9d6f;
+  --ind-ema21  : #007aff;
+  --ind-ema50  : #cf9440;
+  --ind-vwap   : #6f67d8;
+  --ind-rsi    : #d97706;
+  --ind-sqz    : #0f9d6f;
+  --ind-adx    : #d94f63;
+
+  /* ---------- SHADOWS (softer, cooler) ---------- */
+  --shadow-xs     : 0 1px 2px rgba(17, 30, 48, 0.06);
+  --shadow-sm     : 0 4px 12px rgba(17, 30, 48, 0.06);
+  --shadow-md     : 0 12px 30px rgba(17, 30, 48, 0.08);
+  --shadow-lg     : 0 20px 52px rgba(17, 30, 48, 0.10);
+  --shadow-xl     : 0 28px 70px rgba(17, 30, 48, 0.12);
+  --shadow-2xl    : 0 24px 70px rgba(17, 30, 48, 0.16);
+  --shadow-inset  : inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --shadow-inset-2: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --shadow-panel  : var(--shadow-lg);
+  --shadow-panel-hover : 0 28px 64px rgba(17, 30, 48, 0.14);
+  --shadow-card-hover  : 0 0 0 1px var(--border-accent) inset,
+                         0 12px 26px rgba(0, 122, 255, 0.14);
+
+  /* ---------- GLOWS (toned for light bg) ---------- */
+  --glow-brand    : 0 0 16px rgba(0, 122, 255, 0.18);
+  --glow-success  : 0 0 12px rgba(31, 158, 116, 0.30);
+  --glow-danger   : 0 0 12px rgba(217, 79, 99, 0.28);
+  --glow-warning  : 0 0 10px rgba(207, 148, 64, 0.30);
+  --glow-violet   : 0 0 24px rgba(111, 103, 216, 0.18);
+  --glow-live-dot : 0 0 6px var(--success);
+
+  /* ---------- BLUR (less intense on light) ---------- */
+  --blur-xs  : blur(4px);
+  --blur-sm  : blur(8px);
+  --blur-md  : blur(12px) saturate(1.08);
+  --blur-lg  : blur(14px);
+  --blur-xl  : blur(18px);
+
+  /* ---------- GRADIENTS ---------- */
+  --grad-brand-rim    : linear-gradient(90deg, #6f67d8, #007aff, #1f9e74);
+  --grad-pnl-pos      : linear-gradient(90deg, var(--success-2), var(--success));
+  --grad-pnl-neg      : linear-gradient(90deg, var(--danger-2), var(--danger));
+  --grad-progress     : linear-gradient(90deg, var(--brand-primary), var(--success));
+  --grad-nav          : linear-gradient(180deg, rgba(255,255,255,.92), rgba(248,250,253,.86));
+  --grad-card         : linear-gradient(180deg, #ffffff, #fafcff);
+  --grad-input        : linear-gradient(180deg, #ffffff, #f6f8fc);
+  --grad-btn-success  : linear-gradient(180deg, rgba(31,158,116,.16), rgba(31,158,116,.06));
+  --grad-btn-danger   : linear-gradient(180deg, rgba(217,79,99,.16), rgba(217,79,99,.06));
+  --grad-ambient      : radial-gradient(circle at 12% -6%, rgba(67,111,243,.14), transparent 28%),
+                        radial-gradient(circle at 88% 0%, rgba(31,158,116,.08), transparent 24%),
+                        radial-gradient(circle at 50% 118%, rgba(255,255,255,.20), transparent 30%),
+                        linear-gradient(180deg, #f8f9fb 0%, #f2f5fa 42%, #edf2f8 100%);
+
+  /* ---------- EFFECTS ---------- */
+  --effect-grid        : linear-gradient(rgba(19,33,54,.045) 1px, transparent 1px),
+                         linear-gradient(90deg, rgba(19,33,54,.045) 1px, transparent 1px);
+  --effect-grid-size   : 74px 74px;
+  --effect-grid-mask   : radial-gradient(circle at center, black 42%, transparent 92%);
+  --effect-grid-opacity: 0.40;
+
+  --effect-pnl-pos-wash: linear-gradient(135deg, rgba(31,158,116,.06) 0%, transparent 60%);
+  --effect-pnl-neg-wash: linear-gradient(135deg, rgba(217,79,99,.06) 0%, transparent 60%);
+
+  --effect-rim-light   : linear-gradient(90deg, #6f67d8, #007aff, #1f9e74);
+  --effect-bid-depth   : linear-gradient(90deg, transparent, var(--success));
+  --effect-ask-depth   : linear-gradient(90deg, transparent, var(--danger));
+}
+
+/* =============================================================
+   ACCESSIBILITY — reduced motion
+   Kills ambient drift, glow pulses, and eases transitions down.
+   ============================================================= */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast    : 0ms;
+    --dur-base    : 0ms;
+    --dur-slow    : 0ms;
+    --dur-ambient : 0s;
+  }
+}

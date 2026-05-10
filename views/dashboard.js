@@ -151,7 +151,7 @@ color:var(--text);font-family:var(--sans);font-size:12px;height:100%;overflow:hi
 .r-fill{height:100%;border-radius:3px;transition:width .5s}
 .r-fill-p{background:linear-gradient(90deg,var(--green2),var(--green))}
 .r-fill-n{background:linear-gradient(90deg,var(--red2),var(--red))}
-.r-marks{display:flex;justify-content:space-between;margin-top:5px}
+.r-marks{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-top:5px}
 .r-mark{font-size:8px;color:var(--muted)}
 .r-target-line{position:absolute;right:50%;top:-1px;bottom:-1px;width:1px;background:rgba(255,255,255,.1)}
 /* STATS */
@@ -175,6 +175,7 @@ color:var(--text);font-family:var(--sans);font-size:12px;height:100%;overflow:hi
 .stage-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:600}
 .s-INITIAL{background:rgba(48,69,96,.2);color:var(--text2);border:1px solid var(--border2)}
 .s-BREAKEVEN{background:rgba(61,158,255,.1);color:var(--blue);border:1px solid rgba(61,158,255,.25)}
+.s-PRELOCK{background:rgba(141,232,200,.12);color:#8de8c8;border:1px solid rgba(141,232,200,.24)}
 .s-LOCK{background:rgba(0,229,160,.09);color:var(--green);border:1px solid rgba(0,229,160,.22)}
 .s-TRAILING{background:rgba(168,85,247,.1);color:var(--purple);border:1px solid rgba(168,85,247,.25)}
 .s-TIME_LOCK{background:rgba(245,166,35,.1);color:#f5a623;border:1px solid rgba(245,166,35,.25)}
@@ -2533,7 +2534,7 @@ ${getSharedNav('dashboard', user, 'blue',
           <div class="r-big r-neg" id="rVal">—</div>
           <div class="r-track-wrap" style="width:100%">
             <div class="r-track"><div class="r-fill r-fill-n" id="rFill" style="width:0%"></div><div class="r-target-line"></div></div>
-            <div class="r-marks"><span class="r-mark">0R</span><span class="r-mark">1R BE</span><span class="r-mark">1.5R</span><span class="r-mark">2R TP</span></div>
+            <div class="r-marks"><span class="r-mark">0R</span><span class="r-mark">1R BE</span><span class="r-mark">1.35R</span><span class="r-mark">1.6R</span><span class="r-mark">1.85R+</span></div>
           </div>
         </div>
       </div>
@@ -3210,7 +3211,14 @@ function syncExecutionPanel(){
     else if(hasTrade){pill.style.background='rgba(0,229,160,.08)';pill.style.color='var(--green)';pill.style.borderColor='rgba(0,229,160,.16)';}
     else{pill.style.background='rgba(61,158,255,.08)';pill.style.color='var(--blue)';pill.style.borderColor='rgba(61,158,255,.16)';}
   }
-  const stageMeta = {INITIAL:'Inicial',BREAKEVEN:'Punto de equilibrio',LOCK:'Bloqueo',TRAILING:'Seguimiento',TIME_LOCK:'Bloqueo temporal'}[currentTrade?.stage||'INITIAL'] || (currentTrade?.stage||'Inicial');
+  const stageMeta = {
+    INITIAL:'Inicial',
+    BREAKEVEN:'Punto de equilibrio 1R',
+    PRELOCK:'Proteccion temprana +0.1R',
+    LOCK:'Bloqueo +0.75R',
+    TRAILING:'Trailing por pico',
+    TIME_LOCK:'Bloqueo temporal'
+  }[currentTrade?.stage||'INITIAL'] || (currentTrade?.stage||'Inicial');
   setText('execStageMeta',hasTrade?stageMeta:'Sin trade activo');
   setText('execPnlVal',(document.getElementById('pnlVal')||{}).textContent||'—');
   setText('execPnlPct',(document.getElementById('pnlPct')||{}).textContent||'—');
@@ -3458,7 +3466,14 @@ function drawLevels(t,closed){
   document.getElementById('dEntry').textContent=lastPrice&&e?dist(lastPrice,e)+' del precio':'—';
   const stage=t.stage||'INITIAL';
   const isLiveOnly=t.source==='BINANCE_LIVE'||stage==='LIVE_ONLY';
-  const slbl={INITIAL:'Inicial',BREAKEVEN:'Punto de equilibrio ⚖',LOCK:'Bloqueo +0.5R 🔒',TRAILING:'Seguimiento ATR 🎯',TIME_LOCK:'Bloqueo temporal ⏰'}[stage]||stage;
+  const slbl={
+    INITIAL:'Inicial',
+    BREAKEVEN:'Punto de equilibrio 1R ⚖',
+    PRELOCK:'Proteccion temprana +0.1R 🛡',
+    LOCK:'Bloqueo +0.75R 🔒',
+    TRAILING:'Seguimiento ATR por pico 🎯',
+    TIME_LOCK:'Bloqueo temporal ⏰'
+  }[stage]||stage;
   const protectionText = hasSL ? (hasTP ? 'SL+TP' : 'Solo SL') : (hasTP ? 'Solo TP' : 'Sin SL');
   document.getElementById('sStage').innerHTML=isLiveOnly
     ? '<span class="stage-pill"><span class="stage-dot"></span>Live Binance · '+protectionText+'</span>'
@@ -3472,13 +3487,20 @@ function drawLevels(t,closed){
   const sbEl=document.getElementById('stageBar');
   const nsEl=document.getElementById('nextStageLabel');
   spEl.style.display=isLiveOnly?'none':'block';
-  const stageOrder=['INITIAL','BREAKEVEN','TIME_LOCK','LOCK','TRAILING'];
+  const stageOrder=['INITIAL','BREAKEVEN','TIME_LOCK','PRELOCK','LOCK','TRAILING'];
   const stageIdx=stageOrder.indexOf(stage);
   const progress=((stageIdx+1)/stageOrder.length*100).toFixed(0);
   sbEl.style.width=progress+'%';
-  const stageColors={INITIAL:'var(--muted)',BREAKEVEN:'var(--blue)',TIME_LOCK:'#f5a623',LOCK:'var(--green)',TRAILING:'var(--purple)'};
+  const stageColors={INITIAL:'var(--muted)',BREAKEVEN:'var(--blue)',TIME_LOCK:'#f5a623',PRELOCK:'#8de8c8',LOCK:'var(--green)',TRAILING:'var(--purple)'};
   sbEl.style.background=stageColors[stage]||'var(--blue)';
-  const nextStages={INITIAL:'→ 1R punto de equilibrio',BREAKEVEN:'→ 1.5R bloqueo / temporal',TIME_LOCK:'→ 1.5R bloqueo',LOCK:'→ 2R seguimiento',TRAILING:'✅ Máximo'};
+  const nextStages={
+    INITIAL:'→ 1R punto de equilibrio',
+    BREAKEVEN:'→ 1.35R proteccion temprana / temporal',
+    TIME_LOCK:'→ 1.35R proteccion temprana',
+    PRELOCK:'→ 1.6R bloqueo +0.75R',
+    LOCK:'→ 1.85R trailing por pico',
+    TRAILING:'→ 2.2R trailing mas agresivo'
+  };
   nsEl.textContent=nextStages[stage]||'—';
   const hd=document.getElementById('hDir');
   hd.textContent=t.side;
@@ -3633,7 +3655,7 @@ function updatePnL(){
   const rTxt=curR==null?'—':(win?'+':'-')+curR.toFixed(2)+'R';
   const rv=document.getElementById('rVal');
   if(rv.textContent!==rTxt){writeAnimatedText(rv,rTxt,win?'green':'red',true);rv.className='r-big '+(win?'r-pos':'r-neg');}
-  const fillW=curR==null?'0%':Math.min(curR/2*100,100).toFixed(0)+'%';
+  const fillW=curR==null?'0%':Math.min(curR/2.2*100,100).toFixed(0)+'%';
   const fill=document.getElementById('rFill');
   if(fill.style.width!==fillW){fill.style.width=fillW;fill.className='r-fill '+(win?'r-fill-p':'r-fill-n');}
   // Distancias niveles — solo actualizar si cambia
@@ -3667,7 +3689,7 @@ function showClosed(t){
   writeAnimatedText(rv,(pos?'+':'')+fr.toFixed(2)+'R',pos?'green':'red',true);
   rv.className='r-big '+(pos?'r-pos':'r-neg');
   const fill=document.getElementById('rFill');
-  fill.style.width=Math.min(Math.abs(fr)/2*100,100)+'%';
+  fill.style.width=Math.min(Math.abs(fr)/2.2*100,100)+'%';
   fill.className='r-fill '+(pos?'r-fill-p':'r-fill-n');
   const rm={sl:'SL Activado 🛑',tp:'TP Alcanzado 🎯',manual:'Cierre Manual',sync:'Sincronizado'};
   document.getElementById('closedSec').style.display='block';
@@ -3709,7 +3731,7 @@ function renderWatchlist(active,closed){
     el.className='wl-item'+(isAct?' active open-'+t.side.toLowerCase():' open-'+t.side.toLowerCase());
     el.innerHTML='<div class="wl-row1"><div class="wl-sym">'+sym.replace('USDT','')+'<span>/USDT</span></div><div class="wl-pnl '+(pnl>=0?'pp':'pn')+'">'+(pnl>=0?'+':'')+'$'+Math.abs(pnl).toFixed(2)+'</div></div>'+
       '<div class="wl-row2"><span class="wl-badge live">'+liveBadge+'</span><span class="wl-r '+((curR==null||+curR>=0)?'c-green':'c-red')+'">'+(curR==null?'—':((+curR>=0?'+':'')+curR+'R'))+'</span></div>'+
-      '<div class="wl-bar"><div class="wl-bar-fill '+(pnl>=0?'wl-bar-p':'wl-bar-n')+'" style="width:'+(curR==null?0:Math.min(Math.abs(+curR)/2*100,100))+'%"></div></div>';
+      '<div class="wl-bar"><div class="wl-bar-fill '+(pnl>=0?'wl-bar-p':'wl-bar-n')+'" style="width:'+(curR==null?0:Math.min(Math.abs(+curR)/2.2*100,100))+'%"></div></div>';
     el.onclick=()=>window.location.href='/dashboard?symbol='+sym;
     openEl.appendChild(el);
   });
