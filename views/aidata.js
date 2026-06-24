@@ -114,6 +114,64 @@ tr:last-child td{border-bottom:none}
 .post-sym{font-family:var(--display);font-size:12px;font-weight:800}
 .post-analysis{font-size:10px;color:var(--text2);line-height:1.6;white-space:pre-wrap}
 
+/* RESEARCH REPORTS */
+.report-panel{margin-bottom:22px}
+.report-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:18px}
+@media(max-width:960px){.report-grid{grid-template-columns:1fr}}
+.report-body{padding:20px}
+.report-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.report-chip{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);border:1px solid rgba(168,85,247,.16);background:rgba(10,17,29,.78);border-radius:999px;padding:6px 10px}
+.report-title{font-family:var(--display);font-size:22px;font-weight:900;letter-spacing:-.02em;margin-bottom:10px}
+.report-text{font-size:11px;line-height:1.7;color:#a6b8d0;white-space:pre-wrap;max-height:420px;overflow:auto;padding-right:6px}
+.report-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.report-input{min-height:34px;border-radius:999px;border:1px solid rgba(168,85,247,.16);background:rgba(9,16,27,.84);color:var(--text);font-family:var(--mono);font-size:10px;padding:0 10px}
+.report-list{max-height:420px;overflow:auto}
+.report-item{padding:12px 14px;border-bottom:1px solid rgba(168,85,247,.08);cursor:pointer;transition:background .15s}
+.report-item:hover{background:rgba(20,24,44,.72)}
+.report-item.active{background:rgba(168,85,247,.1)}
+.report-item-title{font-size:11px;font-weight:800;color:var(--text);margin-bottom:5px}
+.report-item-meta{font-size:9px;color:var(--text2)}
+.report-insight-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+@media(max-width:960px){.report-insight-grid{grid-template-columns:1fr}}
+.report-mini{border:1px solid rgba(168,85,247,.12);background:rgba(10,17,29,.72);border-radius:16px;padding:14px}
+.report-mini-title{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);margin-bottom:9px}
+.report-mini ul{padding-left:16px;color:#9ab0cb;font-size:10px;line-height:1.55}
+.report-mini li{margin-bottom:6px}
+.research-doc-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:14px;margin-bottom:16px}
+.research-doc-card{border:1px solid rgba(87,176,255,.12);background:rgba(10,17,29,.72);border-radius:18px;padding:16px}
+.research-doc-title{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#b7c9e4;margin-bottom:8px;font-weight:800}
+.research-doc-copy{font-size:11px;line-height:1.65;color:#94acc9}
+.research-flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.research-flow-step{min-height:58px;border:1px solid rgba(87,176,255,.14);border-radius:14px;background:rgba(8,14,24,.76);padding:10px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;font-weight:800;color:#d3e4fa}
+.research-section{margin-top:18px}
+.research-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:10px}
+.research-section-title{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#b7c9e4;font-weight:800}
+.research-section-sub{font-size:10px;color:#8fa8c6;line-height:1.55;margin-top:4px}
+.research-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.research-metric{border:1px solid rgba(87,176,255,.12);border-radius:16px;background:rgba(8,14,24,.76);padding:13px}
+.research-metric-label{font-size:8px;letter-spacing:.13em;text-transform:uppercase;color:#8fa8c6;margin-bottom:7px}
+.research-metric-value{font-family:var(--display);font-size:24px;font-weight:900}
+.research-table{width:100%;border-collapse:collapse}
+.research-table th,.research-table td{white-space:normal;vertical-align:top}
+.research-table td{font-size:10px;line-height:1.45}
+.rec-text{font-size:11px;color:#d7e5f7;font-weight:700;line-height:1.45}
+.rec-detail{font-size:9px;color:#8fa8c6;margin-top:5px}
+.status-chip{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;border:1px solid rgba(87,176,255,.16);background:rgba(9,16,27,.78);font-size:8px;letter-spacing:.1em;text-transform:uppercase;font-weight:800}
+.status-pending{color:#f5b84b;border-color:rgba(245,184,75,.22);background:rgba(245,184,75,.08)}
+.status-reviewing{color:#57b0ff;border-color:rgba(87,176,255,.24);background:rgba(87,176,255,.08)}
+.status-validated,.status-positive{color:#00e5a0;border-color:rgba(0,229,160,.22);background:rgba(0,229,160,.08)}
+.status-rejected,.status-negative{color:#ff536f;border-color:rgba(255,83,111,.22);background:rgba(255,83,111,.08)}
+.status-neutral{color:#9ab0cb}
+.operator-list,.evolution-list{display:grid;gap:10px}
+.operator-item,.evolution-item{border:1px solid rgba(87,176,255,.12);border-radius:16px;background:rgba(8,14,24,.76);padding:13px}
+.operator-title,.evolution-title{font-size:11px;color:#d7e5f7;font-weight:800;line-height:1.45}
+.operator-meta,.evolution-meta{font-size:9px;color:#8fa8c6;margin-top:7px;line-height:1.55}
+.explain-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px}
+.explain-item{border-left:2px solid rgba(87,176,255,.32);padding:8px 10px;background:rgba(8,14,24,.48);border-radius:0 12px 12px 0}
+.explain-title{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#b7c9e4;font-weight:800;margin-bottom:5px}
+.explain-copy{font-size:10px;line-height:1.55;color:#91a8c4}
+@media(max-width:960px){.research-doc-grid,.research-flow{grid-template-columns:1fr}}
+
 /* MISC */
 .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--text2);gap:10px}
 .spin{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--purple);border-radius:50%;animation:spin .7s linear infinite}
@@ -822,6 +880,10 @@ ${getSharedNav('aidata', user, 'purple')}
 <script>
 let allData = null;
 let intelData = null;
+let researchReports = [];
+let researchRecommendations = [];
+let recommendationPerformance = null;
+let strategyEvolution = [];
 let period = 7;
 let currentSymbol = '';
 window.aterumAssistantConfig = {
@@ -895,6 +957,217 @@ async function loadData(){
   } else {
     intelData = null;
     renderIntelligenceError(intelResult.reason?.message || 'No se pudo cargar la inteligencia de mercado');
+  }
+}
+
+function safeJsonList(value){
+  if(Array.isArray(value))return value;
+  if(!value)return [];
+  try{
+    const parsed=JSON.parse(value);
+    return Array.isArray(parsed)?parsed:[];
+  }catch(e){ return []; }
+}
+
+function renderList(id,items){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const rows=(items||[]).filter(Boolean).slice(0,8);
+  el.innerHTML=rows.length?rows.map(item=>'<li>'+escapeHtml(item)+'</li>').join(''):'<li>Sin datos</li>';
+}
+
+function selectResearchReport(id){
+  const report=researchReports.find(r=>String(r.id)===String(id))||researchReports[0];
+  if(!report)return;
+  document.querySelectorAll('.report-item').forEach(el=>el.classList.toggle('active',el.dataset.id===String(report.id)));
+  document.getElementById('reportTitle').textContent=(report.report_type||'daily').toUpperCase()+' · '+String(report.report_date||'').slice(0,10);
+  document.getElementById('reportText').textContent=report.report||'Sin reporte';
+  document.getElementById('reportMeta').innerHTML=[
+    report.model?'Modelo '+escapeHtml(report.model):null,
+    report.score!=null?'Score '+escapeHtml(report.score):null,
+    report.source_workflow?escapeHtml(report.source_workflow):null,
+    report.created_at?new Date(report.created_at).toISOString().replace('T',' ').slice(0,16)+' UTC':null
+  ].filter(Boolean).map(v=>'<span class="report-chip">'+v+'</span>').join('');
+  renderList('reportRecommendations',safeJsonList(report.recommendations));
+  renderList('reportRisks',safeJsonList(report.risks));
+  renderList('reportOpportunities',safeJsonList(report.opportunities));
+}
+
+async function loadResearchReports(){
+  const params=new URLSearchParams();
+  const type=document.getElementById('reportType')?.value||'';
+  const from=document.getElementById('reportFrom')?.value||'';
+  const to=document.getElementById('reportTo')?.value||'';
+  if(type)params.set('type',type);
+  if(from)params.set('from',from);
+  if(to)params.set('to',to);
+  params.set('limit','80');
+  try{
+    const data=await fetch('/api/research/reports?'+params.toString()).then(r=>r.json());
+    researchReports=data.reports||[];
+    const history=document.getElementById('reportHistory');
+    document.getElementById('reportStatus').textContent=researchReports.length+' informes';
+    if(!researchReports.length){
+      history.innerHTML='<div class="empty">Sin informes guardados todavía</div>';
+      document.getElementById('reportTitle').textContent='Sin informes todavía';
+      document.getElementById('reportText').textContent='Cuando se ejecute el reporte diario o semanal, Anthropic guardará su interpretación aquí.';
+      renderList('reportRecommendations',[]);
+      renderList('reportRisks',[]);
+      renderList('reportOpportunities',[]);
+      return;
+    }
+    history.innerHTML=researchReports.map((r,i)=>\`
+      <div class="report-item \${i===0?'active':''}" data-id="\${r.id}" onclick="selectResearchReport('\${r.id}')">
+        <div class="report-item-title">\${escapeHtml((r.report_type||'daily').toUpperCase())} · \${escapeHtml(String(r.report_date||'').slice(0,10))}</div>
+        <div class="report-item-meta">\${escapeHtml(r.model||'modelo no registrado')} · \${r.created_at?new Date(r.created_at).toISOString().replace('T',' ').slice(0,16)+' UTC':''}</div>
+      </div>\`).join('');
+    selectResearchReport(researchReports[0].id);
+  }catch(e){
+    document.getElementById('reportHistory').innerHTML='<div class="empty">No se pudo cargar el histórico</div>';
+  }
+}
+
+function statusLabel(value){
+  return ({
+    pending:'pendiente',
+    reviewing:'en revisión',
+    validated:'validada',
+    rejected:'rechazada',
+    positive:'positivo',
+    neutral:'neutral',
+    negative:'negativo'
+  })[value] || value || 'pendiente';
+}
+
+function statusClass(value){
+  return 'status-chip status-' + String(value || 'neutral').toLowerCase();
+}
+
+function parseMaybeJson(value, fallback){
+  if(value && typeof value === 'object') return value;
+  if(!value) return fallback;
+  try { return JSON.parse(value); } catch(e) { return fallback; }
+}
+
+function formatDateShort(value){
+  if(!value) return 'sin fecha';
+  return String(value).slice(0,10);
+}
+
+function renderRecommendationMetrics(){
+  const s = recommendationPerformance?.summary || {};
+  const metrics = [
+    ['Emitidas', s.total || 0, 'recomendaciones registradas'],
+    ['Exitosas', s.positive || 0, 'resultado positivo'],
+    ['Fallidas', s.negative || 0, 'resultado negativo'],
+    ['Neutras', s.neutral || 0, 'sin evidencia concluyente'],
+    ['Success Rate', (s.successRate || 0) + '%', 'positivas sobre total'],
+    ['Impact Score Prom.', Number(s.avgImpactScore || 0).toFixed(3), 'mejora relativa medida']
+  ];
+  document.getElementById('recommendationMetrics').innerHTML = metrics.map(([label,value,sub]) => \`
+    <div class="research-metric">
+      <div class="research-metric-label">\${escapeHtml(label)}</div>
+      <div class="research-metric-value">\${escapeHtml(value)}</div>
+      <div class="metric-sub">\${escapeHtml(sub)}</div>
+    </div>\`).join('');
+}
+
+function renderRecommendationsTable(){
+  const tbody = document.getElementById('recommendationsTable');
+  if(!researchRecommendations.length){
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Sin recomendaciones extraídas todavía</td></tr>';
+    return;
+  }
+  tbody.innerHTML = researchRecommendations.map(rec => {
+    const evidence = parseMaybeJson(rec.evidence, {});
+    const symbols = (evidence.symbols || []).join(', ');
+    const hours = (evidence.hours || []).join(', ');
+    const detail = [
+      rec.category ? 'Categoría: ' + rec.category : null,
+      rec.rationale || null,
+      symbols ? 'Símbolos: ' + symbols : null,
+      hours ? 'Horarios: ' + hours : null,
+      rec.notes || null
+    ].filter(Boolean).join(' · ');
+    return \`<tr>
+      <td><div class="rec-text">\${escapeHtml(rec.recommendation)}</div><div class="rec-detail">\${escapeHtml(detail || 'Evidencia pendiente de revisión')}</div></td>
+      <td>\${escapeHtml(formatDateShort(rec.created_at || rec.report_date))}</td>
+      <td>\${Number(rec.confidence || 0).toFixed(0)}%</td>
+      <td><span class="\${statusClass(rec.status)}">\${escapeHtml(statusLabel(rec.status))}</span></td>
+      <td>\${rec.impact_score == null ? 'pendiente' : Number(rec.impact_score).toFixed(3)}</td>
+      <td><span class="\${statusClass(rec.outcome)}">\${escapeHtml(statusLabel(rec.outcome || 'neutral'))}</span></td>
+    </tr>\`;
+  }).join('');
+}
+
+function renderOperatorActions(){
+  const pending = researchRecommendations
+    .filter(rec => ['pending','reviewing','validated'].includes(rec.status))
+    .slice(0, 8);
+  const el = document.getElementById('operatorActions');
+  if(!pending.length){
+    el.innerHTML = '<div class="intel-empty">Sin acciones pendientes. Cuando Anthropic emita recomendaciones, aparecerán aquí para revisión manual.</div>';
+    return;
+  }
+  el.innerHTML = pending.map(rec => \`
+    <div class="operator-item">
+      <div class="operator-title">\${escapeHtml(rec.recommendation)}</div>
+      <div class="operator-meta">Acción manual sugerida · confianza \${Number(rec.confidence || 0).toFixed(0)}% · estado \${escapeHtml(statusLabel(rec.status))} · impacto \${rec.impact_score == null ? 'pendiente' : Number(rec.impact_score).toFixed(3)}</div>
+    </div>\`).join('');
+}
+
+function renderRiskOpportunityList(){
+  const items = researchRecommendations
+    .filter(rec => ['risk','opportunity'].includes(rec.category))
+    .slice(0, 8);
+  const el = document.getElementById('riskOpportunityList');
+  if(!items.length){
+    el.innerHTML = '<div class="intel-empty">Sin riesgos u oportunidades extraídos todavía.</div>';
+    return;
+  }
+  el.innerHTML = items.map(rec => \`
+    <div class="operator-item">
+      <div class="operator-title">\${escapeHtml(rec.category === 'risk' ? 'Riesgo: ' : 'Oportunidad: ')}\${escapeHtml(rec.recommendation)}</div>
+      <div class="operator-meta">Resultado \${escapeHtml(statusLabel(rec.outcome || 'neutral'))} · confianza \${Number(rec.confidence || 0).toFixed(0)}% · \${escapeHtml(rec.notes || rec.rationale || 'Pendiente de evidencia posterior')}</div>
+    </div>\`).join('');
+}
+
+function renderStrategyEvolution(){
+  const el = document.getElementById('strategyEvolution');
+  if(!strategyEvolution.length){
+    el.innerHTML = '<div class="intel-empty">Sin evolución histórica todavía.</div>';
+    return;
+  }
+  el.innerHTML = strategyEvolution.map(item => \`
+    <div class="evolution-item">
+      <div class="evolution-title">\${escapeHtml(item.version)} · \${escapeHtml(formatDateShort(item.date))}</div>
+      <div class="evolution-meta">\${Number(item.recommendations || 0)} recomendaciones · \${Number(item.validated || 0)} validadas · \${Number(item.rejected || 0)} rechazadas · impacto promedio \${Number(item.avgImpactScore || 0).toFixed(3)} · \${escapeHtml(item.categories || 'sin categoría')}</div>
+    </div>\`).join('');
+}
+
+async function loadRecommendationLearning(){
+  try{
+    const [recs, perf, evolution] = await Promise.all([
+      fetch('/api/research/recommendations?limit=160').then(r=>r.json()),
+      fetch('/api/research/recommendations/performance').then(r=>r.json()),
+      fetch('/api/research/strategy-evolution').then(r=>r.json())
+    ]);
+    researchRecommendations = recs.recommendations || [];
+    recommendationPerformance = perf || {};
+    strategyEvolution = evolution.evolution || [];
+    document.getElementById('recReviewStatus').textContent = researchRecommendations.length + ' recomendaciones';
+    renderRecommendationMetrics();
+    renderRecommendationsTable();
+    renderOperatorActions();
+    renderRiskOpportunityList();
+    renderStrategyEvolution();
+  }catch(e){
+    document.getElementById('recReviewStatus').textContent = 'Sin conexión';
+    document.getElementById('recommendationMetrics').innerHTML = '<div class="empty">No se pudo cargar el seguimiento</div>';
+    document.getElementById('recommendationsTable').innerHTML = '<tr><td colspan="6" class="empty">No se pudo cargar recomendaciones</td></tr>';
+    document.getElementById('operatorActions').innerHTML = '<div class="intel-empty">No se pudo cargar acciones.</div>';
+    document.getElementById('riskOpportunityList').innerHTML = '<div class="intel-empty">No se pudo cargar riesgos.</div>';
+    document.getElementById('strategyEvolution').innerHTML = '<div class="intel-empty">No se pudo cargar evolución.</div>';
   }
 }
 

@@ -37,8 +37,14 @@ function saveTrades() {
   try { fs.writeFileSync(TRADES_FILE, JSON.stringify(activeTrades)); } catch(e) {}
 }
 
-const API_KEY_ACCT    = process.env.BINANCE_API_KEY || 'yNJHYVILY5bFWIXHtQuF0fn5N7cqd52mh1pInyhBCwAjsZ1iHLae1ME57aOlkExr';
-const API_SECRET_ACCT = process.env.BINANCE_API_SECRET || 'wALgotUinshwSL7h5r4F8d0PsfuW11h70uyMiidkV7r8gfezCeLGNgFmA8zvApfJ';
+function envOrFallback(name, fallback) {
+  const value = String(process.env[name] || '').trim();
+  if (!value || /^change_me/i.test(value)) return fallback;
+  return value;
+}
+
+const API_KEY_ACCT    = envOrFallback('BINANCE_API_KEY', 'yNJHYVILY5bFWIXHtQuF0fn5N7cqd52mh1pInyhBCwAjsZ1iHLae1ME57aOlkExr');
+const API_SECRET_ACCT = envOrFallback('BINANCE_API_SECRET', 'wALgotUinshwSL7h5r4F8d0PsfuW11h70uyMiidkV7r8gfezCeLGNgFmA8zvApfJ');
 
 // Mutable state - exported as object properties so full reassignment works
 // via shared.accountState = {...} in route files

@@ -79,7 +79,7 @@ function requireAuth(req, res, next) {
   if (req.session?.user) return next();
   const ua   = req.headers['user-agent'] || '';
   const isN8N = !ua.includes('Mozilla') || !!req.headers['x-n8n-workflow'];
-  const isPage = ['/dashboard', '/analytics', '/ai-data', '/simulator', '/crypto-play'].some(p => req.path.startsWith(p));
+  const isPage = ['/dashboard', '/analytics', '/ai-data', '/research', '/simulator', '/crypto-play'].some(p => req.path.startsWith(p));
   if (isN8N && !isPage) return next();
   if (isPage) { req.session.returnTo = req.path; return res.redirect('/login'); }
   res.status(401).json({ error: 'No autorizado' });

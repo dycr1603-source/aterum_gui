@@ -1,7 +1,9 @@
 'use strict';
 
 function getSharedHeadAssets() {
-  return `<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  return `<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23070b12'/%3E%3Cpath d='M16 42 29 14h6l13 28h-7l-3-7H26l-3 7h-7Zm13-13h6l-3-8-3 8Z' fill='%2357b0ff'/%3E%3Ccircle cx='48' cy='16' r='5' fill='%232ee6a6'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script>
 (function(){
   try{
@@ -12,8 +14,7 @@ function getSharedHeadAssets() {
     document.documentElement.setAttribute('data-theme','dark');
   }
 })();
-</script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>`;
+</script>`;
 }
 
 function getLoadingMarkup(label = 'Cargando terminal') {
@@ -2116,6 +2117,66 @@ body.play-v3 .mine-tile{
   aspect-ratio:1 / 1;
   border-radius:8px !important;
 }
+/* Institutional mode: keep the terminal stable and remove reactive spectacle. */
+.app-particles,
+.app-pixel-lane,
+.app-grid-secondary{
+  display:none !important;
+}
+.app-grid,
+.app-scanlines,
+.app-vignette{
+  opacity:.18 !important;
+  animation:none !important;
+}
+.fx-depth,
+.fx-depth.is-tilting,
+.card:hover,
+.kpi:hover,
+.panel:hover,
+.stat:hover,
+.metric-card:hover,
+.market-card:hover,
+.terminal-card:hover,
+.side-card:hover,
+.intel-card:hover,
+.chart-card:hover,
+.tbl-card:hover,
+.nav-link:hover,
+.theme-toggle:hover,
+.nav-logo:hover,
+.btn:hover,
+.filter-btn:hover,
+.f-btn:hover,
+.hero-btn:hover,
+.exec-btn:hover,
+.exec-mode-btn:hover,
+.game-btn:hover,
+.cashout-btn:hover,
+.tile-btn:hover,
+.mine-tile:hover,
+.chart-fs-btn:hover,
+.ind-btn:hover,
+.assistant-fab:hover{
+  transform:none !important;
+}
+.card:hover,
+.kpi:hover,
+.panel:hover,
+.stat:hover,
+.metric-card:hover,
+.market-card:hover,
+.terminal-card:hover,
+.side-card:hover,
+.intel-card:hover,
+.chart-card:hover,
+.tbl-card:hover{
+  box-shadow:0 18px 48px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+.fx-depth::before,
+.fx-depth::after{
+  opacity:.18 !important;
+}
 @media(max-width:1180px){
   body.dashboard-v3 .terminal-kpis,
   body.dashboard-v3 .market-grid{
@@ -2328,24 +2389,7 @@ function getSharedScript() {
   };
 
   const handleTiltMove=(event)=>{
-    if(reduceMotion||window.innerWidth<840)return;
-    const target=event.target.closest('.fx-depth');
-    if(!target){
-      clearTilt();
-      return;
-    }
-    if(fxTiltTarget&&fxTiltTarget!==target)clearTilt(fxTiltTarget);
-    fxTiltTarget=target;
-    const rect=target.getBoundingClientRect();
-    if(!rect.width||!rect.height)return;
-    const px=(event.clientX-rect.left)/rect.width;
-    const py=(event.clientY-rect.top)/rect.height;
-    const rotateY=(px-.5)*6;
-    const rotateX=(.5-py)*5;
-    target.classList.add('is-tilting');
-    target.style.setProperty('--glow-x',(px*100).toFixed(1)+'%');
-    target.style.setProperty('--glow-y',(py*100).toFixed(1)+'%');
-    target.style.transform='perspective(900px) rotateX('+rotateX.toFixed(2)+'deg) rotateY('+rotateY.toFixed(2)+'deg) translate3d(0,-3px,0)';
+    clearTilt();
   };
 
   const pulseUpdatedValue=(node)=>{
@@ -2988,11 +3032,11 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
     <a href="/dashboard" class="nav-logo" aria-label="Ir a trading"><div class="nav-dot"></div>αтεгυм</a>
     <nav class="nav-links nav-links-desktop" aria-label="Navegación principal">
       <a href="/dashboard" class="nav-link${current==='dashboard'?' active':''}">Trading</a>
-      <a href="/analytics" class="nav-link${current==='analytics'?' active':''}">Análisis</a>
-      <a href="/simulator" class="nav-link${current==='simulator'?' active':''}">Simulador</a>
-      <a href="/ai-data#inteligencia" class="nav-link${current==='aidata'?' active':''}">Inteligencia</a>
-      <a href="/ai-data#asistente-ia" class="nav-link${current==='aidata'?' active':''}">Asistente IA</a>
-      <a href="/crypto-play" class="nav-link${current==='play'?' active':''}">Crypto Play</a>
+      <a href="/analytics" class="nav-link${current==='analytics'?' active':''}">Analytics</a>
+      <a href="/research" class="nav-link${current==='research'?' active':''}">Research</a>
+      <a href="/ai-data#inteligencia" class="nav-link${current==='aidata'?' active':''}">News</a>
+      <a href="/simulator" class="nav-link${current==='simulator'?' active':''}">Simulator</a>
+      <a href="/ai-data#asistente-ia" class="nav-link${current==='assistant'?' active':''}">AI Assistant</a>
     </nav>
   </div>
   <div class="nav-utility">
@@ -3020,11 +3064,11 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
   </div>
   <nav class="nav-drawer-links">
     <a href="/dashboard" class="nav-drawer-link${current==='dashboard'?' active':''}">Trading</a>
-    <a href="/analytics" class="nav-drawer-link${current==='analytics'?' active':''}">Análisis</a>
-    <a href="/simulator" class="nav-drawer-link${current==='simulator'?' active':''}">Simulador</a>
-    <a href="/ai-data#inteligencia" class="nav-drawer-link${current==='aidata'?' active':''}">Inteligencia</a>
-    <a href="/ai-data#asistente-ia" class="nav-drawer-link${current==='aidata'?' active':''}">Asistente IA</a>
-    <a href="/crypto-play" class="nav-drawer-link${current==='play'?' active':''}">Crypto Play</a>
+    <a href="/analytics" class="nav-drawer-link${current==='analytics'?' active':''}">Analytics</a>
+    <a href="/research" class="nav-drawer-link${current==='research'?' active':''}">Research</a>
+    <a href="/ai-data#inteligencia" class="nav-drawer-link${current==='aidata'?' active':''}">News</a>
+    <a href="/simulator" class="nav-drawer-link${current==='simulator'?' active':''}">Simulator</a>
+    <a href="/ai-data#asistente-ia" class="nav-drawer-link${current==='assistant'?' active':''}">AI Assistant</a>
   </nav>
   <div class="nav-drawer-foot">
     <button class="theme-toggle theme-toggle-drawer" id="themeToggleDrawer" type="button" aria-label="Cambiar tema">

@@ -178,6 +178,10 @@ app.get('/chart', async (req, res) => {
   res.status(500).json({ success: false, error: errors[errors.length - 1], attempts: errors });
 });
 
+app.get('/healthz', (req, res) => {
+  res.json({ ok: true, service: 'aterum-chart-api' });
+});
+
 app.get('/', (req, res) => {
   res.send('Chart API running 🚀');
 });

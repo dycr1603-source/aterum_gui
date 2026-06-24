@@ -9,6 +9,13 @@ const HOST = process.env.BIND_HOST || '0.0.0.0';
 
 app.use(express.json());
 
+app.get('/healthz', (req, res) => {
+  res.json({ ok: true, service: 'aterum-dashboard' });
+});
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end();
+});
+
 // ── Auth: session + login/logout routes ──────────────────────────────────────
 setupAuth(app, shared.db);
 
@@ -16,6 +23,7 @@ setupAuth(app, shared.db);
 const { getDashboardHTML }  = require('./views/dashboard');
 const { getAnalyticsHTML }  = require('./views/analytics');
 const { getAIDataHTML }     = require('./views/aidata');
+const { getResearchHTML }   = require('./views/research');
 const { getPlayHTML }       = require('./views/play');
 const { getSimulatorHTML }  = require('./views/simulator');
 const accountRoutes         = require('./routes/account');
@@ -35,6 +43,11 @@ app.get('/analytics', requireAuth, (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.send(getAnalyticsHTML(req.session.user));
+});
+app.get('/research', requireAuth, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.send(getResearchHTML(req.session.user));
 });
 app.get('/crypto-play', requireAuth, (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');

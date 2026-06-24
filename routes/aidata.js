@@ -10,16 +10,80 @@ router.post('/db/post-trade', async (req, res) => {
   try{
     await db.execute(`CREATE TABLE IF NOT EXISTS post_trade_analysis (
       id INT AUTO_INCREMENT PRIMARY KEY,
+      trade_id INT NULL,
       symbol VARCHAR(20), direction VARCHAR(10),
       close_type VARCHAR(5), stage VARCHAR(15),
       pnl_usdt DECIMAL(10,4), r_final DECIMAL(6,2),
       duration_minutes INT,
+      entry_reason TEXT NULL,
+      exit_reason TEXT NULL,
+      setup_label VARCHAR(120) NULL,
+      ai_regime VARCHAR(32) NULL,
+      ai_bias VARCHAR(16) NULL,
+      tf4h_status VARCHAR(15) NULL,
+      macro_bias VARCHAR(10) NULL,
+      atr_pct DECIMAL(10,4) NULL,
+      rsi14 DECIMAL(8,3) NULL,
+      vol_ratio DECIMAL(10,4) NULL,
+      funding_rate DECIMAL(12,8) NULL,
+      final_score DECIMAL(8,3) NULL,
+      scan_score DECIMAL(8,3) NULL,
+      dynamic_threshold DECIMAL(8,3) NULL,
+      entry_hour_utc INT NULL,
       analysis TEXT,
       created_at DATETIME DEFAULT NOW()
     )`);
+    const alters = [
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS trade_id INT NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS entry_reason TEXT NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS exit_reason TEXT NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS setup_label VARCHAR(120) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS ai_regime VARCHAR(32) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS ai_bias VARCHAR(16) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS tf4h_status VARCHAR(15) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS macro_bias VARCHAR(10) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS atr_pct DECIMAL(10,4) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS rsi14 DECIMAL(8,3) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS vol_ratio DECIMAL(10,4) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS funding_rate DECIMAL(12,8) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS final_score DECIMAL(8,3) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS scan_score DECIMAL(8,3) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS dynamic_threshold DECIMAL(8,3) NULL`,
+      `ALTER TABLE post_trade_analysis ADD COLUMN IF NOT EXISTS entry_hour_utc INT NULL`
+    ];
+    for (const sql of alters) await db.execute(sql).catch(() => {});
     await db.execute(
-      `INSERT INTO post_trade_analysis (symbol,direction,close_type,stage,pnl_usdt,r_final,duration_minutes,analysis) VALUES (?,?,?,?,?,?,?,?)`,
-      [t.symbol||null, t.direction||null, t.closeType||null, t.stage||null, t.pnl||null, t.rFinal||null, t.durationMinutes||null, t.analysis||null]
+      `INSERT INTO post_trade_analysis
+        (trade_id,symbol,direction,close_type,stage,pnl_usdt,r_final,duration_minutes,
+         entry_reason,exit_reason,setup_label,ai_regime,ai_bias,tf4h_status,macro_bias,
+         atr_pct,rsi14,vol_ratio,funding_rate,final_score,scan_score,dynamic_threshold,entry_hour_utc,analysis)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        t.tradeId || t.trade_id || null,
+        t.symbol || null,
+        t.direction || null,
+        t.closeType || null,
+        t.stage || null,
+        t.pnl || t.pnlUsdt || null,
+        t.rFinal || null,
+        t.durationMinutes || null,
+        t.entryReason || null,
+        t.exitReason || null,
+        t.setupLabel || null,
+        t.aiRegime || null,
+        t.aiBias || null,
+        t.tf4hStatus || null,
+        t.macroBias || null,
+        t.atrPct || null,
+        t.rsi14 || null,
+        t.volRatio || null,
+        t.fundingRate || null,
+        t.finalScore || null,
+        t.scanScore || null,
+        t.dynamicThreshold || null,
+        t.entryHourUtc || null,
+        t.analysis || null
+      ]
     );
     res.json({ ok: true });
   }catch(e){ res.status(500).json({ error: e.message }); }

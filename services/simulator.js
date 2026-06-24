@@ -4,8 +4,17 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { parse } = require('/usr/lib/node_modules/n8n/node_modules/flatted');
 const shared = require('../shared');
+
+function loadFlattedParse() {
+  try {
+    return require('flatted').parse;
+  } catch (error) {
+    return require('/usr/lib/node_modules/n8n/node_modules/flatted').parse;
+  }
+}
+
+const parse = loadFlattedParse();
 
 const execFileAsync = promisify(execFile);
 
@@ -13,6 +22,14 @@ const N8N_DB = process.env.N8N_SQLITE_DB || '/home/n8n/.n8n/database.sqlite';
 const WORKFLOW_ID = process.env.N8N_TRADING_WORKFLOW_ID || 'Cz4TfvaVAygWGRJm';
 const BINANCE_BASE = 'https://fapi.binance.com';
 const CACHE_MS = 90 * 1000;
+const POLICY_KEY = process.env.SIMULATOR_POLICY_KEY || 'aterum_policy_v1';
+const POLICY_GUARDRAILS = {
+  maxOpenCountForOverride: 1,
+  maxVolRatio: 4,
+  maxRsiLong: 78,
+  minRsiShort: 25,
+  allowTf4hStatuses: ['CONFIRMS', 'NEUTRAL']
+};
 
 let cache = null;
 
@@ -165,6 +182,69 @@ function finalizeGroups(groups) {
     g.avgEnd = +(g.avgEnd / g.n).toFixed(2);
   });
   return groups;
+}
+
+function parseGroupKey(key) {
+  const parts = String(key || '').split('|');
+  const type = parts[0] || null;
+  const direction = parts[1] || null;
+  const macroPart = parts.find(part => part.startsWith('macro='));
+  const tf4hPart = parts.find(part => part.startsWith('4h='));
+  return {
+    type,
+    direction,
+    macroRelation: macroPart ? macroPart.slice('macro='.length) : 'neutral',
+    tf4h: tf4hPart ? tf4hPart.slice('4h='.length) : 'NEUTRAL'
+  };
+}
+
+function buildPolicyGroup(key, group) {
+  const meta = parseGroupKey(key);
+  const n = Number(group?.n || 0);
+  if (!['LONG', 'SHORT'].includes(meta.direction) || n < 4) return null;
+
+  const goodRate = Number(group?.goodRate || 0);
+  const badRate = Number(group?.badRate || 0);
+  const avgEnd = Number(group?.avgEnd || 0);
+  const avgMfe = Number(group?.avgMfe || 0);
+
+  if (goodRate < 55 || badRate > 45 || avgEnd < 0) return null;
+
+  const edge = Math.max(0, goodRate - 50) + Math.max(0, avgEnd * 4) + Math.max(0, avgMfe);
+  const reliefPts = Math.max(2, Math.min(8, Math.round(edge / 6)));
+  const nearThresholdSlack = Math.max(2, Math.min(6, Math.round(reliefPts / 2) + 2));
+
+  return {
+    direction: meta.direction,
+    macroRelation: meta.macroRelation,
+    tf4h: meta.tf4h,
+    reliefPts,
+    nearThresholdSlack,
+    sampleSize: n,
+    goodRate,
+    badRate,
+    avgEnd,
+    avgMfe,
+    source: meta.type || 'simulator'
+  };
+}
+
+async function getSimulatorPolicy(options = {}) {
+  const requestedKey = String(options.key || POLICY_KEY);
+  const report = await getSimulatorReport(options);
+  const opportunityGroups = Object.entries(report.groups || {})
+    .map(([key, group]) => buildPolicyGroup(key, group))
+    .filter(Boolean)
+    .sort((a, b) => (b.reliefPts - a.reliefPts) || (b.goodRate - a.goodRate));
+
+  return {
+    key: requestedKey,
+    generatedAt: new Date().toISOString(),
+    reportGeneratedAt: report.generatedAt,
+    options: report.options,
+    guardrails: { ...POLICY_GUARDRAILS },
+    opportunityGroups
+  };
 }
 
 function buildStats(signals) {
@@ -349,5 +429,6 @@ async function getSimulatorReport(options = {}) {
 }
 
 module.exports = {
-  getSimulatorReport
+  getSimulatorReport,
+  getSimulatorPolicy
 };

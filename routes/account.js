@@ -9,7 +9,7 @@ const shared    = require('../shared');
 const { API_KEY_ACCT, API_SECRET_ACCT, crypto_acct, activeTrades } = shared;
 
 // ── Realtime market transport: Binance WS -> local WS/SSE fanout ──────────────
-const sseClients = {}, wsClients = {}, activeWS = {}, lastMarketPacket = {}, latestPrices = {}, latestPriceTs = {};
+const sseClients = {}, wsClients = {}, activeWS = {}, marketFallbackTimers = {}, lastMarketMessageAt = {}, lastMarketPacket = {}, latestPrices = {}, latestPriceTs = {};
 let realtimeWSS = null;
 
 function hasMarketSubscribers(symbol) {
@@ -38,15 +38,94 @@ function broadcastMarket(symbol, data) {
   }
 }
 
+async function emitMarketFallback(symbol) {
+  try {
+    const [mark, klines] = await Promise.all([
+      httpsGet('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=' + encodeURIComponent(symbol)),
+      httpsGet('https://fapi.binance.com/fapi/v1/klines?symbol=' + encodeURIComponent(symbol) + '&interval=1h&limit=1')
+    ]);
+    const price = parseFloat(mark.markPrice || mark.indexPrice || 0);
+    if (price > 0) {
+      latestPrices[symbol] = price;
+      latestPriceTs[symbol] = Date.now();
+      broadcastMarket(symbol, { type: 'price', price, eventTime: mark.time || Date.now(), source: 'BINANCE_FUTURES_HTTP_MARK' });
+    }
+    const row = Array.isArray(klines) ? klines[0] : null;
+    if (Array.isArray(row)) {
+      broadcastMarket(symbol, {
+        type: 'candle',
+        candle: {
+          time: Math.floor(+row[0]/1000),
+          open: +row[1],
+          high: +row[2],
+          low: +row[3],
+          close: +row[4],
+          volume: +row[5],
+          quoteVolume: +row[7],
+          closed: false
+        },
+        eventTime: Date.now(),
+        source: 'BINANCE_FUTURES_HTTP_KLINE'
+      });
+    }
+  } catch (e) {}
+}
+
+function startMarketFallback(symbol) {
+  if (marketFallbackTimers[symbol]) return;
+  const tick = () => {
+    if (!hasMarketSubscribers(symbol)) return;
+    if (Date.now() - (lastMarketMessageAt[symbol] || 0) > 3500) emitMarketFallback(symbol);
+  };
+  marketFallbackTimers[symbol] = setInterval(tick, 2000);
+  setTimeout(tick, 1200);
+}
+
+function stopMarketFallback(symbol) {
+  if (marketFallbackTimers[symbol]) {
+    clearInterval(marketFallbackTimers[symbol]);
+    delete marketFallbackTimers[symbol];
+  }
+}
+
 function startWS(symbol) {
   if (activeWS[symbol]) return;
-  const ws = new WebSocket('wss://fstream.binance.com/ws/' + symbol.toLowerCase() + '@kline_1h');
+  startMarketFallback(symbol);
+  const streamSymbol = symbol.toLowerCase();
+  const ws = new WebSocket('wss://fstream.binance.com/stream?streams=' + streamSymbol + '@kline_1h/' + streamSymbol + '@markPrice@1s');
   ws.on('message', raw => {
     try {
-      const k = JSON.parse(raw).k;
+      lastMarketMessageAt[symbol] = Date.now();
+      const msg = JSON.parse(raw);
+      const data = msg.data || msg;
+      if (data.e === 'markPriceUpdate') {
+        const price = parseFloat(data.p || data.i || 0);
+        if (price > 0) {
+          latestPrices[symbol] = price;
+          latestPriceTs[symbol] = Date.now();
+          broadcastMarket(symbol, { type: 'price', price, eventTime: data.E || Date.now(), source: 'BINANCE_MARK_PRICE' });
+        }
+        return;
+      }
+      const k = data.k;
+      if (!k) return;
       latestPrices[symbol] = +k.c;
       latestPriceTs[symbol] = Date.now();
-      broadcastMarket(symbol, { type: 'candle', candle: { time: Math.floor(k.t/1000), open: +k.o, high: +k.h, low: +k.l, close: +k.c, closed: k.x } });
+      broadcastMarket(symbol, {
+        type: 'candle',
+        candle: {
+          time: Math.floor(k.t/1000),
+          open: +k.o,
+          high: +k.h,
+          low: +k.l,
+          close: +k.c,
+          volume: +k.v,
+          quoteVolume: +k.q,
+          closed: k.x
+        },
+        eventTime: data.E || Date.now(),
+        source: 'BINANCE_KLINE_1H'
+      });
     } catch(e) {}
   });
   ws.on('close', () => {
@@ -61,6 +140,7 @@ function stopWS(symbol) {
     activeWS[symbol].terminate();
     delete activeWS[symbol];
   }
+  stopMarketFallback(symbol);
 }
 
 function attachRealtimeServer(server) {
@@ -295,7 +375,7 @@ async function startUserDataStream() {
   }
 }
 
-// Update unrealized PnL every 3s
+// Update unrealized PnL continuously for live dashboards.
 async function updateUnrealized() {
   if (Object.keys(shared.accountState.positions).length === 0) return;
   try {
@@ -306,7 +386,7 @@ async function updateUnrealized() {
         : null;
       const mark = freshMark != null
         ? freshMark
-        : parseFloat((await httpsGet(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${sym}`)).price || 0);
+        : parseFloat((await httpsGet(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${sym}`)).markPrice || 0);
       if (mark > 0 && shared.accountState.positions[sym]) {
         const pos   = shared.accountState.positions[sym];
         const entry = pos.entryPrice || 0;
@@ -317,7 +397,7 @@ async function updateUnrealized() {
             : parseFloat(pos.qty || Math.abs(pos.positionAmt || 0) || 0);
           if (q <= 0) return;
           const unreal = pos.side === 'SHORT' ? (entry - mark) * q : (mark - entry) * q;
-          shared.accountState.positions[sym].unrealized = +unreal.toFixed(4);
+          shared.accountState.positions[sym].unrealized = +unreal.toFixed(8);
           shared.accountState.positions[sym].markPrice  = mark;
           latestPrices[sym] = mark;
           latestPriceTs[sym] = Date.now();
@@ -328,16 +408,13 @@ async function updateUnrealized() {
     shared.accountState.equity      = shared.accountState.balance + shared.accountState.totalUnreal;
     shared.accountState.ts          = Date.now();
   } catch(e) {}
-  if (shared.acctSSEClients.length > 0) {
-    const msg = 'data: ' + JSON.stringify(shared.accountState) + '\n\n';
-    shared.acctSSEClients.forEach((r, i) => { try { r.write(msg); } catch(e) { shared.acctSSEClients.splice(i, 1); } });
-  }
+  shared.broadcastAccount();
 }
 
 // Start on module load
 startUserDataStream();
-setInterval(updateUnrealized, 3000);
-setInterval(fetchAccountSnapshot, 30000);
+setInterval(updateUnrealized, 1000);
+setInterval(fetchAccountSnapshot, 15000);
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 router.get('/api/klines', (req, res) => {

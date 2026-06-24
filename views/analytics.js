@@ -201,6 +201,36 @@ tr:last-child td{border-bottom:none}
 .sym-bar-fill{height:100%;border-radius:2px;transition:width .6s}
 .sym-pnl{font-size:11px;font-weight:600;min-width:60px;text-align:right}
 
+/* ── RESEARCH ── */
+.research-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px}
+.research-card{background:linear-gradient(180deg,rgba(15,24,39,.94),rgba(9,15,25,.9));border:1px solid rgba(61,158,255,.12);border-radius:18px;padding:16px;min-height:94px}
+.research-lbl{font-size:9px;color:var(--text2);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
+.research-val{font-family:var(--display);font-size:24px;font-weight:850;line-height:1}
+.research-sub{font-size:9px;color:var(--text2);margin-top:6px;line-height:1.4}
+.edge-list{display:flex;flex-direction:column}
+.edge-row{display:grid;grid-template-columns:minmax(80px,1fr) 54px 68px 68px 50px 50px 50px 58px;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid rgba(22,32,48,.6);font-size:11px}
+.edge-row:last-child{border-bottom:none}
+.edge-name{font-family:var(--display);font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.edge-meta{font-size:9px;color:var(--text2);text-align:right}
+.edge-pnl,.edge-exp{font-weight:700;text-align:right}
+.hour-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+@media(max-width:1100px){.hour-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:680px){.hour-grid{grid-template-columns:repeat(2,1fr)}}
+.hour-card{border:1px solid rgba(61,158,255,.12);background:rgba(10,17,29,.76);border-radius:14px;padding:12px}
+.hour-name{font-family:var(--mono);font-size:12px;font-weight:800;color:var(--text)}
+.hour-pnl{font-family:var(--display);font-size:18px;font-weight:850;margin-top:8px}
+.hour-sub{font-size:9px;color:var(--text2);margin-top:4px}
+.setup-row{display:grid;grid-template-columns:minmax(160px,1fr) 52px 68px 68px 58px 50px;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid rgba(22,32,48,.6);font-size:11px}
+.setup-row:last-child{border-bottom:none}
+.setup-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.post-row{padding:12px 16px;border-bottom:1px solid rgba(22,32,48,.6)}
+.post-row:last-child{border-bottom:none}
+.post-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}
+.post-title{font-size:11px;font-weight:800;color:var(--text)}
+.post-analysis{font-size:10px;color:var(--text2);line-height:1.5}
+.term-cloud{display:flex;flex-wrap:wrap;gap:7px;padding:16px}
+.term-chip{font-size:10px;color:var(--text2);background:rgba(10,17,29,.82);border:1px solid rgba(61,158,255,.12);border-radius:999px;padding:6px 10px}
+
 /* ── MISC ── */
 .score-bar{display:inline-flex;align-items:center;gap:6px}
 .score-fill{height:3px;border-radius:2px;background:var(--blue);opacity:.7}
@@ -615,6 +645,48 @@ ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="l
   <!-- KPIs -->
   <div class="kpi-grid" id="kpiGrid">${getLoadingMarkup('Cargando métricas')}</div>
 
+  <!-- RESEARCH DASHBOARD -->
+  <div class="section-title">Research</div>
+  <div class="research-grid" id="researchKpis">${getLoadingMarkup('Cargando research')}</div>
+
+  <div class="cards-row cards-equal" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Mejores símbolos</span><span class="card-badge">por expectativa</span></div>
+      <div class="card-body" style="padding:0"><div id="bestSymbols" class="loading-shell-wrap">${getLoadingMarkup('Cargando edge')}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Peores símbolos</span><span class="card-badge">riesgo operativo</span></div>
+      <div class="card-body" style="padding:0"><div id="worstSymbols" class="loading-shell-wrap">${getLoadingMarkup('Cargando pérdidas')}</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-hdr"><span class="card-title">Horas más rentables</span><span class="card-badge">UTC · bloques 4h</span></div>
+    <div class="card-body"><div class="hour-grid" id="researchHours">${getLoadingMarkup('Cargando horarios')}</div></div>
+  </div>
+
+  <div class="cards-row cards-equal" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Rechazos de IA</span><span class="card-badge" id="researchRejBadge">—</span></div>
+      <div id="researchRejections" class="loading-shell-wrap">${getLoadingMarkup('Cargando rechazos IA')}</div>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Edge por setup</span><span class="card-badge">AI · 4H · macro</span></div>
+      <div id="researchSetups" class="loading-shell-wrap">${getLoadingMarkup('Cargando setups')}</div>
+    </div>
+  </div>
+
+  <div class="cards-row cards-equal" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Post Trade Analysis</span><span class="card-badge" id="postTradeBadge">—</span></div>
+      <div id="postTradeList" class="loading-shell-wrap">${getLoadingMarkup('Cargando análisis')}</div>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><span class="card-title">Errores recurrentes</span><span class="card-badge">desde post-trade</span></div>
+      <div id="recurrentTerms" class="term-cloud">${getLoadingMarkup('Cargando patrones')}</div>
+    </div>
+  </div>
+
   <!-- CHARTS ROW 1 -->
   <div class="cards-row cards-2" style="margin-bottom:16px">
     <div class="card">
@@ -662,7 +734,7 @@ ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="l
 </div>
 
 <script>
-let allStats=null, period=7, filterDir='', filterResult='';
+let allStats=null, allResearch=null, period=7, filterDir='', filterResult='';
 window.aterumAssistantConfig={
   page:'analytics',
   kicker:'Analista IA',
@@ -984,6 +1056,151 @@ async function loadStats(){
   return allStats;
 }
 
+async function loadResearch(){
+  try{
+    const [summary,symbols,hours,rejections,setups]=await Promise.all([
+      fetch('/api/research/summary').then(r=>r.json()),
+      fetch('/api/research/symbols').then(r=>r.json()),
+      fetch('/api/research/hours').then(r=>r.json()),
+      fetch('/api/research/rejections').then(r=>r.json()),
+      fetch('/api/research/setups').then(r=>r.json())
+    ]);
+    allResearch={summary,symbols,hours,rejections,setups};
+    renderResearch();
+    if(allStats)render();
+  }catch(e){
+    const el=document.getElementById('researchKpis');
+    if(el)el.innerHTML='<div class="empty">Error cargando research</div>';
+  }
+}
+
+function money(v){
+  const n=+v||0;
+  return (n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2);
+}
+function pct(v){return (+v||0).toFixed(1)+'%'}
+function fmtNum(v,dec=2){
+  if(v===null||v===undefined)return '∞';
+  const n=+v;
+  return Number.isFinite(n)?n.toFixed(dec):'—';
+}
+function metricColor(v){return (+v||0)>=0?'var(--green)':'var(--red)'}
+
+function renderResearch(){
+  if(!allResearch)return;
+  const s=allResearch.summary||{};
+  const researchKpis=[
+    {lbl:'Profit Factor',val:s.profitFactor==null?'∞':fmtNum(s.profitFactor,2)+'x',sub:'gross profit / gross loss',color:(s.profitFactor||0)>=1?'var(--green)':'var(--red)'},
+    {lbl:'Expectancy',val:money(s.expectancy),sub:'promedio por cierre',color:metricColor(s.expectancy)},
+    {lbl:'Drawdown máximo',val:money(s.maxDrawdown),sub:'curva cerrada',color:(+s.maxDrawdown||0)<0?'var(--red)':'var(--green)'},
+    {lbl:'Aceptadas',val:s.acceptedSignals||0,sub:'scan_events pass_ai=true',color:'var(--green)'},
+    {lbl:'Rechazadas',val:s.rejectedSignals||0,sub:pct(s.rejectionRate)+' del total',color:'var(--red)'},
+    {lbl:'Post-trade',val:s.postTradeAnalyses||0,sub:'análisis guardados',color:'var(--blue)'}
+  ];
+  document.getElementById('researchKpis').innerHTML=researchKpis.map(k=>\`
+    <div class="research-card">
+      <div class="research-lbl">\${k.lbl}</div>
+      <div class="research-val" style="color:\${k.color}">\${k.val}</div>
+      <div class="research-sub">\${k.sub}</div>
+    </div>\`).join('');
+
+  renderSymbolEdges('bestSymbols', allResearch.symbols?.best || []);
+  renderSymbolEdges('worstSymbols', allResearch.symbols?.worst || []);
+  renderResearchHours(allResearch.hours?.hours || []);
+  renderResearchRejections(allResearch.rejections || {});
+  renderResearchSetups(allResearch.setups || {});
+}
+
+function renderSymbolEdges(id,rows){
+  const el=document.getElementById(id);
+  if(!el)return;
+  if(!rows.length){el.innerHTML='<div class="empty">Sin símbolos suficientes</div>';return}
+  el.className='edge-list';
+  el.innerHTML=rows.map(r=>\`
+    <div class="edge-row">
+      <div class="edge-name">\${escapeHtml(r.symbol||'—')}</div>
+      <div class="edge-meta">\${r.trades||0} ops</div>
+      <div class="edge-pnl \${(+r.pnl||0)>=0?'pp':'pn'}">\${money(r.pnl)}</div>
+      <div class="edge-exp \${(+r.expectancy||0)>=0?'pp':'pn'}">\${money(r.expectancy)}</div>
+      <div class="edge-meta">\${pct(r.winRate)}</div>
+      <div class="edge-meta">R \${fmtNum(r.avgR,2)}</div>
+      <div class="edge-meta">PF \${r.profitFactor==null?'∞':fmtNum(r.profitFactor,2)}</div>
+      <div class="edge-meta">\${r.wins||0}W/\${r.losses||0}L</div>
+    </div>\`).join('');
+}
+
+function renderResearchHours(rows){
+  const el=document.getElementById('researchHours');
+  if(!el)return;
+  if(!rows.length){el.innerHTML='<div class="empty">Sin horarios registrados</div>';return}
+  el.innerHTML=rows.map(h=>{
+    const pnl=+h.pnl||0;
+    const exp=+h.expectancy||0;
+    return \`<div class="hour-card">
+      <div class="hour-name">\${escapeHtml(h.bucket)}</div>
+      <div class="hour-pnl" style="color:\${metricColor(pnl)}">\${money(pnl)}</div>
+      <div class="hour-sub">Exp \${money(exp)} · WR \${pct(h.winRate)}</div>
+      <div class="hour-sub">\${h.trades||0} ops · \${h.acceptedSignals||0} acc · \${h.rejectedSignals||0} rej</div>
+    </div>\`;
+  }).join('');
+}
+
+function renderResearchRejections(data){
+  const el=document.getElementById('researchRejections');
+  const badge=document.getElementById('researchRejBadge');
+  if(badge)badge.textContent=(data.rejectedSignals||0)+' rechazadas · '+pct(data.rejectionRate||0);
+  const rows=data.reasons||[];
+  if(!rows.length){el.innerHTML='<div class="empty">Sin rechazos de IA</div>';return}
+  const max=Math.max(...rows.map(r=>+r.count||0),1);
+  el.className='edge-list';
+  el.innerHTML=rows.map(r=>\`
+    <div class="rejection-item">
+      <div class="rej-lbl">\${escapeHtml(r.reason)}</div>
+      <div class="rej-bar-wrap"><div class="rej-bar-fill" style="width:\${Math.min((+r.count/max)*100,100)}%"></div></div>
+      <div class="rej-count">\${r.count}</div>
+      <div class="edge-meta">score \${fmtNum(r.avgScore,1)}</div>
+    </div>\`).join('');
+}
+
+function renderResearchSetups(data){
+  const el=document.getElementById('researchSetups');
+  if(!el)return;
+  const rows=(data.bestSetups||[]).concat(data.worstSetups||[]).slice(0,10);
+  if(!rows.length){el.innerHTML='<div class="empty">Sin setups cerrados</div>';return}
+  el.className='edge-list';
+  el.innerHTML=rows.map(r=>\`
+    <div class="setup-row">
+      <div class="setup-name">\${escapeHtml(r.label)}</div>
+      <div class="edge-meta">\${r.trades||0} ops</div>
+      <div class="edge-pnl \${(+r.pnl||0)>=0?'pp':'pn'}">\${money(r.pnl)}</div>
+      <div class="edge-exp \${(+r.expectancy||0)>=0?'pp':'pn'}">\${money(r.expectancy)}</div>
+      <div class="edge-meta">WR \${pct(r.winRate)}</div>
+      <div class="edge-meta">R \${fmtNum(r.avgR,2)}</div>
+    </div>\`).join('');
+
+  const post=document.getElementById('postTradeList');
+  const postRows=data.postTrade||[];
+  const postBadge=document.getElementById('postTradeBadge');
+  if(postBadge)postBadge.textContent=postRows.length+' análisis';
+  if(post){
+    post.className='';
+    post.innerHTML=postRows.length?postRows.slice(0,8).map(p=>\`
+      <div class="post-row">
+        <div class="post-head">
+          <div class="post-title">\${escapeHtml(p.symbol||'—')} · \${escapeHtml(p.direction||'—')} · \${escapeHtml(p.closeType||'—')}</div>
+          <div class="\${(+p.pnl||0)>=0?'pp':'pn'}">\${money(p.pnl)} · \${fmtNum(p.r,2)}R</div>
+        </div>
+        <div class="post-analysis">\${escapeHtml(p.analysis||'Sin análisis')}</div>
+      </div>\`).join(''):'<div class="empty">Sin post-trade analysis</div>';
+  }
+
+  const terms=document.getElementById('recurrentTerms');
+  const termRows=data.recurrentErrors||[];
+  if(terms){
+    terms.innerHTML=termRows.length?termRows.map(t=>\`<span class="term-chip">\${escapeHtml(t.term)} · \${t.count}</span>\`).join(''):'<div class="empty">Sin patrones recurrentes</div>';
+  }
+}
+
 function render(){
   if(!allStats)return;
   let rows=allStats.recent||[];
@@ -1007,10 +1224,15 @@ function render(){
 }
 
 function renderKPIs({totalPnL,winRate,wins,losses,avgR,total,bestTrade,worstTrade}){
+  const research=allResearch?.summary||{};
   const kpis=[
     {lbl:'PnL Total',val:(totalPnL>=0?'+':'')+'$'+Math.abs(totalPnL).toFixed(2),sub:total+' trades cerrados',cls:totalPnL>=0?'kpi-green':'kpi-red',icon:'💰',color:totalPnL>=0?'var(--green)':'var(--red)'},
     {lbl:'Tasa de acierto',val:winRate+'%',sub:wins+' G · '+losses+' P',cls:'kpi-blue',icon:'🎯',color:'var(--blue)'},
+    {lbl:'Profit Factor',val:research.profitFactor==null?'∞':fmtNum(research.profitFactor,2)+'x',sub:'beneficio bruto / pérdida',cls:(research.profitFactor||0)>=1?'kpi-green':'kpi-red',icon:'⚖',color:(research.profitFactor||0)>=1?'var(--green)':'var(--red)'},
+    {lbl:'Expectancy',val:money(research.expectancy),sub:'por operación cerrada',cls:(research.expectancy||0)>=0?'kpi-green':'kpi-red',icon:'Σ',color:metricColor(research.expectancy)},
+    {lbl:'Drawdown',val:money(research.maxDrawdown),sub:'máxima caída cerrada',cls:(research.maxDrawdown||0)<0?'kpi-red':'kpi-green',icon:'↧',color:(research.maxDrawdown||0)<0?'var(--red)':'var(--green)'},
     {lbl:'R promedio',val:(avgR>=0?'+':'')+avgR+'R',sub:'por trade',cls:avgR>=0?'kpi-green':'kpi-red',icon:'📊',color:avgR>=0?'var(--green)':'var(--red)'},
+    {lbl:'Señales aceptadas',val:research.acceptedSignals||0,sub:(research.rejectedSignals||0)+' rechazadas',cls:'kpi-purple',icon:'✓',color:'var(--green)'},
     {lbl:'Mejor Trade',val:bestTrade?((+bestTrade.pnl_usdt>=0?'+':'')+'$'+Math.abs(+bestTrade.pnl_usdt||0).toFixed(2)):'—',sub:bestTrade?.symbol||'—',cls:'kpi-green',icon:'🏆',color:'var(--green)'},
     {lbl:'Peor Trade',val:worstTrade?((+worstTrade.pnl_usdt>=0?'+':'-')+'$'+Math.abs(+worstTrade.pnl_usdt||0).toFixed(2)):'—',sub:worstTrade?.symbol||'—',cls:'kpi-red',icon:'🛑',color:'var(--red)'},
     {lbl:'Operaciones totales',val:total,sub:'en el periodo',cls:'kpi-purple',icon:'📈',color:'var(--purple)'},
@@ -1141,6 +1363,7 @@ loadCooldowns();
 setInterval(loadCooldowns, 30000);
 // Luego cargar stats de DB
 loadStats();
+loadResearch();
 </script>
 <script>${getSharedScript()}</script>
 </body></html>`; }

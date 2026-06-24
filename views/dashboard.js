@@ -11,11 +11,10 @@ function getDashboardHTML(symbol, user) { return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#f5f5f7">
+<meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#f5f5f7">
 <title>αтεгυм — ${symbol}</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
 <style>
 :root{--bg:var(--ui-bg,#f5f5f7);--bg2:var(--ui-bg-raised,#ffffff);--bg3:#f4f7fc;--bg4:#e2e9f2;--border:rgba(29,29,31,.12);--border2:rgba(29,29,31,.2);--text:var(--ui-text,#1d1d1f);--text2:var(--ui-muted,#6e6e73);--muted:var(--ui-faint,#8f949d);--green:#1f9e74;--green2:#1a8b66;--red:#d94f63;--red2:#c24558;--blue:#007aff;--gold:#cf9440;--purple:#6f67d8;--mono:'JetBrains Mono',monospace;--display:'Inter Tight','Inter','SF Pro Display',sans-serif;--sans:'Inter','SF Pro Text','Segoe UI',sans-serif;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);--ease:cubic-bezier(.22,1,.36,1)}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -119,6 +118,10 @@ color:var(--text);font-family:var(--sans);font-size:12px;height:100%;overflow:hi
 .pnl-hero.loss::after{background:linear-gradient(135deg,rgba(255,61,90,.05) 0%,transparent 60%)}
 .pnl-lbl{font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:5px}
 .pnl-val{font-family:var(--display);font-size:clamp(22px,2.5vw,30px);font-weight:800;line-height:1;margin-bottom:10px;transition:color .3s}
+.pnl-status-badge{display:inline-flex;align-items:center;justify-content:center;min-height:22px;padding:0 10px;margin:0 0 12px;border-radius:999px;border:1px solid var(--border2);font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--text2);background:rgba(48,69,96,.08)}
+.pnl-status-badge.profit{color:var(--green);border-color:rgba(31,158,116,.28);background:rgba(31,158,116,.1)}
+.pnl-status-badge.loss{color:var(--red);border-color:rgba(217,79,99,.28);background:rgba(217,79,99,.1)}
+.pnl-status-badge.flat{color:var(--text2);border-color:var(--border2);background:rgba(48,69,96,.08)}
 .pnl-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pm-lbl{font-size:9px;color:var(--muted);margin-bottom:2px}
 .pm-val{font-size:11px;font-weight:600}
@@ -2513,6 +2516,7 @@ ${getSharedNav('dashboard', user, 'blue',
       <div class="pnl-hero" id="pnlHero">
         <div class="pnl-lbl" id="pnlLbl">PnL No Realizado</div>
         <div class="pnl-val" id="pnlVal" style="color:var(--text2)">—</div>
+        <div class="pnl-status-badge flat" id="pnlBadge">BREAK EVEN</div>
         <div class="pnl-meta">
           <div><div class="pm-lbl">PnL %</div><div class="pm-val" id="pnlPct">—</div></div>
           <div><div class="pm-lbl">Duración</div><div class="pm-val" id="dur">—</div></div>
@@ -2779,14 +2783,14 @@ const chart=LightweightCharts.createChart(container,{
   timeScale:{borderColor:'#1a2336',timeVisible:true,secondsVisible:false}
 });
 const candles=chart.addCandlestickSeries({upColor:'#1f9e74',downColor:'#d94f63',borderUpColor:'#1f9e74',borderDownColor:'#d94f63',wickUpColor:'#1f9e74',wickDownColor:'#d94f63'});
-let entryLine=null,slLine=null,tpLine=null,slZone=null,tpZone=null;
-let klineData=[],lastPrice=null,currentTrade=null,isClosed=false,tradeMap={active:{},closed:{}},wlPrices={};
+let entryLine=null,slLine=null,tpLine=null,livePriceLine=null,slZone=null,tpZone=null;
+let klineData=[],lastPrice=null,currentTrade=null,isClosed=false,tradeMap={active:{},closed:{}},wlPrices={},applyingDashboardState=false;
 let priceStream=null;
 let accountStream=null;
 let priceReconnectTimer=0;
 let accountReconnectTimer=0;
 let isUnloading=false;
-let pendingFetches={klines:false,account:false,trades:false,recentTrades:false,stats:false};
+let pendingFetches={klines:false,account:false,trades:false,recentTrades:false,stats:false,dashboard:false};
 const rangeLinks={vol:{main:null,sub:null},rsi:{main:null,sub:null},sqz:{main:null,sub:null}};
 let cachedAccountDerived={dailyPnl:0,dailyRoi:0,marginPct:0};
 let cachedMarketStats={prior:0,high24:0,low24:0,vol24:0,atr:0,structure:'Balanceado'};
@@ -2891,6 +2895,9 @@ function calcSqueeze(klines,period=20,mult=1.5){
 // ── Build full kline objects from API data ─────────────────────────────────────
 let fullKlines=[];
 let accountSnapshot={balance:0,available:0,totalMargin:0,totalUnreal:0,openPositions:0};
+let lastAccountPositionKey='';
+let tradeRefreshTimer=null;
+let lastTradeRefreshAt=0;
 const pulseToneById={
   workspaceBalance:'blue',
   workspaceEquity:'blue',
@@ -3050,6 +3057,81 @@ function fmtPct(v,d=2){
   if(v==null||Number.isNaN(+v))return '—';
   return ((+v)>=0?'+':'')+(+v).toFixed(d)+'%';
 }
+function fmtSignedUSDWithPct(v,base,d=2){
+  if(v==null||Number.isNaN(+v))return '—';
+  const b=+base||0;
+  const pct=b>0?' ('+fmtPct((+v/b)*100)+')':'';
+  return fmtSignedUSD(v,d)+pct;
+}
+function setSignedTone(id,value){
+  const el=document.getElementById(id);
+  if(el)el.style.color=(+value||0)>0?'var(--green)':(+value||0)<0?'var(--red)':'var(--text2)';
+}
+function updatePnlBadge(pnl){
+  const badge=document.getElementById('pnlBadge');
+  if(!badge)return;
+  const n=+pnl||0;
+  const state=Math.abs(n)<0.005?'flat':n>0?'profit':'loss';
+  const label=state==='profit'?'PROFIT':state==='loss'?'LOSS':'BREAK EVEN';
+  badge.className='pnl-status-badge '+state;
+  if(badge.textContent!==label)badge.textContent=label;
+}
+function formatUtcClock(ts=Date.now()){
+  const n=+ts||Date.now();
+  const ms=n<1e12?n*1000:n;
+  return new Date(ms).toISOString().slice(11,19)+' UTC';
+}
+function setLiveTimestamp(ts=Date.now(),label='LIVE'){
+  const clock=formatUtcClock(ts);
+  setText('hTime',clock);
+  setText('lastUpdate','Última actualización: '+clock);
+  setText('detailUpdated','LIVE '+clock);
+  setText('execUpdated','LIVE '+clock);
+  const dot=document.getElementById('liveDot');
+  const txt=document.getElementById('liveTxt');
+  if(dot)dot.className='live-dot on';
+  if(txt)txt.textContent=label;
+}
+function updateLivePriceLine(price){
+  const p=+price||0;
+  if(!p)return;
+  const opts={price:p,color:'#57b0ff',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:'LIVE'};
+  try{
+    if(!livePriceLine)livePriceLine=candles.createPriceLine(opts);
+    else livePriceLine.applyOptions(opts);
+  }catch(e){}
+}
+function updatePriceHeader(price,prev){
+  const p=+price||0;
+  if(!p)return;
+  const up=p>=(prev||p);
+  const pe=document.getElementById('hPrice');
+  const priceText='$'+p.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:4});
+  if(pe&&pe.textContent!==priceText)writeAnimatedText(pe,priceText,up?'green':'red',true);
+  if(pe)pe.className='nav-price '+(up?'up':'down');
+  setText('marketLast',fmtUSD(p,4));
+  updateLivePriceLine(p);
+}
+function updateLiveVolume(candle){
+  if(!volSeries||!candle)return;
+  try{
+    volSeries.update({
+      time:candle.time,
+      value:+candle.volume||0,
+      color:candle.close>=candle.open?'rgba(0,229,160,.5)':'rgba(255,61,90,.5)'
+    });
+  }catch(e){}
+}
+function updateCurrentCandleFromPrice(price){
+  const p=+price||0;
+  if(!p||!fullKlines.length)return;
+  const last=fullKlines[fullKlines.length-1];
+  const next={...last,close:p,high:Math.max(+last.high||p,p),low:Math.min(+last.low||p,p)};
+  fullKlines[fullKlines.length-1]=next;
+  if(klineData.length)klineData[klineData.length-1]={time:next.time,open:next.open,high:next.high,low:next.low,close:next.close};
+  candles.update({time:next.time,open:next.open,high:next.high,low:next.low,close:next.close});
+  updateLiveVolume(next);
+}
 function fmtCompact(v){
   if(v==null||Number.isNaN(+v))return '—';
   const n=Math.abs(+v);
@@ -3135,11 +3217,81 @@ function updateTradeTelemetry(){
   setText('telemetryAvgR',closed.length?((avgR>=0?'+':'')+avgR.toFixed(2)+'R'):'—');
   const ar=document.getElementById('telemetryAvgR');
   if(ar)ar.style.color=avgR>=0?'var(--green)':'var(--red)';
-  setText('telemetryUnreal',fmtSignedUSD(accountSnapshot.totalUnreal||0));
-  const tu=document.getElementById('telemetryUnreal');
-  if(tu)tu.style.color=(accountSnapshot.totalUnreal||0)>=0?'var(--green)':'var(--red)';
+  setText('telemetryUnreal',fmtSignedUSDWithPct(accountSnapshot.totalUnreal||0,accountSnapshot.balance||0));
+  setSignedTone('telemetryUnreal',accountSnapshot.totalUnreal||0);
+}
+function getAccountPositionKey(acct){
+  return Object.entries(acct?.positions||{})
+    .sort(([a],[b])=>a.localeCompare(b))
+    .map(([sym,pos])=>[
+      sym,
+      pos?.side||'',
+      pos?.qty||pos?.positionAmt||0,
+      pos?.entryPrice||0,
+      pos?.sl||0,
+      pos?.tp||0
+    ].join(':'))
+    .join('|');
+}
+function queueTradeRefresh(delay=250){
+  clearTimeout(tradeRefreshTimer);
+  const elapsed=Date.now()-lastTradeRefreshAt;
+  const wait=Math.max(delay, 800-elapsed, 0);
+  tradeRefreshTimer=setTimeout(()=>{
+    lastTradeRefreshAt=Date.now();
+    loadDashboardState();
+  },wait);
+}
+function hydrateCurrentTradeFromAccount(acct){
+  const pos=acct?.positions?.[SYMBOL];
+  if(!pos){
+    if(currentTrade&&!isClosed&&currentTrade.source==='BINANCE_LIVE')queueTradeRefresh(0);
+    return;
+  }
+  const prev=currentTrade;
+  const mark=+pos.markPrice||0;
+  const merged={
+    ...(currentTrade||{}),
+    symbol:SYMBOL,
+    side:pos.side||currentTrade?.side||'LONG',
+    entryPrice:+pos.entryPrice||+currentTrade?.entryPrice||0,
+    sl:(+pos.sl>0?+pos.sl:(currentTrade?.sl??null)),
+    tp:(+pos.tp>0?+pos.tp:(currentTrade?.tp??null)),
+    qty:+pos.qty||Math.abs(+pos.positionAmt||0)||+currentTrade?.qty||0,
+    leverage:+pos.leverage||+currentTrade?.leverage||1,
+    openedAt:currentTrade?.openedAt||acct.ts||Date.now(),
+    finalScore:currentTrade?.finalScore??null,
+    aiRegime:currentTrade?.aiRegime||'LIVE',
+    aiBias:currentTrade?.aiBias||pos.side||'N/A',
+    stage:(currentTrade?.stage&&currentTrade.stage!=='CLOSED')?currentTrade.stage:'LIVE_ONLY',
+    status:'open',
+    initialSL:currentTrade?.initialSL||currentTrade?.sl||pos.sl||null,
+    source:currentTrade?.source||'BINANCE_LIVE',
+    unrealized:+pos.unrealized||0,
+    markPrice:mark,
+    hasSL:!!pos.hasSL,
+    hasTP:!!pos.hasTP
+  };
+  currentTrade=merged;
+  isClosed=false;
+  clearClosed();
+  const noTrade=document.getElementById('noTrade');
+  if(noTrade)noTrade.style.display='none';
+  if(mark>0){
+    const prevPrice=lastPrice;
+    lastPrice=mark;
+    updatePriceHeader(lastPrice,prevPrice);
+  }
+  const levelsChanged=!prev||prev.sl!==merged.sl||prev.tp!==merged.tp||prev.stage!==merged.stage||prev.entryPrice!==merged.entryPrice;
+  if(levelsChanged)drawLevels(merged,false);
+  updatePnL();
 }
 function applyAccountSnapshot(acct){
+  const positionKey=getAccountPositionKey(acct);
+  if(positionKey!==lastAccountPositionKey){
+    lastAccountPositionKey=positionKey;
+    if(!applyingDashboardState)queueTradeRefresh(0);
+  }
   const balance=+(acct.balance||0);
   const available=+(acct.available||0);
   const totalMargin=+(acct.totalMargin||0);
@@ -3152,9 +3304,8 @@ function applyAccountSnapshot(acct){
   setText('acctBalance',balance>0?fmtUSD(balance):'—');
   setText('acctAvail',available>0?fmtUSD(available):'—');
   setText('acctMargin',fmtUSD(totalMargin));
-  setText('acctUnreal',fmtSignedUSD(totalUnreal));
-  const unEl=document.getElementById('acctUnreal');
-  if(unEl)unEl.style.color=totalUnreal>=0?'var(--green)':'var(--red)';
+  setText('acctUnreal',fmtSignedUSDWithPct(totalUnreal,balance));
+  setSignedTone('acctUnreal',totalUnreal);
 
   setText('acctPositions',openCount+' abiertas');
   setText('acctMarginPct',marginPct.toFixed(1)+'%');
@@ -3173,11 +3324,11 @@ function applyAccountSnapshot(acct){
   if(roiEl)roiEl.style.color=(cachedAccountDerived.dailyRoi||0)>=0?'var(--green)':'var(--red)';
 
   setText('metricMarginInUse',fmtUSD(totalMargin));
-  setText('metricUnrealized',fmtSignedUSD(totalUnreal));
-  const mu=document.getElementById('metricUnrealized');
-  if(mu)mu.style.color=totalUnreal>=0?'var(--green)':'var(--red)';
+  setText('metricUnrealized',fmtSignedUSDWithPct(totalUnreal,balance));
+  setSignedTone('metricUnrealized',totalUnreal);
 
   updateWorkspacePanel({dailyPnl:cachedAccountDerived.dailyPnl||0,marginPct});
+  hydrateCurrentTradeFromAccount(acct);
   updateTradeTelemetry();
   syncExecutionPanel();
 }
@@ -3544,6 +3695,60 @@ async function loadDailyStats(){
   finally{pendingFetches.stats=false;}
 }
 
+function applyTradesSnapshot(active,closed){
+  tradeMap={active,closed};
+  if(lastPrice)wlPrices[SYMBOL]=lastPrice;
+  renderWatchlist(active,closed);
+  const prev=currentTrade,wasC=isClosed;
+  if(active[SYMBOL]){
+    currentTrade=active[SYMBOL];isClosed=false;clearClosed();
+    document.getElementById('noTrade').style.display='none';
+    const changed=!prev||prev.sl!==currentTrade.sl||prev.tp!==currentTrade.tp||prev.stage!==currentTrade.stage;
+    if(changed)drawLevels(currentTrade,false);
+  }else if(closed[SYMBOL]){
+    currentTrade=closed[SYMBOL];isClosed=true;
+    document.getElementById('noTrade').style.display='none';
+    if(!wasC||prev?.symbol!==SYMBOL){drawLevels(currentTrade,true);showClosed(currentTrade)}
+  }else{
+    currentTrade=null;document.getElementById('noTrade').style.display='flex';
+  }
+  document.getElementById('hSym').textContent=SYMBOL;
+  updateTradeTelemetry();
+  syncExecutionPanel();
+}
+
+async function loadDashboardState(){
+  if(pendingFetches.dashboard)return;
+  pendingFetches.dashboard=true;
+  lastTradeRefreshAt=Date.now();
+  try{
+    const r=await fetch('/api/dashboard/state',{cache:'no-store'});
+    const data=await r.json();
+    const active=data.trades?.active||{},closed=data.trades?.closed||{};
+    Object.assign(wlPrices,data.prices||{});
+    cachedAccountDerived={
+      dailyPnl:+(data.stats?.dailyPnl||0),
+      dailyRoi:+(data.stats?.dailyRoi||0),
+      marginPct:+(data.stats?.marginPct||0)
+    };
+    applyTradesSnapshot(active,closed);
+    applyingDashboardState=true;
+    applyAccountSnapshot(data.account||{});
+    applyingDashboardState=false;
+    const nowIso=new Date(data.ts||Date.now()).toISOString();
+    const shortUtc=nowIso.slice(11,19)+' UTC';
+    setText('lastUpdate','Última actualización: '+shortUtc);
+    setText('detailUpdated','updated '+shortUtc);
+    setText('execUpdated','updated '+shortUtc);
+    window.AterumAssistant?.notifyContextChanged({refetchSummary:true});
+  }catch(e){
+    console.log('Dashboard state:',e.message);
+  }finally{
+    applyingDashboardState=false;
+    pendingFetches.dashboard=false;
+  }
+}
+
 async function loadKlines(){
   if(pendingFetches.klines)return;
   pendingFetches.klines=true;
@@ -3559,10 +3764,7 @@ async function loadKlines(){
 	    if(latest){
 	      const prevClose=fullKlines[fullKlines.length-2]?.close ?? latest.close;
 	      lastPrice=latest.close;
-      const pe=document.getElementById('hPrice');
-      writeAnimatedText(pe,'$'+lastPrice.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:4}),lastPrice>=prevClose?'green':'red',true);
-      pe.className='nav-price '+(lastPrice>=prevClose?'up':'down');
-      setText('marketLast',fmtUSD(lastPrice,4));
+      updatePriceHeader(lastPrice,prevClose);
 	    }
 	    chart.timeScale().fitContent();
 	    if(currentTrade)drawLevels(currentTrade,isClosed);
@@ -3573,40 +3775,56 @@ async function loadKlines(){
 	  }catch(e){console.error('Klines:',e)}
   finally{pendingFetches.klines=false;}
 }
+function applyLivePrice(price,eventTime,source){
+  const p=+price||0;
+  if(!p)return;
+  const prev=lastPrice;
+  lastPrice=p;
+  wlPrices[SYMBOL]=p;
+  updatePriceHeader(p,prev);
+  updateCurrentCandleFromPrice(p);
+  setLiveTimestamp(eventTime||Date.now(),source==='BINANCE_MARK_PRICE'?'LIVE':'LIVE');
+  if(currentTrade&&!isClosed){
+    currentTrade.markPrice=p;
+    const entry=+currentTrade.entryPrice||0;
+    const qty=+currentTrade.qty||0;
+    if(entry>0&&qty>0){
+      currentTrade.unrealized=currentTrade.side==='SHORT'?(entry-p)*qty:(p-entry)*qty;
+    }
+    updatePnL();
+  }
+  recomputeMarketStats();
+  updateMarketDashboard();
+  if(tradeMap?.active)renderWatchlist(tradeMap.active,tradeMap.closed||{});
+}
 function connectSSE(){
   if(priceStream&&(priceStream.readyState===WebSocket.OPEN||priceStream.readyState===WebSocket.CONNECTING))return priceStream;
   clearTimeout(priceReconnectTimer);
   priceStream=new WebSocket(getRealtimeURL('market'));
-  priceStream.onopen=()=>{document.getElementById('liveDot').className='live-dot on';document.getElementById('liveTxt').textContent='live';};
+  priceStream.onopen=()=>{setLiveTimestamp(Date.now(),'LIVE');};
   priceStream.onmessage=ev=>{
     try{
       const msg=JSON.parse(ev.data);
+      if(msg.type==='price'){
+        applyLivePrice(msg.price,msg.eventTime,msg.source);
+        return;
+      }
       if(msg.type!=='candle')return;
       const c=msg.candle;
       const prevTime=klineData[klineData.length-1]?.time||0;
       const isNewCandle=c.time>prevTime;
       candles.update({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close});
       if(klineData.length&&prevTime===c.time){
-        klineData[klineData.length-1]={...c};
+        klineData[klineData.length-1]={time:c.time,open:c.open,high:c.high,low:c.low,close:c.close};
         if(fullKlines.length)fullKlines[fullKlines.length-1]={...fullKlines[fullKlines.length-1],...c};
       } else if(isNewCandle){
-        klineData.push({...c});
-        if(fullKlines.length)fullKlines.push({...c,volume:0});
+        klineData.push({time:c.time,open:c.open,high:c.high,low:c.low,close:c.close});
+        if(fullKlines.length)fullKlines.push({...c,volume:+c.volume||0});
       }
       const prev=lastPrice;lastPrice=c.close;
-      const pe=document.getElementById('hPrice');
-      const priceText='$'+lastPrice.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:4});
-      if(pe.textContent!==priceText){
-        writeAnimatedText(pe,priceText,lastPrice>=(prev||lastPrice)?'green':'red',true);
-      }
-      pe.className='nav-price '+(lastPrice>=(prev||lastPrice)?'up':'down');
-      const nowIso=new Date().toISOString();
-      const nowUtc=nowIso.replace('T',' ').slice(0,19)+' UTC';
-      const shortUtc=nowIso.slice(11,19)+' UTC';
-      setText('hTime',nowUtc);
-      setText('lastUpdate',nowUtc);
-      setText('detailUpdated','updated '+shortUtc);
-      setText('execUpdated','updated '+shortUtc);
+      updatePriceHeader(lastPrice,prev);
+      updateLiveVolume(c);
+      setLiveTimestamp(msg.eventTime||Date.now(),'LIVE');
       if(isNewCandle||c.closed)recomputeMarketStats();
       updateMarketDashboard();
       if(!isClosed)updatePnL();
@@ -3622,27 +3840,32 @@ function connectSSE(){
   return priceStream;
 }
 function updatePnL(){
-  if(!lastPrice||!currentTrade||isClosed)return;
+  if(!currentTrade||isClosed)return;
+  const livePrice=+(lastPrice||currentTrade.markPrice||0);
+  const hasAccountPnl=currentTrade.unrealized!==undefined&&currentTrade.unrealized!==null&&Number.isFinite(+currentTrade.unrealized);
+  if(!livePrice&&!hasAccountPnl)return;
+  if(livePrice)lastPrice=livePrice;
   const e=+currentTrade.entryPrice,s=+currentTrade.sl,q=+currentTrade.qty,side=currentTrade.side;
   const tp=+currentTrade.tp;
-  const fallbackUnrealized=+currentTrade.unrealized||0;
-  const pnl=(e>0&&q>0)?(side==='SHORT'?(e-lastPrice)*q:(lastPrice-e)*q):fallbackUnrealized;
-  const pct=e>0?((pnl/(e*q))*100).toFixed(2):'0.00';
-  const win=side==='SHORT'?lastPrice<e:lastPrice>e;
+  const calculatedPnl=(e>0&&q>0&&lastPrice>0)?(side==='SHORT'?(e-lastPrice)*q:(lastPrice-e)*q):0;
+  const pnl=hasAccountPnl?+currentTrade.unrealized:calculatedPnl;
+  const pct=e>0&&q>0?(pnl/(e*q))*100:0;
+  const win=pnl>=0;
   // R: initialSL > SL actual > inferir desde TP asumiendo RR 1:2
   const initialSL=+(currentTrade.initialSL||0);
   const ir=initialSL>0 ? Math.abs(e-initialSL)
          : s>0         ? Math.abs(e-s)
          : null;
-  const curR=ir?Math.abs(lastPrice-e)/ir:null;
+  const curR=ir&&lastPrice>0?Math.abs(lastPrice-e)/ir:null;
   // PnL hero
   document.getElementById('pnlHero').className='pnl-hero'+(pnl<0?' loss':'');
   const pv=document.getElementById('pnlVal');
-  const pvTxt=(pnl>=0?'+':'')+'$'+Math.abs(pnl).toFixed(2);
+  const pvTxt=fmtSignedUSD(pnl,2);
   if(pv.textContent!==pvTxt){writeAnimatedText(pv,pvTxt,pnl>=0?'green':'red',true);pv.style.color=pnl>=0?'var(--green)':'var(--red)';}
   const pp=document.getElementById('pnlPct');
-  const ppTxt=(pnl>=0?'+':'')+pct+'%';
+  const ppTxt=fmtPct(pct,2);
   if(pp.textContent!==ppTxt){writeAnimatedText(pp,ppTxt,pnl>=0?'green':'red',true);pp.style.color=pnl>=0?'var(--green)':'var(--red)';}
+  updatePnlBadge(pnl);
   // Duracion
   const mins=Math.floor((Date.now()-currentTrade.openedAt)/60000);
   const durTxt=mins<60?mins+' min':Math.floor(mins/60)+'h '+(mins%60)+'m';
@@ -3676,12 +3899,13 @@ function showClosed(t){
   document.getElementById('pnlLbl').textContent='PnL Final';
   const pnl=t.finalPnL||0,e=+t.entryPrice,q=+t.qty;
   const pv=document.getElementById('pnlVal');
-  writeAnimatedText(pv,(pnl>=0?'+':'')+'$'+Math.abs(pnl).toFixed(2),pnl>=0?'green':'red',true);
+  writeAnimatedText(pv,fmtSignedUSD(pnl,2),pnl>=0?'green':'red',true);
   pv.style.color=pnl>=0?'var(--green)':'var(--red)';
-  const pct=e>0?((pnl/(e*q))*100).toFixed(2):'0.00';
+  const pct=e>0&&q>0?(pnl/(e*q))*100:0;
   const pp=document.getElementById('pnlPct');
-  writeAnimatedText(pp,(pnl>=0?'+':'')+pct+'%',pnl>=0?'green':'red',true);
+  writeAnimatedText(pp,fmtPct(pct,2),pnl>=0?'green':'red',true);
   pp.style.color=pnl>=0?'var(--green)':'var(--red)';
+  updatePnlBadge(pnl);
   const dur=t.duration||0,m=Math.floor(dur/60000);
   document.getElementById('dur').textContent=m<60?m+' min':Math.floor(m/60)+'h '+(m%60)+'m';
   const fr=parseFloat(t.finalR||0),pos=fr>=0;
@@ -3704,6 +3928,7 @@ function clearClosed(){
   document.getElementById('closedSec').style.display='none';
   document.getElementById('sl-indicator').style.display='none';
   document.getElementById('tp-indicator').style.display='none';
+  updatePnlBadge(0);
   syncExecutionPanel();
 }
 function renderWatchlist(active,closed){
@@ -3721,6 +3946,7 @@ function renderWatchlist(active,closed){
     const pnl=hasCalc
       ? (t.side==='SHORT'?(entry-price)*qty:(price-entry)*qty)
       : (+t.unrealized||0);
+    const pnlText=fmtSignedUSDWithPct(pnl,entry*qty,2);
     const initialSL=+(t.initialSL||t.sl);
     const ir=initialSL>0&&entry>0?Math.abs(entry-initialSL):0;
     const curR=ir>0?((Math.abs(price-entry)/ir)*(pnl>=0?1:-1)).toFixed(2):null;
@@ -3729,7 +3955,7 @@ function renderWatchlist(active,closed){
     const liveBadge=t.source==='BINANCE_LIVE'?'● LIVE BINANCE'+protectionBadge:'● LIVE';
     const el=document.createElement('div');
     el.className='wl-item'+(isAct?' active open-'+t.side.toLowerCase():' open-'+t.side.toLowerCase());
-    el.innerHTML='<div class="wl-row1"><div class="wl-sym">'+sym.replace('USDT','')+'<span>/USDT</span></div><div class="wl-pnl '+(pnl>=0?'pp':'pn')+'">'+(pnl>=0?'+':'')+'$'+Math.abs(pnl).toFixed(2)+'</div></div>'+
+    el.innerHTML='<div class="wl-row1"><div class="wl-sym">'+sym.replace('USDT','')+'<span>/USDT</span></div><div class="wl-pnl '+(pnl>=0?'pp':'pn')+'">'+pnlText+'</div></div>'+
       '<div class="wl-row2"><span class="wl-badge live">'+liveBadge+'</span><span class="wl-r '+((curR==null||+curR>=0)?'c-green':'c-red')+'">'+(curR==null?'—':((+curR>=0?'+':'')+curR+'R'))+'</span></div>'+
       '<div class="wl-bar"><div class="wl-bar-fill '+(pnl>=0?'wl-bar-p':'wl-bar-n')+'" style="width:'+(curR==null?0:Math.min(Math.abs(+curR)/2.2*100,100))+'%"></div></div>';
     el.onclick=()=>window.location.href='/dashboard?symbol='+sym;
@@ -3737,9 +3963,10 @@ function renderWatchlist(active,closed){
   });
   Object.entries(closed).forEach(([sym,t])=>{
     const pnl=t.finalPnL||0,fr=t.finalR||'0',isAct=sym===SYMBOL;
+    const pnlText=fmtSignedUSDWithPct(pnl,(+t.entryPrice||0)*(+t.qty||0),2);
     const el=document.createElement('div');
     el.className='wl-item closed-item'+(isAct?' active':'');
-    el.innerHTML='<div class="wl-row1"><div class="wl-sym" style="color:var(--text2)">'+sym.replace('USDT','')+'<span>/USDT</span></div><div class="wl-pnl '+(pnl>=0?'pp':'pn')+'">'+(pnl>=0?'+':'')+'$'+Math.abs(pnl).toFixed(2)+'</div></div>'+
+    el.innerHTML='<div class="wl-row1"><div class="wl-sym" style="color:var(--text2)">'+sym.replace('USDT','')+'<span>/USDT</span></div><div class="wl-pnl '+(pnl>=0?'pp':'pn')+'">'+pnlText+'</div></div>'+
       '<div class="wl-row2"><span class="wl-badge closed">◉ CERRADO</span><span class="wl-r '+(+fr>=0?'c-green':'c-red')+'">'+(+fr>=0?'+':'')+fr+'R</span></div>';
     el.onclick=()=>window.location.href='/dashboard?symbol='+sym;
     closedEl.appendChild(el);
@@ -3748,31 +3975,14 @@ function renderWatchlist(active,closed){
 async function loadTrades(){
   if(pendingFetches.trades)return;
   pendingFetches.trades=true;
+  lastTradeRefreshAt=Date.now();
   try{
     const r=await fetch('/trades');
     const data=await r.json();
     const active=data.active||{},closed=data.closed||{};
-    tradeMap={active,closed};
     try{ const pr=await fetch('/api/all-prices'); const pd=await pr.json(); Object.assign(wlPrices,pd); }catch(e){}
-    if(lastPrice)wlPrices[SYMBOL]=lastPrice;
-    renderWatchlist(active,closed);
-    const prev=currentTrade,wasC=isClosed;
-    if(active[SYMBOL]){
-      currentTrade=active[SYMBOL];isClosed=false;clearClosed();
-      document.getElementById('noTrade').style.display='none';
-      const changed=!prev||prev.sl!==currentTrade.sl||prev.tp!==currentTrade.tp||prev.stage!==currentTrade.stage;
-      if(changed)drawLevels(currentTrade,false);
-    }else if(closed[SYMBOL]){
-      currentTrade=closed[SYMBOL];isClosed=true;
-      document.getElementById('noTrade').style.display='none';
-      if(!wasC||prev?.symbol!==SYMBOL){drawLevels(currentTrade,true);showClosed(currentTrade)}
-    }else{
-      currentTrade=null;document.getElementById('noTrade').style.display='flex';
-    }
-    document.getElementById('hSym').textContent=SYMBOL;
-    updateTradeTelemetry();
+    applyTradesSnapshot(active,closed);
     updateWorkspacePanel({dailyPnl:0,marginPct:parseFloat((document.getElementById('acctMarginPct')||{}).textContent)||0});
-    syncExecutionPanel();
     window.AterumAssistant?.notifyContextChanged({refetchSummary:true});
   }catch(e){console.log('Trades:',e.message)}
   finally{pendingFetches.trades=false;}
@@ -3827,8 +4037,8 @@ window.addEventListener('beforeunload',()=>{
 });
 syncResponsiveState();
 initEliteMotion();
-connectSSE();startAccountStream();loadKlines();loadTrades();loadAccountData();loadDailyStats();
-setInterval(loadKlines,300000);setInterval(loadTrades,5000);setInterval(updatePnL,1000);setInterval(loadAccountData,300000);setInterval(loadDailyStats,300000);
+connectSSE();startAccountStream();loadKlines();loadDashboardState();
+setInterval(loadKlines,60000);setInterval(loadDashboardState,1500);setInterval(updatePnL,500);
 </script>
 <script>${getSharedScript()}</script>
 </body></html>`; }
