@@ -159,7 +159,8 @@ async function getResearchSymbols() {
 }
 
 async function getResearchHours() {
-  const bucket = hourBucketSql('tc.closed_at');
+  // El edge horario pertenece al momento de entrada, no al cierre del trade.
+  const bucket = hourBucketSql('t.opened_at');
   const rows = await query(`SELECT
       ${bucket} AS bucket,
       COUNT(*) AS trades,
@@ -168,6 +169,7 @@ async function getResearchHours() {
       AVG(tc.pnl_usdt) AS expectancy,
       AVG(tc.r_final) AS avg_r
     FROM trade_closes tc
+    JOIN trades t ON t.id=tc.trade_id
     GROUP BY bucket
     ORDER BY FIELD(bucket,'00-04','04-08','08-12','12-16','16-20','20-24')`);
 
@@ -518,7 +520,7 @@ async function inferEvidenceLevel(evidence = {}) {
     params.push(...symbols);
   }
   if (hours.length) {
-    filters.push(`${hourBucketSql('tc.closed_at')} IN (${hours.map(() => '?').join(',')})`);
+    filters.push(`${hourBucketSql('t.opened_at')} IN (${hours.map(() => '?').join(',')})`);
     params.push(...hours);
   }
   const rows = await query(`SELECT COUNT(*) AS n
@@ -620,13 +622,13 @@ async function syncRecommendationsForReport(reportId) {
 
 async function getPerformanceWindow(start, end, symbols = [], buckets = []) {
   const params = [start, end];
-  const filters = [`tc.closed_at >= ?`, `tc.closed_at < ?`];
+  const filters = [`t.opened_at >= ?`, `t.opened_at < ?`];
   if (symbols.length) {
     filters.push(`t.symbol IN (${symbols.map(() => '?').join(',')})`);
     params.push(...symbols);
   }
   if (buckets.length) {
-    filters.push(`${hourBucketSql('tc.closed_at')} IN (${buckets.map(() => '?').join(',')})`);
+    filters.push(`${hourBucketSql('t.opened_at')} IN (${buckets.map(() => '?').join(',')})`);
     params.push(...buckets);
   }
   const rows = await query(`SELECT
@@ -663,25 +665,31 @@ function sqlDateTime(date) {
 }
 
 async function reviewRecommendation(rec, now = new Date()) {
-  const createdAt = new Date(rec.created_at);
+  if (rec.implementation_status !== 'implementada' || !rec.implemented_at) {
+    return { id: rec.id, skipped: true, reason: 'La recomendación aún no fue implementada por Learning Engine.' };
+  }
+  const implementedAt = new Date(rec.implemented_at);
   const evaluationEnd = now;
-  const evaluationStart = createdAt;
-  const baselineEnd = createdAt;
-  const baselineStart = addDays(createdAt, -14);
+  const evaluationStart = implementedAt;
+  const baselineEnd = implementedAt;
+  const baselineStart = addDays(implementedAt, -14);
   const evidence = typeof rec.evidence === 'string' ? JSON.parse(rec.evidence || '{}') : (rec.evidence || {});
   const symbols = evidence.symbols || extractSymbolsFromText(rec.recommendation);
   const hours = evidence.hours || extractHourBucketsFromText(rec.recommendation);
 
   const before = await getPerformanceWindow(sqlDateTime(baselineStart), sqlDateTime(baselineEnd), symbols, hours);
   const after = await getPerformanceWindow(sqlDateTime(evaluationStart), sqlDateTime(evaluationEnd), symbols, hours);
+  const minRows = await query(`SELECT config_value FROM learning_config WHERE config_key='soft_min_sample' LIMIT 1`);
+  const minSample = Math.max(4, numberValue(minRows?.[0]?.config_value, 8));
+  const enoughEvidence = before.trades >= minSample && after.trades >= minSample;
   const pnlDelta = after.pnl - before.pnl;
   const expectancyDelta = after.expectancy - before.expectancy;
   const winRateDelta = after.winRate - before.winRate;
   const impactScore = round((expectancyDelta * 4) + (pnlDelta * 0.4) + (winRateDelta * 0.15), 3);
-  const outcome = after.trades < 1 ? 'neutral' : impactScore > 0.5 ? 'positive' : impactScore < -0.5 ? 'negative' : 'neutral';
+  const outcome = !enoughEvidence ? 'neutral' : impactScore > 0.5 ? 'positive' : impactScore < -0.5 ? 'negative' : 'neutral';
   const status = outcome === 'positive' ? 'validated' : outcome === 'negative' ? 'rejected' : 'reviewing';
-  const notes = after.trades < 1
-    ? 'Sin operaciones suficientes después de la recomendación; se mantiene en revisión.'
+  const notes = !enoughEvidence
+    ? `Muestra insuficiente para revisar la regla implementada: antes ${before.trades}/${minSample}, después ${after.trades}/${minSample}.`
     : `Antes: ${before.trades} trades, PnL ${before.pnl}, Exp ${before.expectancy}. Después: ${after.trades} trades, PnL ${after.pnl}, Exp ${after.expectancy}.`;
 
   await db.execute(
@@ -691,8 +699,11 @@ async function reviewRecommendation(rec, now = new Date()) {
     [rec.id, sqlDateTime(baselineStart), sqlDateTime(baselineEnd), sqlDateTime(evaluationStart), sqlDateTime(evaluationEnd), JSON.stringify(before), JSON.stringify(after), impactScore, outcome, notes]
   );
   await db.execute(
-    `UPDATE ai_recommendations SET status=?, review_date=NOW(), impact_score=?, outcome=?, notes=? WHERE id=?`,
-    [status, impactScore, outcome, notes, rec.id]
+    `UPDATE ai_recommendations SET status=?, review_date=NOW(), impact_score=?, outcome=?, notes=?,
+      implementation_status=IF(?='rejected','descartada',implementation_status),
+      implementation_reason=IF(?='rejected','La evaluación posterior mostró impacto negativo',implementation_reason)
+     WHERE id=?`,
+    [status, enoughEvidence ? impactScore : null, outcome, notes, status, status, rec.id]
   );
   return { id: rec.id, outcome, status, impactScore, before, after, notes };
 }
@@ -701,7 +712,9 @@ async function reviewDueRecommendations() {
   await ensureRecommendationTables();
   const rows = await query(`SELECT *
     FROM ai_recommendations
-    WHERE created_at <= DATE_SUB(NOW(), INTERVAL 1 DAY)
+    WHERE implementation_status='implementada'
+      AND implemented_at <= DATE_SUB(NOW(), INTERVAL 1 DAY)
+      AND status <> 'rejected'
       AND (review_date IS NULL OR review_date <= DATE_SUB(NOW(), INTERVAL 1 DAY))
     ORDER BY created_at ASC
     LIMIT 100`);

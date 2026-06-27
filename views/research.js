@@ -47,7 +47,7 @@ body.research-v1{margin:0;background:var(--bg);color:var(--text);font-family:var
 .section-title{font:800 10px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:#c9d8eb}
 .section-sub{font-size:10px;color:var(--muted);line-height:1.45;margin-top:5px}
 .body{padding:16px}
-.flow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.flow{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:8px}
 .flow-step{border:1px solid var(--line);background:rgba(7,11,18,.58);border-radius:6px;min-height:62px;padding:10px;display:flex;align-items:center;justify-content:center;text-align:center;font:800 10px/1.3 var(--mono);color:#d8e6f8}
 .help-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
 .help-card{border-left:2px solid var(--blue);background:rgba(87,176,255,.045);padding:10px 12px;border-radius:0 6px 6px 0}
@@ -55,6 +55,7 @@ body.research-v1{margin:0;background:var(--bg);color:var(--text);font-family:var
 .help-copy{font-size:10px;line-height:1.55;color:var(--muted)}
 .table-wrap{overflow:auto}
 table{width:100%;border-collapse:collapse}
+.table-wrap .learning-table{min-width:1120px!important}
 th{position:sticky;top:0;background:#0c131d;border-bottom:1px solid var(--line2);padding:10px 12px;text-align:left;font:800 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#91a4ba;white-space:nowrap}
 td{border-bottom:1px solid rgba(148,163,184,.1);padding:11px 12px;vertical-align:top;font-size:11px;line-height:1.5;color:#d6e2f1}
 tr:hover td{background:rgba(87,176,255,.035)}
@@ -95,7 +96,7 @@ ${getSharedNav('research', user, 'blue')}
     <section class="surface pad">
       <div class="kicker">AI Research Terminal</div>
       <h1 class="title">Research</h1>
-      <div class="copy">Centro de interpretación de Anthropic sobre datos reales del sistema. Analytics muestra métricas; Research explica hipótesis, riesgos, oportunidades, recomendaciones y su impacto histórico.</div>
+      <div class="copy">Centro de aprendizaje operativo basado en datos reales. Research interpreta el histórico, construye reglas dinámicas y audita cómo esas reglas modifican cada decisión antes de una entrada.</div>
     </section>
     <section class="surface pad">
       <div class="status-grid" id="headerStatus">${getLoadingMarkup('Cargando estado')}</div>
@@ -108,18 +109,18 @@ ${getSharedNav('research', user, 'blue')}
         <div class="section-title">Overview</div>
         <div class="section-sub">Qué hace, qué no hace y cómo debe interpretarse.</div>
       </div>
-      <span class="chip info">Observacional</span>
+      <span class="chip info" id="learningMode">Cargando modo</span>
     </div>
     <div class="body">
       <div class="grid-3">
-        <div class="item"><div class="item-title">Qué es</div><div class="item-meta">Un sistema de aprendizaje operativo que analiza trades, cierres, rechazos, horarios, símbolos y post-trade analysis.</div></div>
-        <div class="item"><div class="item-title">Qué no hace</div><div class="item-meta">No abre operaciones, no toca Binance, no cambia ATR, RSI, trailing, scoring ni Risk Guard.</div></div>
-        <div class="item"><div class="item-title">Cuándo actuar</div><div class="item-meta">Cuando la recomendación tenga evidencia, confianza razonable y el Review Engine la valide con datos posteriores.</div></div>
+        <div class="item"><div class="item-title">Qué es</div><div class="item-meta">Un motor que convierte rendimiento histórico y recomendaciones corroboradas en pesos por símbolo, setup, sesión, régimen y score.</div></div>
+        <div class="item"><div class="item-title">Qué no hace</div><div class="item-meta">No cambia ATR, RSI, trailing ni órdenes abiertas. Sólo permite, penaliza, prioriza o rechaza una nueva entrada antes de Position Sizer.</div></div>
+        <div class="item"><div class="item-title">Cuándo aprende</div><div class="item-meta">Una regla influye al superar la muestra mínima. Los bloqueos requieren una muestra mayor y evidencia negativa concordante.</div></div>
       </div>
       <div class="help-grid">
-        <div class="help-card"><div class="help-title">Confianza</div><div class="help-copy">Lectura de fuerza de la hipótesis extraída del informe. No es permiso para ejecutar cambios.</div></div>
-        <div class="help-card"><div class="help-title">Impacto</div><div class="help-copy">Diferencia medida entre ventana previa y posterior usando PnL, expectancy y win rate.</div></div>
-        <div class="help-card"><div class="help-title">Estado</div><div class="help-copy">Pending espera datos; reviewing no concluye; validated mejora; rejected empeora.</div></div>
+        <div class="help-card"><div class="help-title">Peso</div><div class="help-copy">1.00 es neutral. Menor a 1 penaliza el score; mayor a 1 lo prioriza dentro de límites conservadores.</div></div>
+        <div class="help-card"><div class="help-title">Evidencia</div><div class="help-copy">La hora corresponde a la entrada. Research y Review Engine sólo refuerzan una regla cuando los trades reales coinciden.</div></div>
+        <div class="help-card"><div class="help-title">Protección</div><div class="help-copy">Pérdida diaria, semanal, drawdown y rachas pueden detener nuevas entradas. Nunca cierran una posición existente.</div></div>
       </div>
     </div>
   </section>
@@ -140,11 +141,38 @@ ${getSharedNav('research', user, 'blue')}
         <div class="flow-step">Anthropic</div>
         <div class="flow-step">Recommendations</div>
         <div class="flow-step">Review Engine</div>
+        <div class="flow-step">Learning Engine</div>
+        <div class="flow-step">Entry Gate</div>
       </div>
     </div>
   </section>
 
   <section class="metric-grid" id="recommendationMetrics">${getLoadingMarkup('Cargando KPIs')}</section>
+
+  <section class="surface section">
+    <div class="section-head">
+      <div>
+        <div class="section-title">Learning Engine</div>
+        <div class="section-sub">Reglas que realmente intervienen antes de abrir una operación.</div>
+      </div>
+      <span class="chip info" id="learningUpdated">Sin reconstrucción</span>
+    </div>
+    <div class="body"><div class="metric-grid" id="learningMetrics">${getLoadingMarkup('Cargando motor')}</div></div>
+    <div class="table-wrap">
+      <table class="learning-table"><thead><tr><th>Estado</th><th>Dimensión</th><th>Regla</th><th>Acción</th><th>Peso</th><th>Muestra</th><th>Win Rate</th><th>Expectancy</th><th>PF</th><th>Evidencia</th></tr></thead><tbody id="learningRules"><tr><td colspan="10">${getLoadingMarkup('Cargando reglas')}</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <div class="grid-2">
+    <section class="surface section">
+      <div class="section-head"><div><div class="section-title">Capital Protection</div><div class="section-sub">Circuit breakers calculados con resultados reales y balance actual.</div></div></div>
+      <div class="body"><div class="list" id="capitalStatus">${getLoadingMarkup('Cargando protección')}</div></div>
+    </section>
+    <section class="surface section">
+      <div class="section-head"><div><div class="section-title">Recent Decisions</div><div class="section-sub">Últimas evaluaciones del Entry Gate, incluidas pruebas controladas.</div></div></div>
+      <div class="body"><div class="list" id="learningDecisions">${getLoadingMarkup('Cargando decisiones')}</div></div>
+    </section>
+  </div>
 
   <section class="surface section">
     <div class="section-head">
@@ -178,7 +206,7 @@ ${getSharedNav('research', user, 'blue')}
     <div class="section-head">
       <div>
         <div class="section-title">Recommendations</div>
-        <div class="section-sub">Recomendaciones completas con evidencia, estado, impacto y resultado. La acción es siempre manual.</div>
+        <div class="section-sub">Hipótesis de Anthropic y su estado real: implementada, en prueba o descartada.</div>
       </div>
       <span class="chip warn" id="recReviewStatus">Cargando</span>
     </div>
@@ -216,13 +244,17 @@ let researchReports=[];
 let researchRecommendations=[];
 let recommendationPerformance=null;
 let strategyEvolution=[];
+let learningSummary=null;
+let learningRules=[];
+let learningDecisions=[];
 
 function escapeHtml(value){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function safeJson(value,fallback){if(value&&typeof value==='object')return value;if(!value)return fallback;try{return JSON.parse(value)}catch(e){return fallback}}
 function fmtDate(value){if(!value)return 'sin fecha';return String(value).slice(0,10)}
-function statusLabel(value){return ({pending:'pendiente',reviewing:'en revisión',validated:'validada',rejected:'rechazada',positive:'positivo',neutral:'neutral',negative:'negativo',baja:'baja',media:'media',alta:'alta',pendiente:'pendiente',en_prueba:'en prueba',implementada:'implementada',descartada:'descartada'})[value]||value||'pendiente'}
-function chipClass(value){return ({validated:'good',positive:'good',implementada:'good',rejected:'bad',negative:'bad',descartada:'bad',pending:'warn',pendiente:'warn',reviewing:'info',neutral:'info',en_prueba:'info',baja:'warn',media:'info',alta:'good'})[value]||'info'}
+function statusLabel(value){return ({pending:'pendiente',reviewing:'en revisión',validated:'validada',rejected:'rechazada',positive:'positivo',neutral:'neutral',negative:'negativo',baja:'baja',media:'media',alta:'alta',low:'baja',medium:'media',high:'alta',active:'activa',monitoring:'observando',suspended:'suspendida',reduce:'reducir',prioritize:'priorizar',block:'bloquear',halt:'detener',pendiente:'pendiente',en_prueba:'en prueba',implementada:'implementada',descartada:'descartada',enforce:'aplicando',observe:'observando',disabled:'desactivado',ALLOW:'permitida',REJECT:'rechazada',HALT:'detenida'})[value]||value||'pendiente'}
+function chipClass(value){return ({validated:'good',positive:'good',implementada:'good',active:'good',prioritize:'good',ALLOW:'good',rejected:'bad',negative:'bad',descartada:'bad',block:'bad',halt:'bad',REJECT:'bad',HALT:'bad',pending:'warn',pendiente:'warn',monitoring:'warn',reduce:'warn',reviewing:'info',neutral:'info',suspended:'info',en_prueba:'info',baja:'warn',low:'warn',media:'info',medium:'info',alta:'good',high:'good',enforce:'good'})[value]||'info'}
 function metric(label,value,sub){return '<div class="metric fade-in"><div class="label">'+escapeHtml(label)+'</div><div class="value">'+escapeHtml(value)+'</div><div class="sub">'+escapeHtml(sub)+'</div></div>'}
+function signed(value,decimals=2){const n=Number(value||0);return (n>0?'+':'')+n.toFixed(decimals)}
 
 function renderHeader(){
   const latest=researchReports[0]||null;
@@ -311,6 +343,40 @@ function renderLearning(){
   renderHeader();
 }
 
+function renderLearningEngine(){
+  const summary=learningSummary||{};
+  const rules=summary.rules||{};
+  const decisions=summary.decisions||{};
+  const recommendations=summary.recommendations||{};
+  const capital=summary.capital||{};
+  const config=summary.config||{};
+  document.getElementById('learningMode').textContent='Motor '+statusLabel(summary.mode);
+  document.getElementById('learningMode').className='chip '+chipClass(summary.mode);
+  document.getElementById('learningUpdated').textContent=summary.latestRun?.created_at?String(summary.latestRun.created_at).replace('T',' ').slice(0,16)+' UTC':'Sin reconstrucción';
+  document.getElementById('learningMetrics').innerHTML=[
+    metric('Reglas activas',rules.active||0,(rules.new_active||0)+' nuevas · '+(rules.reduced||0)+' reducen · '+(rules.prioritized||0)+' priorizan'),
+    metric('En observación',rules.monitoring||0,(rules.suspended||0)+' suspendidas · mínimo '+(config.softMinSample||0)+' cierres'),
+    metric('Bloqueos',rules.blocked||0,'mínimo '+(config.hardMinSample||0)+' cierres'),
+    metric('Decisiones 7d',decisions.total||0,(decisions.allowed||0)+' permitidas · '+(decisions.rejected||0)+' rechazadas'),
+    metric('Implementadas',recommendations.implemented||0,(recommendations.testing||0)+' en prueba · impacto '+Number(recommendations.cumulative_impact||0).toFixed(2)),
+    metric('Descartadas',recommendations.discarded||0,'no participan en el score')
+  ].join('');
+
+  const tbody=document.getElementById('learningRules');
+  if(!learningRules.length){tbody.innerHTML='<tr><td colspan="10" class="empty">Todavía no hay reglas calculadas</td></tr>'}
+  else tbody.innerHTML=learningRules.map(rule=>'<tr><td><span class="chip '+chipClass(rule.status)+'">'+escapeHtml(statusLabel(rule.status))+'</span></td><td>'+escapeHtml(rule.rule_type)+'</td><td><div class="rec-text">'+escapeHtml(rule.rule_key)+'</div><div class="rec-detail">'+escapeHtml(rule.rationale||'')+'</div></td><td><span class="chip '+chipClass(rule.action)+'">'+escapeHtml(statusLabel(rule.action))+'</span></td><td>'+Number(rule.weight||1).toFixed(3)+'</td><td>'+Number(rule.sample_size||0)+'</td><td>'+Number(rule.win_rate||0).toFixed(1)+'%</td><td>'+signed(rule.expectancy,3)+'</td><td>'+Number(rule.profit_factor||0).toFixed(2)+'</td><td><span class="chip '+chipClass(rule.evidence_level)+'">'+escapeHtml(statusLabel(rule.evidence_level))+'</span></td></tr>').join('');
+
+  const capitalRows=[
+    {title:capital.halted?'Nuevas entradas detenidas':'Protección disponible',meta:capital.halted?(capital.reasons||[]).join(' · '):'Ningún límite alcanzado',tone:capital.halted?'bad':'good'},
+    {title:'Día '+signed(capital.dailyPnl)+' USDT ('+signed(capital.dailyPct,2)+'%)',meta:'Límite '+Number(config.dailyLossLimitPct||0).toFixed(1)+'%',tone:Number(capital.dailyPct||0)<0?'warn':'good'},
+    {title:'7 días '+signed(capital.weeklyPnl)+' USDT ('+signed(capital.weeklyPct,2)+'%)',meta:'Límite '+Number(config.weeklyLossLimitPct||0).toFixed(1)+'%',tone:Number(capital.weeklyPct||0)<0?'warn':'good'},
+    {title:'Drawdown '+signed(capital.maxDrawdown)+' USDT ('+signed(capital.drawdownPct,2)+'%)',meta:'Racha global: '+Number(capital.streaks?.global||0)+' pérdidas',tone:Number(capital.drawdownPct||0)<0?'warn':'good'}
+  ];
+  document.getElementById('capitalStatus').innerHTML=capitalRows.map(row=>'<div class="item"><div class="item-title"><span class="chip '+row.tone+'">'+escapeHtml(row.title)+'</span></div><div class="item-meta">'+escapeHtml(row.meta)+'</div></div>').join('');
+
+  document.getElementById('learningDecisions').innerHTML=learningDecisions.length?learningDecisions.slice(0,8).map(decision=>'<div class="item"><div class="item-title"><span class="chip '+chipClass(decision.action)+'">'+escapeHtml(statusLabel(decision.action))+'</span> '+escapeHtml(decision.symbol||'Sin símbolo')+' · '+Number(decision.final_score||0).toFixed(1)+' / '+Number(decision.required_score||0).toFixed(1)+'</div><div class="item-meta">'+escapeHtml(decision.reason||'Sin motivo')+' · '+escapeHtml(decision.session_key||'')+(decision.dry_run?' · PRUEBA':'')+'</div></div>').join(''):'<div class="empty">El historial aparecerá cuando n8n consulte el Entry Gate.</div>';
+}
+
 async function loadRecommendationLearning(){
   const [recs,perf,evolution]=await Promise.all([
     fetch('/api/research/recommendations?limit=180').then(r=>r.json()),
@@ -323,16 +389,28 @@ async function loadRecommendationLearning(){
   renderLearning();
 }
 
+async function loadLearningEngine(){
+  const [summary,rules,decisions]=await Promise.all([
+    fetch('/api/learning/summary').then(r=>r.json()),
+    fetch('/api/learning/rules').then(r=>r.json()),
+    fetch('/api/learning/decisions?limit=40').then(r=>r.json())
+  ]);
+  learningSummary=summary||{};
+  learningRules=rules.rules||[];
+  learningDecisions=decisions.decisions||[];
+  renderLearningEngine();
+}
+
 async function refreshResearch(){
   try{
-    await Promise.all([loadResearchReports(),loadRecommendationLearning()]);
+    await Promise.all([loadResearchReports(),loadRecommendationLearning(),loadLearningEngine()]);
   }catch(error){
     document.getElementById('recommendationMetrics').innerHTML='<div class="empty">No se pudo cargar Research</div>';
   }
 }
 
 window.aterumAssistantConfig={page:'research',kicker:'AI Research',subtitle:'Explica recomendaciones, riesgos, oportunidades e impacto medido.',placeholder:'¿Qué debería revisar manualmente hoy?'};
-window.aterumAssistantContext=()=>({pagina:'research',recomendaciones:researchRecommendations.slice(0,8),ultimoInforme:researchReports[0]||null,performance:recommendationPerformance?.summary||null});
+window.aterumAssistantContext=()=>({pagina:'research',recomendaciones:researchRecommendations.slice(0,8),ultimoInforme:researchReports[0]||null,performance:recommendationPerformance?.summary||null,learning:learningSummary,reglas:learningRules.filter(r=>r.status==='active').slice(0,12)});
 
 refreshResearch();
 setInterval(refreshResearch,60000);
