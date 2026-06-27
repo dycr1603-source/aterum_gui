@@ -9,3 +9,5 @@
 - Generados snapshots sanitizados de los workflows actuales.
 - Catalogada la documentacion tecnica existente.
 - Incorporada la auditoria cuantitativa de rechazos.
+- Incorporado el ledger de Learning Changes, revision estadistica antes/despues, versionado y rollback protegido.
+- Incorporadas las vistas Learning Changes, Impacto Real y Learning Timeline en Research.

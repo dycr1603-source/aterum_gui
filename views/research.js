@@ -56,6 +56,16 @@ body.research-v1{margin:0;background:var(--bg);color:var(--text);font-family:var
 .table-wrap{overflow:auto}
 table{width:100%;border-collapse:collapse}
 .table-wrap .learning-table{min-width:1120px!important}
+.table-wrap .changes-table{min-width:1780px!important;table-layout:fixed}
+.changes-table th:nth-child(1){width:130px}.changes-table th:nth-child(2){width:90px}.changes-table th:nth-child(3){width:250px}.changes-table th:nth-child(4){width:150px}.changes-table th:nth-child(5){width:390px}.changes-table th:nth-child(6){width:300px}.changes-table th:nth-child(7){width:150px}.changes-table th:nth-child(8){width:110px}.changes-table th:nth-child(9){width:160px}
+.change-value{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:5px;align-items:start;font:700 10px/1.45 var(--mono);color:#dce9f8}
+.change-value>span:not(.change-arrow){min-width:0;overflow-wrap:anywhere}
+.change-arrow{color:var(--blue);padding:0 5px}
+.impact-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;min-width:150px}
+.impact-pair .before{color:var(--muted)}
+.impact-pair .after{color:var(--text);font-weight:800}
+.timeline-item{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:12px;align-items:start}
+.timeline-date{font:700 10px/1.5 var(--mono);color:var(--faint)}
 th{position:sticky;top:0;background:#0c131d;border-bottom:1px solid var(--line2);padding:10px 12px;text-align:left;font:800 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#91a4ba;white-space:nowrap}
 td{border-bottom:1px solid rgba(148,163,184,.1);padding:11px 12px;vertical-align:top;font-size:11px;line-height:1.5;color:#d6e2f1}
 tr:hover td{background:rgba(87,176,255,.035)}
@@ -84,6 +94,7 @@ tr:hover td{background:rgba(87,176,255,.035)}
 @keyframes fadeIn{from{opacity:.55}to{opacity:1}}
 @media(max-width:1100px){.terminal-header,.grid-2,.report-layout{grid-template-columns:1fr}.metric-grid{grid-template-columns:repeat(3,1fr)}.flow{grid-template-columns:repeat(2,1fr)}.help-grid,.grid-3{grid-template-columns:1fr}}
 @media(max-width:680px){.metric-grid,.status-grid{grid-template-columns:1fr}.title{font-size:24px}.research-page{padding-inline:14px}}
+@media(max-width:680px){.timeline-item{grid-template-columns:1fr}.timeline-date{margin-bottom:-4px}}
 ${getSharedStyles()}
 </style>
 </head>
@@ -161,6 +172,44 @@ ${getSharedNav('research', user, 'blue')}
     <div class="table-wrap">
       <table class="learning-table"><thead><tr><th>Estado</th><th>Dimensión</th><th>Regla</th><th>Acción</th><th>Peso</th><th>Muestra</th><th>Win Rate</th><th>Expectancy</th><th>PF</th><th>Evidencia</th></tr></thead><tbody id="learningRules"><tr><td colspan="10">${getLoadingMarkup('Cargando reglas')}</td></tr></tbody></table>
     </div>
+  </section>
+
+  <section class="metric-grid" id="learningChangeMetrics">${getLoadingMarkup('Cargando cambios')}</section>
+
+  <section class="surface section">
+    <div class="section-head">
+      <div>
+        <div class="section-title">Learning Changes</div>
+        <div class="section-sub">Registro permanente de qué cambió, cuánto cambió, por qué se aplicó y quién lo modificó.</div>
+      </div>
+      <span class="chip info" id="changeAuditStatus">Auditando</span>
+    </div>
+    <div class="body"><div class="metric-grid" id="changePerformance">${getLoadingMarkup('Cargando impacto global')}</div></div>
+    <div class="table-wrap">
+      <table class="changes-table"><thead><tr><th>Fecha</th><th>Versión</th><th>Cambio</th><th>Tipo</th><th>Antes → Después</th><th>Razón</th><th>Estado</th><th>Muestra</th><th>Actor</th></tr></thead><tbody id="learningChanges"><tr><td colspan="9">${getLoadingMarkup('Cargando cambios aplicados')}</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="surface section">
+    <div class="section-head">
+      <div>
+        <div class="section-title">Impacto Real</div>
+        <div class="section-sub">Comparación antes/después normalizada por ventana, con muestra y significancia visibles.</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="changes-table"><thead><tr><th>Cambio</th><th>Trades</th><th>Win Rate</th><th>Expectancy</th><th>Profit Factor</th><th>Drawdown</th><th>Confianza</th><th>Resultado</th></tr></thead><tbody id="changeImpact"><tr><td colspan="8">${getLoadingMarkup('Calculando impacto')}</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="surface section">
+    <div class="section-head">
+      <div>
+        <div class="section-title">Learning Timeline</div>
+        <div class="section-sub">Versiones completas, implementaciones, validaciones y reversiones en orden cronológico.</div>
+      </div>
+    </div>
+    <div class="body"><div class="list" id="learningTimeline">${getLoadingMarkup('Cargando evolución')}</div></div>
   </section>
 
   <div class="grid-2">
@@ -247,12 +296,15 @@ let strategyEvolution=[];
 let learningSummary=null;
 let learningRules=[];
 let learningDecisions=[];
+let learningChanges=[];
+let learningChangeSummary=null;
+let learningTimeline=[];
 
 function escapeHtml(value){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function safeJson(value,fallback){if(value&&typeof value==='object')return value;if(!value)return fallback;try{return JSON.parse(value)}catch(e){return fallback}}
 function fmtDate(value){if(!value)return 'sin fecha';return String(value).slice(0,10)}
-function statusLabel(value){return ({pending:'pendiente',reviewing:'en revisión',validated:'validada',rejected:'rechazada',positive:'positivo',neutral:'neutral',negative:'negativo',baja:'baja',media:'media',alta:'alta',low:'baja',medium:'media',high:'alta',active:'activa',monitoring:'observando',suspended:'suspendida',reduce:'reducir',prioritize:'priorizar',block:'bloquear',halt:'detener',pendiente:'pendiente',en_prueba:'en prueba',implementada:'implementada',descartada:'descartada',enforce:'aplicando',observe:'observando',disabled:'desactivado',ALLOW:'permitida',REJECT:'rechazada',HALT:'detenida'})[value]||value||'pendiente'}
-function chipClass(value){return ({validated:'good',positive:'good',implementada:'good',active:'good',prioritize:'good',ALLOW:'good',rejected:'bad',negative:'bad',descartada:'bad',block:'bad',halt:'bad',REJECT:'bad',HALT:'bad',pending:'warn',pendiente:'warn',monitoring:'warn',reduce:'warn',reviewing:'info',neutral:'info',suspended:'info',en_prueba:'info',baja:'warn',low:'warn',media:'info',medium:'info',alta:'good',high:'good',enforce:'good'})[value]||'info'}
+function statusLabel(value){return ({pending:'pendiente',reviewing:'en revisión',validated:'validada',rejected:'rechazada',positive:'positivo',neutral:'neutral',negative:'negativo',baja:'baja',media:'media',alta:'alta',low:'baja',medium:'media',high:'alta',active:'activa',monitoring:'monitoreando',insufficient:'evidencia insuficiente',revert_required:'revertir',reverted:'revertida',superseded:'sustituida',improved:'mejoró',worsened:'empeoró',volume_only:'solo redujo volumen',no_effect:'sin evidencia',no_evidence:'sin evidencia',apply:'aplicado',update:'actualizado',revert:'reversión',manual:'manual',suspended:'suspendida',reduce:'reducir',prioritize:'priorizar',block:'bloquear',halt:'detener',pendiente:'pendiente',en_prueba:'en prueba',implementada:'implementada',descartada:'descartada',enforce:'aplicando',observe:'observando',disabled:'desactivado',ALLOW:'permitida',REJECT:'rechazada',HALT:'detenida'})[value]||value||'pendiente'}
+function chipClass(value){return ({validated:'good',positive:'good',improved:'good',implementada:'good',active:'good',prioritize:'good',ALLOW:'good',reverted:'bad',revert_required:'bad',worsened:'bad',volume_only:'bad',rejected:'bad',negative:'bad',descartada:'bad',block:'bad',halt:'bad',REJECT:'bad',HALT:'bad',pending:'warn',pendiente:'warn',monitoring:'warn',insufficient:'warn',reduce:'warn',reviewing:'info',neutral:'info',no_effect:'info',no_evidence:'info',superseded:'info',suspended:'info',en_prueba:'info',baja:'warn',low:'warn',media:'info',medium:'info',alta:'good',high:'good',enforce:'good'})[value]||'info'}
 function metric(label,value,sub){return '<div class="metric fade-in"><div class="label">'+escapeHtml(label)+'</div><div class="value">'+escapeHtml(value)+'</div><div class="sub">'+escapeHtml(sub)+'</div></div>'}
 function signed(value,decimals=2){const n=Number(value||0);return (n>0?'+':'')+n.toFixed(decimals)}
 
@@ -377,6 +429,65 @@ function renderLearningEngine(){
   document.getElementById('learningDecisions').innerHTML=learningDecisions.length?learningDecisions.slice(0,8).map(decision=>'<div class="item"><div class="item-title"><span class="chip '+chipClass(decision.action)+'">'+escapeHtml(statusLabel(decision.action))+'</span> '+escapeHtml(decision.symbol||'Sin símbolo')+' · '+Number(decision.final_score||0).toFixed(1)+' / '+Number(decision.required_score||0).toFixed(1)+'</div><div class="item-meta">'+escapeHtml(decision.reason||'Sin motivo')+' · '+escapeHtml(decision.session_key||'')+(decision.dry_run?' · PRUEBA':'')+'</div></div>').join(''):'<div class="empty">El historial aparecerá cuando n8n consulte el Entry Gate.</div>';
 }
 
+function ruleStateText(value){
+  const state=safeJson(value,{});
+  if(state.weight!=null){
+    const extras=[state.action?statusLabel(state.action):null,state.researchFactor!=null?'Research '+Number(state.researchFactor).toFixed(3):null,state.reviewFactor!=null?'Review '+Number(state.reviewFactor).toFixed(3):null].filter(Boolean).join(' · ');
+    return Number(state.weight).toFixed(3)+(extras?' · '+extras:'');
+  }
+  if(state.value!=null)return String(state.value);
+  return Object.keys(state).length?JSON.stringify(state):'—';
+}
+
+function pair(before,after,formatter){
+  const format=formatter||((value)=>String(value??'—'));
+  return '<div class="impact-pair"><span class="before">'+escapeHtml(format(before))+'</span><span class="change-arrow">→</span><span class="after">'+escapeHtml(format(after))+'</span></div>';
+}
+
+function renderLearningChanges(){
+  const summary=learningChangeSummary||{};
+  const before=summary.before||{};
+  const after=summary.after||{};
+  document.getElementById('learningChangeMetrics').innerHTML=[
+    metric('Cambios aplicados',summary.applied||0,'registro permanente'),
+    metric('Validados',summary.validated||0,'mejora demostrada'),
+    metric('Revertidos',summary.reverted||0,'rollback registrado'),
+    metric('En observación',Number(summary.monitoring||0),'esperando evidencia'),
+    metric('Pendientes',Number(summary.pending||0)+Number(summary.revert_required||0),'requieren resolución'),
+    metric('Impacto acumulado',signed(summary.cumulativeImpact||0,2),'sólo cambios validados')
+  ].join('');
+  document.getElementById('changePerformance').innerHTML=[
+    metric('Win Rate',Number(before.winRate||0).toFixed(1)+'% → '+Number(after.winRate||0).toFixed(1)+'%',(before.trades||0)+' antes · '+(after.trades||0)+' después'),
+    metric('Expectancy',signed(before.expectancy,3)+' → '+signed(after.expectancy,3),'USDT por trade'),
+    metric('Profit Factor',Number(before.profitFactor||0).toFixed(2)+' → '+Number(after.profitFactor||0).toFixed(2),'rendimiento global'),
+    metric('Drawdown',signed(before.maxDrawdown,2)+' → '+signed(after.maxDrawdown,2),'USDT'),
+    metric('R promedio',signed(before.avgR,3)+' → '+signed(after.avgR,3),'normalizado por riesgo'),
+    metric('Frecuencia',Number(before.tradesPerDay||0).toFixed(2)+' → '+Number(after.tradesPerDay||0).toFixed(2),'trades por día')
+  ].join('');
+  document.getElementById('changeAuditStatus').textContent=learningChanges.length+' cambios trazables';
+
+  const tbody=document.getElementById('learningChanges');
+  if(!learningChanges.length){tbody.innerHTML='<tr><td colspan="9" class="empty">Aún no hay cambios implementados registrados</td></tr>'}
+  else tbody.innerHTML=learningChanges.map(change=>{
+    const evidence=safeJson(change.evidence,{});
+    const state=change.review_status||change.status;
+    const sample=evidence.sample!=null?evidence.sample:(safeJson(change.after_metrics,{}).trades||0);
+    return '<tr><td class="mono">'+escapeHtml(String(change.implemented_at||'').replace('T',' ').slice(0,16))+'</td><td>'+escapeHtml(change.version_label||'—')+'</td><td><div class="rec-text">'+escapeHtml(change.target_key||change.component)+'</div><div class="rec-detail">'+escapeHtml(change.human_explanation||'Sin explicación')+'</div></td><td>'+escapeHtml(change.component)+'</td><td><div class="change-value"><span>'+escapeHtml(ruleStateText(change.before_value))+'</span><span class="change-arrow">→</span><span>'+escapeHtml(ruleStateText(change.after_value))+'</span></div></td><td><div class="rec-detail">'+escapeHtml(change.reason||'Sin razón registrada')+'</div></td><td><span class="chip '+chipClass(state)+'">'+escapeHtml(statusLabel(state))+'</span></td><td>'+Number(sample||0)+' / '+Number(change.validation_sample||20)+'</td><td>'+escapeHtml(change.actor||'Learning Engine')+'</td></tr>';
+  }).join('');
+
+  const impactRows=learningChanges.filter(change=>change.before_metrics||change.after_metrics);
+  const impactBody=document.getElementById('changeImpact');
+  if(!impactRows.length){impactBody.innerHTML='<tr><td colspan="8" class="empty">Los comparativos aparecerán cuando existan trades posteriores a una implementación</td></tr>'}
+  else impactBody.innerHTML=impactRows.map(change=>{
+    const b=safeJson(change.before_metrics,{}),a=safeJson(change.after_metrics,{});
+    const verdict=change.verdict||'no_evidence';
+    return '<tr><td><div class="rec-text">'+escapeHtml(change.target_key)+'</div><div class="rec-detail">'+escapeHtml(change.review_explanation||change.human_explanation||'')+'</div></td><td>'+pair(b.trades,a.trades)+'</td><td>'+pair(b.winRate,a.winRate,v=>Number(v||0).toFixed(1)+'%')+'</td><td>'+pair(b.expectancy,a.expectancy,v=>signed(v,3))+'</td><td>'+pair(b.profitFactor,a.profitFactor,v=>Number(v||0).toFixed(2))+'</td><td>'+pair(b.maxDrawdown,a.maxDrawdown,v=>signed(v,2))+'</td><td>'+Number(change.confidence_pct||0).toFixed(0)+'%'+(Number(change.statistically_significant)?' · significativa':'')+'</td><td><span class="chip '+chipClass(verdict)+'">'+escapeHtml(statusLabel(verdict))+'</span></td></tr>';
+  }).join('');
+
+  const timeline=document.getElementById('learningTimeline');
+  timeline.innerHTML=learningTimeline.length?learningTimeline.map(item=>'<div class="item timeline-item"><div class="timeline-date">'+escapeHtml(String(item.created_at||'').replace('T',' ').slice(0,16))+' UTC</div><div><div class="item-title">'+escapeHtml(item.version_label||'Versión')+' · '+escapeHtml(item.target_key||item.component)+'</div><div class="item-meta">'+escapeHtml(item.summary||item.human_explanation||'Cambio registrado')+' · '+escapeHtml(item.actor||'sistema')+'</div></div><span class="chip '+chipClass(item.status)+'">'+escapeHtml(statusLabel(item.status||item.change_type))+'</span></div>').join(''):'<div class="empty">La línea temporal se construirá con el primer cambio registrado.</div>';
+}
+
 async function loadRecommendationLearning(){
   const [recs,perf,evolution]=await Promise.all([
     fetch('/api/research/recommendations?limit=180').then(r=>r.json()),
@@ -401,16 +512,28 @@ async function loadLearningEngine(){
   renderLearningEngine();
 }
 
+async function loadLearningChanges(){
+  const [changes,summary,timeline]=await Promise.all([
+    fetch('/api/learning/changes?limit=160').then(r=>r.json()),
+    fetch('/api/learning/changes/summary').then(r=>r.json()),
+    fetch('/api/learning/timeline?limit=160').then(r=>r.json())
+  ]);
+  learningChanges=changes.changes||[];
+  learningChangeSummary=summary||{};
+  learningTimeline=timeline.timeline||[];
+  renderLearningChanges();
+}
+
 async function refreshResearch(){
   try{
-    await Promise.all([loadResearchReports(),loadRecommendationLearning(),loadLearningEngine()]);
+    await Promise.all([loadResearchReports(),loadRecommendationLearning(),loadLearningEngine(),loadLearningChanges()]);
   }catch(error){
     document.getElementById('recommendationMetrics').innerHTML='<div class="empty">No se pudo cargar Research</div>';
   }
 }
 
 window.aterumAssistantConfig={page:'research',kicker:'AI Research',subtitle:'Explica recomendaciones, riesgos, oportunidades e impacto medido.',placeholder:'¿Qué debería revisar manualmente hoy?'};
-window.aterumAssistantContext=()=>({pagina:'research',recomendaciones:researchRecommendations.slice(0,8),ultimoInforme:researchReports[0]||null,performance:recommendationPerformance?.summary||null,learning:learningSummary,reglas:learningRules.filter(r=>r.status==='active').slice(0,12)});
+window.aterumAssistantContext=()=>({pagina:'research',recomendaciones:researchRecommendations.slice(0,8),ultimoInforme:researchReports[0]||null,performance:recommendationPerformance?.summary||null,learning:learningSummary,reglas:learningRules.filter(r=>r.status==='active').slice(0,12),cambios:learningChanges.slice(0,12),impactoCambios:learningChangeSummary});
 
 refreshResearch();
 setInterval(refreshResearch,60000);

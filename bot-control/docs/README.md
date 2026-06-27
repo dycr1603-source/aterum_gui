@@ -42,6 +42,7 @@ La documentacion tecnica canonica permanece en [`../../docs`](../../docs/). Este
 
 - [Sistema AI Research y Learning](../../docs/ai-research-learning-system.md)
 - [Implementacion Research Learning](../../docs/research-learning-implementation.md)
+- [Auditoria, validacion y rollback de cambios](../../docs/learning-change-audit-system.md)
 - [Uso de Anthropic](../../docs/anthropic-usage.md)
 - [Reporting existente](../../docs/existing-reporting-system.md)
 

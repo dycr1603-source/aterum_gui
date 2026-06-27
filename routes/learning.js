@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const shared = require('../shared');
+const learningChanges = require('../services/learning_changes');
 
 const { db } = shared;
 
@@ -155,6 +156,7 @@ async function ensureLearningTables() {
   await db.execute(`UPDATE learning_config SET config_value='25' WHERE config_key='max_drawdown_pct' AND config_value='10'`);
   await db.execute(`ALTER TABLE ai_recommendations ADD COLUMN IF NOT EXISTS implemented_at DATETIME NULL`).catch(() => {});
   await db.execute(`ALTER TABLE ai_recommendations ADD COLUMN IF NOT EXISTS implementation_reason TEXT NULL`).catch(() => {});
+  await learningChanges.ensureTables();
 }
 
 async function getConfig() {
@@ -322,6 +324,9 @@ async function rebuildRules() {
   const eligibleRecommendations = (recommendations || []).filter(rec =>
     rec.status === 'validated' || ['media', 'alta'].includes(String(rec.evidence_level || '').toLowerCase())
   );
+  const [existingRuleRows] = await db.execute(`SELECT * FROM learning_rules`);
+  const existingRules = new Map((existingRuleRows || []).map(rule => [`${rule.rule_type}:${rule.rule_key}`, rule]));
+  const reversionGuards = await learningChanges.getRuleGuards();
 
   const dimensions = [
     ['symbol', row => String(row.symbol || '').toUpperCase()],
@@ -351,7 +356,8 @@ async function rebuildRules() {
       const reviewFactor = positiveReviews.length ? 1 + direction * Math.min(0.02, Math.abs(avgImpact) / 100) : 1;
       const action = status === 'active' ? ruleAction(metrics, calculated.weight, config) : 'neutral';
       const ids = matches.map(rec => rec.id);
-      generated.push({ ruleType, ruleKey, status, action, metrics, ...calculated, researchFactor, reviewFactor, ids, conflictIds: conflicts.map(rec => rec.id) });
+      const generatedRule = { ruleType, ruleKey, status, action, metrics, ...calculated, researchFactor, reviewFactor, ids, conflictIds: conflicts.map(rec => rec.id) };
+      generated.push(learningChanges.applyGuard(generatedRule, reversionGuards.get(`${ruleType}:${ruleKey}`)));
     }
   }
 
@@ -363,14 +369,43 @@ async function rebuildRules() {
     for (const rule of generated) {
       const m = rule.metrics;
       const rationale = `${m.sample} cierres; WR ${round(m.winRate, 1)}%; expectancy ${round(m.expectancy, 3)}; PF ${round(m.profitFactor, 3)}; avgR ${round(m.avgR, 3)}; DD ${round(m.maxDrawdown, 2)}.`;
+      rule.rationale = rule.guardedByReversion ? `${rationale} Rollback activo: se conserva el último estado estable.` : rationale;
       await connection.execute(`INSERT INTO learning_rules
         (rule_type,rule_key,status,action,weight,research_factor,review_factor,sample_size,wins,losses,win_rate,pnl,expectancy,profit_factor,avg_r,max_drawdown,confidence,evidence_level,source_recommendation_ids,rationale,valid_from,expires_at,last_evaluated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,NOW(),DATE_ADD(NOW(), INTERVAL ? HOUR),NOW())
         ON DUPLICATE KEY UPDATE status=VALUES(status),action=VALUES(action),weight=VALUES(weight),research_factor=VALUES(research_factor),review_factor=VALUES(review_factor),sample_size=VALUES(sample_size),wins=VALUES(wins),losses=VALUES(losses),win_rate=VALUES(win_rate),pnl=VALUES(pnl),expectancy=VALUES(expectancy),profit_factor=VALUES(profit_factor),avg_r=VALUES(avg_r),max_drawdown=VALUES(max_drawdown),confidence=VALUES(confidence),evidence_level=VALUES(evidence_level),source_recommendation_ids=VALUES(source_recommendation_ids),rationale=VALUES(rationale),valid_from=IF(valid_from IS NULL,NOW(),valid_from),expires_at=VALUES(expires_at),last_evaluated_at=NOW()`, [
         rule.ruleType, rule.ruleKey, rule.status, rule.action, round(rule.weight, 6), round(rule.researchFactor, 6), round(rule.reviewFactor, 6),
         m.sample, m.wins, m.losses, round(m.winRate), round(m.pnl, 6), round(m.expectancy, 6), round(m.profitFactor, 6), round(m.avgR, 6), round(m.maxDrawdown, 6),
-        round(rule.confidence, 4), evidenceLevel(m.sample, config), JSON.stringify(rule.ids), rationale, ttlHours
+        round(rule.confidence, 4), evidenceLevel(m.sample, config), JSON.stringify(rule.ids), rule.rationale, ttlHours
       ]);
+      const [savedRows] = await connection.execute(`SELECT id FROM learning_rules WHERE rule_type=? AND rule_key=? LIMIT 1`, [rule.ruleType, rule.ruleKey]);
+      await learningChanges.recordRuleChange(
+        connection,
+        existingRules.get(`${rule.ruleType}:${rule.ruleKey}`),
+        rule,
+        { config, ruleId: savedRows?.[0]?.id, source: 'learning_engine', actor: 'Learning Engine' }
+      );
+    }
+
+    const generatedKeys = new Set(generated.map(rule => `${rule.ruleType}:${rule.ruleKey}`));
+    for (const previous of existingRuleRows || []) {
+      if (generatedKeys.has(`${previous.rule_type}:${previous.rule_key}`) || previous.status === 'suspended') continue;
+      await learningChanges.recordRuleChange(connection, previous, {
+        ruleType: previous.rule_type,
+        ruleKey: previous.rule_key,
+        status: 'suspended',
+        action: 'neutral',
+        weight: num(previous.weight, 1),
+        researchFactor: num(previous.research_factor, 1),
+        reviewFactor: num(previous.review_factor, 1),
+        metrics: {
+          sample: num(previous.sample_size), wins: num(previous.wins), losses: num(previous.losses),
+          winRate: num(previous.win_rate), expectancy: num(previous.expectancy),
+          profitFactor: num(previous.profit_factor), maxDrawdown: num(previous.max_drawdown)
+        },
+        ids: jsonValue(previous.source_recommendation_ids, []),
+        rationale: 'La regla quedó suspendida porque ya no existe una muestra vigente en la reconstrucción.'
+      }, { config, ruleId: previous.id, source: 'learning_engine', actor: 'Learning Engine' });
     }
 
     const implemented = new Set(generated
@@ -418,7 +453,8 @@ async function rebuildRules() {
         JSON.stringify({ trades: tradeRows.length, generated: generated.length, mode: config.learning_mode || 'observe' })
       ]);
     await connection.commit();
-    return { ok: true, trades: tradeRows.length, generated: generated.length, active, monitoring, implemented: implemented.size };
+    const review = await learningChanges.reviewChanges().catch(error => ({ error: error.message }));
+    return { ok: true, trades: tradeRows.length, generated: generated.length, active, monitoring, implemented: implemented.size, changeReview: review };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -651,6 +687,35 @@ router.get('/api/learning/decisions', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+router.get('/api/learning/changes', async (req, res) => {
+  try {
+    await learningChanges.bootstrapExistingRules();
+    res.json({ changes: await learningChanges.getChanges(req.query || {}) });
+  } catch (error) { console.error('[Learning] changes:', error.message); res.status(500).json({ error: error.message }); }
+});
+
+router.post('/api/learning/changes', async (req, res) => {
+  try { res.json(await learningChanges.registerChange(req.body || {})); }
+  catch (error) { console.error('[Learning] register change:', error.message); res.status(400).json({ error: error.message }); }
+});
+
+router.get('/api/learning/changes/summary', async (_req, res) => {
+  try {
+    await learningChanges.bootstrapExistingRules();
+    res.json(await learningChanges.getSummary());
+  } catch (error) { console.error('[Learning] change summary:', error.message); res.status(500).json({ error: error.message }); }
+});
+
+router.get('/api/learning/timeline', async (req, res) => {
+  try { res.json({ timeline: await learningChanges.getTimeline(req.query.limit) }); }
+  catch (error) { console.error('[Learning] timeline:', error.message); res.status(500).json({ error: error.message }); }
+});
+
+router.post('/db/learning/review-changes', async (req, res) => {
+  try { res.json(await learningChanges.reviewChanges({ force: req.body?.force === true })); }
+  catch (error) { console.error('[Learning] review changes:', error.message); res.status(500).json({ error: error.message }); }
+});
+
 router.get('/api/learning/summary', async (_req, res) => {
   try {
     const config = await getConfig();
@@ -684,3 +749,5 @@ router.get('/api/learning/summary', async (_req, res) => {
 module.exports = router;
 module.exports.rebuildRules = rebuildRules;
 module.exports.evaluateDecision = evaluateDecision;
+
+learningChanges.startReviewLoop();

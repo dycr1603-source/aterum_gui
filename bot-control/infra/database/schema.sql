@@ -273,7 +273,17 @@ INSERT IGNORE INTO learning_config (config_key,config_value,description) VALUES
   ('loss_streak_cooldown_hours','24','Pausa temporal después de una racha'),
   ('hard_block_cooldown_hours','72','Vigencia temporal de un bloqueo aprendido'),
   ('drawdown_window_days','7','Ventana móvil del circuit breaker de drawdown'),
-  ('rule_ttl_hours','36','Vigencia antes de reconstruir reglas');
+  ('rule_ttl_hours','36','Vigencia antes de reconstruir reglas'),
+  ('change_min_sample','10','Muestra mínima antes de una revisión provisional'),
+  ('change_validation_sample','20','Muestra mínima para validar o revertir un cambio'),
+  ('change_baseline_days','14','Días usados para la línea base anterior'),
+  ('change_review_interval_hours','6','Intervalo entre revisiones de cambios'),
+  ('change_min_expectancy_delta','0.05','Diferencia mínima de expectancy'),
+  ('change_min_avg_r_delta','0.05','Diferencia mínima de R promedio'),
+  ('change_min_profit_factor_delta','0.10','Diferencia mínima de Profit Factor'),
+  ('change_min_win_rate_delta','3','Diferencia mínima de Win Rate'),
+  ('change_volume_drop_pct','40','Caída de frecuencia sin mejora que requiere rollback'),
+  ('change_auto_revert','1','Habilita rollback automático de cambios gestionados');
 
 CREATE TABLE IF NOT EXISTS learning_rules (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -340,6 +350,86 @@ CREATE TABLE IF NOT EXISTS learning_runs (
   summary JSON NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_learning_runs_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS learning_changes (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  change_key CHAR(64) NOT NULL,
+  parent_change_id BIGINT NULL,
+  rule_id BIGINT NULL,
+  target_type VARCHAR(40) NOT NULL,
+  target_key VARCHAR(255) NOT NULL,
+  component VARCHAR(80) NOT NULL,
+  parameter_name VARCHAR(80) NOT NULL DEFAULT 'state',
+  change_type VARCHAR(24) NOT NULL DEFAULT 'apply',
+  before_value JSON NULL,
+  after_value JSON NULL,
+  reason TEXT NULL,
+  human_explanation TEXT NULL,
+  evidence JSON NULL,
+  source_recommendation_ids JSON NULL,
+  source VARCHAR(50) NOT NULL DEFAULT 'learning_engine',
+  actor VARCHAR(120) NOT NULL DEFAULT 'Learning Engine',
+  status VARCHAR(30) NOT NULL DEFAULT 'monitoring',
+  minimum_sample INT NOT NULL DEFAULT 10,
+  validation_sample INT NOT NULL DEFAULT 20,
+  baseline_start DATETIME NULL,
+  baseline_end DATETIME NULL,
+  implemented_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at DATETIME NULL,
+  reverted_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_learning_change_key (change_key),
+  INDEX idx_learning_changes_status (status,implemented_at),
+  INDEX idx_learning_changes_target (target_type,target_key,implemented_at),
+  INDEX idx_learning_changes_rule (rule_id),
+  CONSTRAINT fk_learning_change_parent FOREIGN KEY (parent_change_id) REFERENCES learning_changes(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS learning_change_reviews (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  change_id BIGINT NOT NULL,
+  review_status VARCHAR(30) NOT NULL,
+  verdict VARCHAR(30) NOT NULL DEFAULT 'no_evidence',
+  before_metrics JSON NULL,
+  after_metrics JSON NULL,
+  metric_deltas JSON NULL,
+  impact_score DECIMAL(12,4) NULL,
+  confidence_pct DECIMAL(8,3) NULL,
+  statistically_significant TINYINT(1) NOT NULL DEFAULT 0,
+  explanation TEXT NULL,
+  reviewed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_change_reviews_change (change_id,reviewed_at),
+  CONSTRAINT fk_change_review_change FOREIGN KEY (change_id) REFERENCES learning_changes(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS learning_versions (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  change_id BIGINT NULL,
+  version_label VARCHAR(80) NOT NULL,
+  component VARCHAR(80) NOT NULL,
+  summary VARCHAR(255) NOT NULL,
+  snapshot JSON NULL,
+  actor VARCHAR(120) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_learning_versions_created (created_at),
+  CONSTRAINT fk_learning_version_change FOREIGN KEY (change_id) REFERENCES learning_changes(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS learning_reversion_guards (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  change_id BIGINT NOT NULL,
+  rule_type VARCHAR(30) NOT NULL,
+  rule_key VARCHAR(255) NOT NULL,
+  restore_state JSON NOT NULL,
+  reason TEXT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deactivated_at DATETIME NULL,
+  UNIQUE KEY uq_learning_guard (rule_type,rule_key),
+  CONSTRAINT fk_learning_guard_change FOREIGN KEY (change_id) REFERENCES learning_changes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE OR REPLACE VIEW daily_pnl AS
