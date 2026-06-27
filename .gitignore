@@ -20,3 +20,10 @@ bot-control/**/.env
 *.sqlite
 *.sqlite3
 *.db
+
+# Local backups
+docs/*before*.json
+docs/*.sqlite
+docs/*.sqlite3
+docs/*.db
+docs/*backup*
