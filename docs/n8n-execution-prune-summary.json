@@ -1,0 +1,17 @@
+{
+  "pruned_at": "2026-06-24T00:42:00Z",
+  "counts_before": {
+    "success": 10107,
+    "error": 582,
+    "running": 37
+  },
+  "counts_after": {
+    "success": 836,
+    "error": 128,
+    "running": 48
+  },
+  "database_size_before_bytes": 422240256,
+  "database_size_after_bytes": 41521152,
+  "kept_policy": "recent executions retained; workflows, credentials, variables, and n8n configuration preserved",
+  "notes": "The first write attempt hit SQLITE_BUSY while services were active. Services were stopped, execution history was pruned and SQLite was compacted. n8n then restarted healthy."
+}
