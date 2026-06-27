@@ -136,9 +136,9 @@ async function ensureLearningTables() {
     ['block_expectancy_max', '-0.75', 'Expectancy máxima para bloqueo con muestra fuerte'],
     ['block_profit_factor_max', '0.75', 'Profit factor máximo para bloqueo con muestra fuerte'],
     ['block_win_rate_max', '40', 'Win rate máximo para bloqueo con muestra fuerte'],
-    ['daily_loss_limit_pct', '3', 'Circuit breaker diario como porcentaje del balance'],
-    ['weekly_loss_limit_pct', '6', 'Circuit breaker móvil de siete días'],
-    ['max_drawdown_pct', '10', 'Drawdown máximo histórico respecto al balance'],
+    ['daily_loss_limit_pct', '15', 'Circuit breaker diario como porcentaje del balance'],
+    ['weekly_loss_limit_pct', '20', 'Circuit breaker móvil de siete días'],
+    ['max_drawdown_pct', '25', 'Drawdown máximo histórico respecto al balance'],
     ['max_consecutive_losses', '4', 'Máximo global de pérdidas consecutivas'],
     ['max_group_consecutive_losses', '4', 'Máximo de pérdidas seguidas por símbolo, setup o sesión'],
     ['loss_streak_cooldown_hours', '24', 'Pausa temporal después de una racha de pérdidas'],
@@ -150,6 +150,9 @@ async function ensureLearningTables() {
     `INSERT IGNORE INTO learning_config (config_key, config_value, description) VALUES ?`,
     [seeds]
   );
+  await db.execute(`UPDATE learning_config SET config_value='15' WHERE config_key='daily_loss_limit_pct' AND config_value='3'`);
+  await db.execute(`UPDATE learning_config SET config_value='20' WHERE config_key='weekly_loss_limit_pct' AND config_value='6'`);
+  await db.execute(`UPDATE learning_config SET config_value='25' WHERE config_key='max_drawdown_pct' AND config_value='10'`);
   await db.execute(`ALTER TABLE ai_recommendations ADD COLUMN IF NOT EXISTS implemented_at DATETIME NULL`).catch(() => {});
   await db.execute(`ALTER TABLE ai_recommendations ADD COLUMN IF NOT EXISTS implementation_reason TEXT NULL`).catch(() => {});
 }
@@ -478,9 +481,9 @@ async function getCapitalStatus(balanceInput, candidate = {}) {
   const setupStreakRecent = latestMatchingAgeHours(rows, row => normalizeSetup(row.setup_label, row) === setup) <= streakCooldown;
   const sessionStreakRecent = latestMatchingAgeHours(rows, row => hourBucket(row.opened_at) === session) <= streakCooldown;
   const reasons = [];
-  if (balance > 0 && dailyPct <= -configNum(config, 'daily_loss_limit_pct', 3)) reasons.push(`límite diario ${round(dailyPct, 2)}%`);
-  if (balance > 0 && weeklyPct <= -configNum(config, 'weekly_loss_limit_pct', 6)) reasons.push(`límite semanal ${round(weeklyPct, 2)}%`);
-  if (balance > 0 && drawdownPct <= -configNum(config, 'max_drawdown_pct', 10)) reasons.push(`drawdown ${round(drawdownPct, 2)}%`);
+  if (balance > 0 && dailyPct <= -configNum(config, 'daily_loss_limit_pct', 15)) reasons.push(`límite diario ${round(dailyPct, 2)}%`);
+  if (balance > 0 && weeklyPct <= -configNum(config, 'weekly_loss_limit_pct', 20)) reasons.push(`límite semanal ${round(weeklyPct, 2)}%`);
+  if (balance > 0 && drawdownPct <= -configNum(config, 'max_drawdown_pct', 25)) reasons.push(`drawdown ${round(drawdownPct, 2)}%`);
   if (globalStreakRecent && globalStreak >= configNum(config, 'max_consecutive_losses', 4)) reasons.push(`${globalStreak} pérdidas globales consecutivas`);
   const groupLimit = configNum(config, 'max_group_consecutive_losses', 4);
   if (candidate.symbol && symbolStreakRecent && symbolStreak >= groupLimit) reasons.push(`${symbolStreak} pérdidas consecutivas en ${candidate.symbol}`);
@@ -664,9 +667,9 @@ router.get('/api/learning/summary', async (_req, res) => {
       config: {
         softMinSample: configNum(config, 'soft_min_sample', 8),
         hardMinSample: configNum(config, 'hard_min_sample', 20),
-        dailyLossLimitPct: configNum(config, 'daily_loss_limit_pct', 3),
-        weeklyLossLimitPct: configNum(config, 'weekly_loss_limit_pct', 6),
-        maxDrawdownPct: configNum(config, 'max_drawdown_pct', 10),
+        dailyLossLimitPct: configNum(config, 'daily_loss_limit_pct', 15),
+        weeklyLossLimitPct: configNum(config, 'weekly_loss_limit_pct', 20),
+        maxDrawdownPct: configNum(config, 'max_drawdown_pct', 25),
         maxConsecutiveLosses: configNum(config, 'max_consecutive_losses', 4)
       },
       rules: ruleSummary || {},

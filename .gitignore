@@ -9,3 +9,14 @@ trades.json
 .claude/
 .codex
 .DS_Store
+
+# Bot Control keeps only sanitized, reproducible artifacts.
+bot-control/private/*
+!bot-control/private/README.md
+bot-control/workflows/raw/
+bot-control/**/*.sqlite
+bot-control/**/*.db
+bot-control/**/.env
+*.sqlite
+*.sqlite3
+*.db

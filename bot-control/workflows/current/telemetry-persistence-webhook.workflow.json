@@ -1,0 +1,91 @@
+{
+  "updatedAt": "2026-06-22T06:52:11.000Z",
+  "createdAt": "2026-06-22T05:50:36.118Z",
+  "id": "telemetryPersistenceWebhook",
+  "name": "Telemetry Persistence Webhook",
+  "description": null,
+  "active": false,
+  "isArchived": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telemetry-persistence-test",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "b49c4f18-c57c-45b1-94e6-586c4d9efd1f",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "telemetry-persistence-test"
+    },
+    {
+      "parameters": {
+        "jsCode": "const DASHBOARD = 'http://127.0.0.1:3001';\nconst ts = Date.now();\nconst acceptedSymbol = 'TLMACCUSDT';\nconst rejectedSymbol = 'TLMREJUSDT';\nconst indicators = {\n  rsi14: 51.2,\n  ema8: 101.25,\n  ema21: 100.75,\n  ema50: 99.85,\n  atrPct: 1.42,\n  volRatio: 1.7,\n  fundingRate: 0.000012,\n  vwap: 100.95,\n  currentPrice: 101.1\n};\nconst aiResult = {\n  regime: 'TRENDING',\n  direction_bias: 'LONG',\n  reasoning: 'telemetry persistence controlled n8n webhook test',\n  key_risk: 'test only, no exchange order',\n  recommended_leverage: 3\n};\nconst marketContext = {\n  market_bias: 'NEUTRAL',\n  fearGreed: { value: 20 },\n  btcChange: 0.42,\n  size_multiplier: 0.5\n};\nasync function post(path, body) {\n  return this.helpers.httpRequest({ method: 'POST', url: `${DASHBOARD}${path}`, json: true, body });\n}\nconst accepted = await post.call(this, '/db/trade/open', {\n  symbol: acceptedSymbol,\n  direction: 'LONG',\n  entryPrice: 101.1,\n  sl: 99.5,\n  tp: 104.3,\n  qty: 0.1,\n  leverage: 3,\n  marginRequired: 3.37,\n  riskPct: 0.5,\n  maxLoss: 0.16,\n  maxGain: 0.32,\n  rrRatio: 2,\n  finalScore: 88,\n  scanScore: 0.777,\n  longScore: 88,\n  shortScore: 11,\n  indicators,\n  aiResult,\n  tf4h: { trend: 'LONG', status: 'CONFIRMS', rsi: 54.2 },\n  marketContext,\n  sizingInfo: { scoreMultiplier: 1.25 },\n  slMonitorRequired: false,\n  usedFallback: false,\n  volume24h: 250000000,\n  priceChangePct: 1.2,\n  openInterest: 12500000\n});\nawait post.call(this, '/db/trade/close', {\n  symbol: acceptedSymbol,\n  exitPrice: 104.3,\n  pnlUsdt: 0.32,\n  pnlPct: 0.32,\n  rFinal: 2,\n  closeReason: 'TP',\n  trailingStage: 'LOCK',\n  durationMinutes: 9\n});\nconst rejection = await post.call(this, '/db/rejection', {\n  symbol: rejectedSymbol,\n  direction: 'SHORT',\n  skipReason: `telemetry controlled n8n rejection ${ts}`,\n  finalScore: 44,\n  scanScore: 0.333,\n  aiResult: { regime: 'HIGH_VOLATILITY', direction_bias: 'SHORT' },\n  aiVision: { market_state: 'LATE_TREND', approve_trade: false },\n  indicators,\n  tf4hStatus: 'NEUTRAL',\n  macroBias: 'NEUTRAL',\n  fearGreed: 20\n});\nconst rejectedScan = await post.call(this, '/db/scan', {\n  symbol: rejectedSymbol,\n  scanScore: 0.333,\n  direction: 'SHORT',\n  finalScore: 44,\n  longScore: 12,\n  shortScore: 58,\n  passAI: false,\n  skipReason: `telemetry controlled n8n rejection ${ts}`,\n  indicators,\n  volume24h: 240000000,\n  priceChangePct: -0.8,\n  openInterest: 12200000\n});\nconst postTrade = await post.call(this, '/db/post-trade', {\n  symbol: acceptedSymbol,\n  direction: 'LONG',\n  closeType: 'TP',\n  stage: 'LOCK',\n  pnl: 0.32,\n  rFinal: 2,\n  durationMinutes: 9,\n  analysis: `telemetry controlled n8n post-trade ${ts}`\n});\nreturn [{ json: { ok: true, source: 'n8n-webhook', accepted, rejection, rejectedScan, postTrade, acceptedSymbol, rejectedSymbol, ts } }];"
+      },
+      "id": "fe650947-8e52-4afe-9c46-1c0bb87a40b5",
+      "name": "Write Telemetry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Write Telemetry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "bb721a2f-fc2c-4200-b0a0-692cf125a883",
+  "activeVersionId": null,
+  "versionCounter": 1,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-06-22T05:50:36.122Z",
+      "createdAt": "2026-06-22T05:50:36.122Z",
+      "role": "workflow:owner",
+      "workflowId": "telemetryPersistenceWebhook",
+      "projectId": "BZF5fIu2QbQ8BWHG",
+      "project": {
+        "updatedAt": "2026-06-21T22:06:52.102Z",
+        "createdAt": "2026-06-21T21:28:58.308Z",
+        "id": "BZF5fIu2QbQ8BWHG",
+        "name": "Aterum Admin <admin@aterum.local>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "7d7ddb00-2787-4677-9a65-66857531a557"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

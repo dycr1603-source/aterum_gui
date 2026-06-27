@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-06-27T20:53:55.334Z",
+  "source": "all-workflows-current.json",
+  "sanitized": true,
+  "workflows": [
+    {
+      "id": "Cz4TfvaVAygWGRJm",
+      "name": "Advanced AI Trading Bot v2 - Clean",
+      "activeAtExport": true,
+      "nodeCount": 44,
+      "filename": "advanced-ai-trading-bot-v2-clean.workflow.json",
+      "sha256": "4bff22756addfe3189f72219d178259c8ed224ee5904f8b1f79dec8da3c6e68d"
+    },
+    {
+      "id": "RecommendationReviewEngine",
+      "name": "Recommendation Review Engine",
+      "activeAtExport": true,
+      "nodeCount": 2,
+      "filename": "recommendation-review-engine.workflow.json",
+      "sha256": "14695d7a3b5c574f5940138b5049f433cefbd390647fba1f2937ca6c0c885f58"
+    },
+    {
+      "id": "ZYhtV8yWXjNukrW4",
+      "name": "SL Monitor",
+      "activeAtExport": true,
+      "nodeCount": 12,
+      "filename": "sl-monitor.workflow.json",
+      "sha256": "eaddce79636e138b4533bb1e3a670d929989989e69496b55e9faae5ac9f2f9a3"
+    },
+    {
+      "id": "telemetryPersistenceTest",
+      "name": "Telemetry Persistence Test",
+      "activeAtExport": false,
+      "nodeCount": 2,
+      "filename": "telemetry-persistence-test.workflow.json",
+      "sha256": "1245006cae9992edc6a2a71bfb139635258bc400eb2732d73c0c4eccd3aab2c8"
+    },
+    {
+      "id": "telemetryPersistenceWebhook",
+      "name": "Telemetry Persistence Webhook",
+      "activeAtExport": false,
+      "nodeCount": 2,
+      "filename": "telemetry-persistence-webhook.workflow.json",
+      "sha256": "781ad664cb17ba9c9a7a5cecd90718804c1fa0e6813560b2bb2258cc4c3b6260"
+    },
+    {
+      "id": "q32UEjoj5wNiBHil",
+      "name": "Trailing Manager",
+      "activeAtExport": true,
+      "nodeCount": 4,
+      "filename": "trailing-manager.workflow.json",
+      "sha256": "66b20c17a1ce9b2d7006b3940601bd7ae10ca992096d91f3f7f9c4f509b37be6"
+    }
+  ]
+}

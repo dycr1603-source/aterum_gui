@@ -24,6 +24,10 @@ Mapa rapido del workspace:
 
 Dashboard web para monitorear el bot de trading, revisar posiciones, analitica, inteligencia de mercado y simular senales de n8n.
 
+## Bot Control Center
+
+La vista completa del sistema esta en [`bot-control/`](./bot-control/README.md): arquitectura, indice de documentos, workflows n8n sanitizados, infraestructura Docker de referencia y runbooks de operacion/recuperacion.
+
 ## Que incluye
 
 - Dashboard principal en `/dashboard`.

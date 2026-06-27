@@ -1,0 +1,104 @@
+{
+  "updatedAt": "2026-06-22T06:32:07.000Z",
+  "createdAt": "2026-06-22T06:31:41.418Z",
+  "id": "RecommendationReviewEngine",
+  "name": "Recommendation Review Engine",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "7b8d1b5f-f497-4ef9-99bd-b7ef5a4fb001",
+      "name": "Daily Recommendation Review",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        400,
+        280
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3001/db/recommendations/review",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "{\"source\":\"n8n Recommendation Review Engine\"}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ca68b093-4f17-4b8d-879d-d97be9a3432c",
+      "name": "Review Due Recommendations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        280
+      ]
+    }
+  ],
+  "connections": {
+    "Daily Recommendation Review": {
+      "main": [
+        [
+          {
+            "node": "Review Due Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "7e273226-e3dc-4f54-ae94-5c271fdd162e",
+  "activeVersionId": "7e273226-e3dc-4f54-ae94-5c271fdd162e",
+  "versionCounter": 1,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-06-22T06:31:41.422Z",
+      "createdAt": "2026-06-22T06:31:41.422Z",
+      "role": "workflow:owner",
+      "workflowId": "RecommendationReviewEngine",
+      "projectId": "BZF5fIu2QbQ8BWHG",
+      "project": {
+        "updatedAt": "2026-06-21T22:06:52.102Z",
+        "createdAt": "2026-06-21T21:28:58.308Z",
+        "id": "BZF5fIu2QbQ8BWHG",
+        "name": "Aterum Admin <admin@aterum.local>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "7d7ddb00-2787-4677-9a65-66857531a557"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
