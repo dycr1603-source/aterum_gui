@@ -8,12 +8,14 @@ const knowledge = require('./knowledge');
 
 assert.deepEqual(commandFrom({ message: { text: '/status' } }, 'Delcon8n_bot'), { command: 'status', args: [], source: 'message' });
 assert.deepEqual(commandFrom({ message: { text: '/why@Delcon8n_bot BTCUSDT' } }, 'Delcon8n_bot'), { command: 'why', args: ['BTCUSDT'], source: 'message' });
+assert.deepEqual(commandFrom({ message: { text: '/trade 50' } }, 'Delcon8n_bot'), { command: 'trade', args: ['50'], source: 'message' });
 assert.deepEqual(commandFrom({ message: { text: '@Delcon8n_bot status' } }, 'Delcon8n_bot'), { command: 'status', args: [], source: 'mention' });
 assert.deepEqual(commandFrom({ message: { text: '@Delcon8n_bot explica el drawdown' } }, 'Delcon8n_bot'), { command: 'ask', args: ['explica', 'el', 'drawdown'], source: 'mention' });
 assert.deepEqual(commandFrom({ message: { text: '¿Qué es Research?', chat: { type: 'private' } } }, 'Delcon8n_bot'), { command: 'ask', args: ['¿Qué', 'es', 'Research?'], source: 'conversation' });
 assert.equal(commandFrom({ message: { text: 'status' } }, 'Delcon8n_bot'), null);
 assert.equal(commandAllowed('viewer', 'status'), true);
 assert.equal(commandAllowed('viewer', 'ask'), true);
+assert.equal(commandAllowed('viewer', 'timeline'), true);
 assert.equal(commandAllowed('viewer', 'simulate'), false);
 assert.equal(commandAllowed('moderator', 'simulate'), true);
 assert.equal(commandAllowed('moderator', 'users'), false);

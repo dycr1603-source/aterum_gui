@@ -24,6 +24,8 @@ const { createCommands } = require('./commands');
     { command: 'ask', args: ['¿Qué', 'es', 'drawdown?'], role: 'viewer', localOnly: true },
     { command: 'why', args: [symbol], role: 'viewer' },
     { command: 'evidence', args: [symbol], role: 'viewer' },
+    { command: 'trade', args: ['1'], role: 'viewer' },
+    { command: 'timeline', args: ['1'], role: 'viewer' },
     { command: 'history', args: [symbol], role: 'viewer' },
     { command: 'simulate', args: [], role: 'moderator' },
     { command: 'scan', args: [], role: 'moderator' },

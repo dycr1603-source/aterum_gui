@@ -9,7 +9,7 @@ const { recentExecutionErrors, workflowMetadata } = require('./n8n-readonly');
 
 const VIEWER_COMMANDS = new Set([
   'start', 'help', 'status', 'balance', 'positions', 'performance', 'research', 'learning',
-  'health', 'logs', 'news', 'ai', 'context', 'history', 'changes', 'why', 'evidence',
+  'health', 'logs', 'news', 'ai', 'context', 'trade', 'timeline', 'history', 'changes', 'why', 'evidence',
   'ask', 'guide', 'tutorial', 'menu', 'new', 'explain'
 ]);
 const MODERATOR_COMMANDS = new Set([...VIEWER_COMMANDS, 'simulate', 'simulator', 'scan', 'rebuild-report', 'rebuild_report']);
@@ -375,71 +375,75 @@ function createCommands(deps) {
 
   function explain(args = []) { return knowledge.contextual(String(args[1] || args[0] || 'status'), String(args[0] || 'meaning')); }
 
+  async function latestKnowledgeRef(symbol) {
+    const data = await api.knowledgeDecisions(symbol, 1);
+    return data.decisions?.[0]?.ref || null;
+  }
+
+  function decisionRefArg(args) {
+    const value = String(args?.[0] || '').trim().toLowerCase();
+    if (!/^(?:\d+|t\d+|r\d+|trade:\d+|rejection:\d+)$/.test(value)) {
+      throw new Error('Indica un ID: /trade 50 o /trade rejection:588');
+    }
+    return value;
+  }
+
+  function formatKnowledgeDecision(decision, heading = 'DECISION') {
+    const final = decision.finalDecision || {};
+    const trade = decision.trade || {};
+    const market = decision.marketContext || {};
+    return [
+      title(final.accepted ? '✅' : '⛔', `${heading} ${decision.symbol}`), '',
+      field('Referencia', decision.ref),
+      field('Fecha', f.date(decision.eventAt)),
+      field('Dirección', decision.direction || 'N/D'),
+      field('Decisión', final.action || 'N/D'),
+      field('Score', `${final.baseScore ?? 'N/D'} → ${final.finalScore ?? 'N/D'} / threshold ${final.threshold ?? 'N/D'}`),
+      field('Learning', decision.learning ? `#${decision.learning.id} ${decision.learning.action} · factor ${decision.learning.final_factor}` : 'sin evidencia'),
+      field('Research', decision.research ? `#${decision.research.id} ${decision.research.report_type}` : 'sin evidencia'),
+      field('Reglas', decision.learningRules?.length || 0),
+      field('Recomendaciones', decision.recommendations?.length || 0),
+      field('Imagen', decision.imageAnalysis?.available ? (decision.imageAnalysis.approved ? 'aprobada' : 'no aprobada') : 'sin evidencia'),
+      field('Macro', `${market.macroBias || 'N/D'} · Fear ${market.fearGreed ?? 'N/D'} · 4H ${market.tf4hStatus || 'N/D'}`),
+      field('Simulator', decision.simulator?.available ? `threshold ${decision.simulator.threshold}` : 'sin snapshot'),
+      field('Capital Guard', decision.capitalGuard ? (decision.capitalGuard.halted ? 'halted' : 'permitido') : 'sin evidencia'),
+      field('Resultado', trade.closedAt ? `${f.money(trade.pnlUsdt, true)} · ${trade.rFinal ?? 'N/D'}R · ${trade.closeReason}` : (trade.status || 'N/A')),
+      field('Razón', compactText(final.reason || 'No persistida', 900)),
+      '', f.escape('Fuente: Decision Knowledge Graph. Sin Claude ni OpenAI.')
+    ].join('\n');
+  }
+
+  async function tradeDecision(args) {
+    return formatKnowledgeDecision(await api.knowledgeTrade(decisionRefArg(args)), 'TRADE');
+  }
+
+  async function timelineDecision(args) {
+    const ref = decisionRefArg(args);
+    const data = await api.knowledgeTimeline(ref);
+    if (!data.events?.length) return `${title('🕘', `TIMELINE ${ref}`)}\n\n${f.escape('No hay eventos persistidos.')}`;
+    return `${title('🕘', `TIMELINE ${data.symbol}`)}\n\n${data.events.map(event => [
+      f.bold(f.date(event.at)),
+      f.escape(event.title),
+      f.escape(compactText(event.detail || event.evidence || '', 420))
+    ].join('\n')).join('\n\n')}`;
+  }
+
   async function why(args) {
     const symbol = symbolArg(args);
-    const [stats, decisionData] = await Promise.all([api.stats(), api.learningDecisions(200)]);
-    const trade = (stats.recent || []).find(row => String(row.symbol || '').toUpperCase() === symbol);
-    const decision = nearestDecision(decisionData.decisions, symbol, trade?.opened_at);
-    if (!trade && !decision) return `${title('🔎', `WHY ${symbol}`)}\n\n${f.escape('No existen decisiones ni trades almacenados para este símbolo.')}`;
-    const components = f.parseJson(decision?.components, {});
-    const recommendationIds = f.parseJson(decision?.source_recommendation_ids, []);
-    const image = trade
-      ? `${trade.vision_state || 'N/D'} / ${numeric(trade.vision_approved) ? 'aprobada' : 'no aprobada'}${trade.vision_reason ? ` · ${compactText(trade.vision_reason, 220)}` : ''}`
-      : 'No persistida';
-    const reason = decision?.reason || trade?.entry_reason || trade?.ai_reasoning || 'No persistida';
-    return [
-      title('🔎', `WHY ${symbol}`), '',
-      field('Score Base', decision?.base_score ?? trade?.scan_score ?? 'N/D'),
-      field('Research', recommendationIds.length ? `${recommendationIds.length} recomendación(es) / factor ${components.research ?? 1}` : `sin recomendación asociada / factor ${components.research ?? 1}`),
-      field('Learning', decision ? `${decision.action} / factor ${decision.final_factor}` : 'sin decisión asociada'),
-      field('Imagen', image),
-      field('Macro', trade ? `${trade.macro_bias || 'N/D'} / Fear & Greed ${trade.macro_fear_greed ?? 'N/D'}` : 'No persistido'),
-      field('Noticias', 'No persistidas para esta decisión'),
-      field('ATR', trade?.atr_pct == null ? 'N/D' : `${trade.atr_pct}%`),
-      field('Volumen', trade?.vol_ratio == null ? 'N/D' : `${trade.vol_ratio}x`),
-      field('Trend 4H', trade ? `${trade.tf4h_trend || 'N/D'} / ${trade.tf4h_status || 'N/D'}` : 'N/D'),
-      field('Threshold', decision?.required_score ?? trade?.dynamic_threshold ?? 'N/D'),
-      field('Score Final', decision?.final_score ?? trade?.final_score ?? 'N/D'),
-      field('Razón completa', compactText(reason, 900)),
-      field('Nivel de confianza', 'No persistido como métrica global'),
-      '', f.escape('La respuesta muestra N/D cuando el contexto histórico no fue almacenado; no sustituye datos con contexto actual.')
-    ].join('\n');
+    const ref = await latestKnowledgeRef(symbol);
+    if (!ref) return `${title('🔎', `WHY ${symbol}`)}\n\n${f.escape('No existen decisiones persistidas para este símbolo.')}`;
+    return formatKnowledgeDecision(await api.knowledgeTrade(ref), 'WHY');
   }
 
   async function evidence(args) {
     const symbol = symbolArg(args);
-    const [stats, decisionData, recommendationData, performanceData, aiData, rulesData, reportData] = await Promise.all([
-      api.stats(), api.learningDecisions(200), api.recommendations(200), api.recommendationsPerformance(),
-      api.aiData(100, 180), api.learningRules(), api.latestReport()
-    ]);
-    const trade = (stats.recent || []).find(row => String(row.symbol || '').toUpperCase() === symbol);
-    const decision = nearestDecision(decisionData.decisions, symbol, trade?.opened_at);
-    const recommendationIds = f.parseJson(decision?.source_recommendation_ids, []).map(Number);
-    const relatedRecommendations = (recommendationData.recommendations || []).filter(row =>
-      recommendationIds.includes(Number(row.id)) || String(row.recommendation || '').toUpperCase().includes(symbol)
-    );
-    const reviews = (performanceData.recentReviews || []).filter(row => recommendationIds.includes(Number(row.recommendation_id)));
-    const postTrade = (aiData.postTrades || []).find(row => String(row.symbol || '').toUpperCase() === symbol);
-    const setup = String(trade?.setup_label || '').toUpperCase();
-    const regime = String(trade?.ai_regime || '').toUpperCase();
-    const rules = (rulesData.rules || []).filter(row => {
-      const key = String(row.rule_key || '').toUpperCase();
-      return key === symbol || (setup && key === setup) || (regime && key === regime);
-    });
-    const report = reportData.report;
-    return [
-      title('🧾', `EVIDENCIA ${symbol}`), '',
-      f.bold('Research relacionado'),
-      f.list(relatedRecommendations.map(row => `${row.recommendation} [${row.status}/${row.implementation_status}]`), 5),
-      '', f.bold('Recommendation Review'),
-      f.list(reviews.map(row => `${row.outcome}: impacto ${row.impact_score ?? 'N/D'} · ${row.notes || ''}`), 4),
-      '', f.bold('Post Trade'),
-      postTrade ? f.escape(`${postTrade.close_type || 'N/D'} · PnL ${f.money(postTrade.pnl_usdt, true)} · ${compactText(postTrade.analysis, 500)}`) : f.escape('Sin análisis post-trade asociado'),
-      '', f.bold('Learning Rule'),
-      f.list(rules.map(row => `${row.rule_type}:${row.rule_key} · ${row.action} · peso ${row.weight} · evidencia ${row.evidence_level}`), 5),
-      '', f.bold('Reporte Anthropic'),
-      report ? f.escape(`${report.report_type} · ${report.model || 'N/D'} · ${f.date(report.created_at || report.report_date)} · ${compactText(report.report, 650)}`) : f.escape('Sin reporte persistido')
-    ].join('\n');
+    const ref = await latestKnowledgeRef(symbol);
+    if (!ref) return `${title('🧾', `EVIDENCIA ${symbol}`)}\n\n${f.escape('No existen decisiones persistidas.')}`;
+    const data = await api.knowledgeEvidence(ref);
+    const groups = Object.entries(data.sources || {}).filter(([, items]) => items.length);
+    return [title('🧾', `EVIDENCIA ${symbol}`), '', field('Referencia', ref),
+      ...groups.flatMap(([name, items]) => [f.bold(name), f.list(items.map(item => `${item.table}#${item.id ?? 'snapshot'}${item.status ? ` · ${item.status}` : ''}`), 8), '']),
+      ...(data.missing || []).map(item => `△ ${f.escape(item)}`), '', f.escape('No se consultó IA generativa.')].join('\n');
   }
 
   async function history(args) {
@@ -466,25 +470,17 @@ function createCommands(deps) {
   }
 
   async function changes() {
-    const [changeData, recommendationsData] = await Promise.all([api.learningChanges(10), api.recommendations(100)]);
-    const recommendations = recommendationsData.recommendations || [];
-    const rows = changeData.changes || [];
+    const rows = (await api.knowledgeRules()).rules || [];
     if (!rows.length) return `${title('🧬', 'CHANGES')}\n\n${f.escape('No existen cambios auditados.')}`;
-    const blocks = rows.map(change => {
-      const ids = f.parseJson(change.source_recommendation_ids, []).map(Number);
-      const related = recommendations.filter(row => ids.includes(Number(row.id)));
-      const implemented = related.some(row => row.implementation_status === 'implementada') || change.change_type !== 'manual';
-      return [
-        `${change.status === 'validated' ? '🟢' : change.status === 'reverted' || change.status === 'revert_required' ? '🔴' : '🟡'} ${f.bold(change.target_key || change.component)}`,
-        field('Fecha', f.date(change.implemented_at)),
-        field('Qué cambió', `${change.component} / ${change.parameter_name}`),
-        field('Por qué', compactText(change.reason || change.human_explanation || 'Sin razón persistida', 320)),
-        field('Implementado', implemented ? 'sí' : 'no'),
-        field('Sigue activo', ['monitoring', 'insufficient', 'validated'].includes(change.status) ? 'sí' : 'no'),
-        field('Impacto observado', change.impact_score == null ? 'sin evidencia' : f.number(change.impact_score, 3)),
-        field('Estado', change.status)
-      ].join('\n');
-    });
+    const blocks = rows.slice(0, 10).map(change => [
+      `${change.active ? '🟢' : '🔴'} ${f.bold(change.name)}`,
+      field('Fecha', f.date(change.date)), field('Actor', change.actor || 'N/D'),
+      field('Por qué', compactText(change.reason || 'Sin razón persistida', 320)),
+      field('Trades afectados', change.affectedTrades ?? 'N/D'),
+      field('PnL observado', change.profitGenerated == null ? 'N/D' : f.money(change.profitGenerated, true)),
+      field('Impacto', change.impactScore == null ? 'sin evidencia' : f.number(change.impactScore, 3)),
+      field('Estado', change.status)
+    ].join('\n'));
     return `${title('🧬', 'ÚLTIMOS CAMBIOS')}\n\n${blocks.join('\n\n')}`;
   }
 
@@ -569,7 +565,8 @@ function createCommands(deps) {
 
   const handlers = {
     status, balance, positions, performance, research, learning, health, logs, news, ai, context,
-    why, evidence, history, changes, simulate, simulator, scan, 'rebuild-report': rebuildReport, rebuild_report: rebuildReport,
+    trade: tradeDecision, timeline: timelineDecision, why, evidence, history, changes,
+    simulate, simulator, scan, 'rebuild-report': rebuildReport, rebuild_report: rebuildReport,
     users, role, enable: args => enableUser(args, true), disable: args => enableUser(args, false),
     ask, help, start, guide, tutorial, menu: start, new: whatsNew, explain
   };

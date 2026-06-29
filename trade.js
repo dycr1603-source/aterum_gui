@@ -26,6 +26,7 @@ const { getAIDataHTML }     = require('./views/aidata');
 const { getResearchHTML }   = require('./views/research');
 const { getPlayHTML }       = require('./views/play');
 const { getSimulatorHTML }  = require('./views/simulator');
+const { getKnowledgeHTML }  = require('./views/knowledge');
 const accountRoutes         = require('./routes/account');
 const cooldownRoutes        = require('./routes/cooldown');
 
@@ -59,6 +60,11 @@ app.get('/simulator', requireAuth, (req, res) => {
   res.setHeader('Pragma', 'no-cache');
   res.send(getSimulatorHTML(req.session.user));
 });
+app.get('/knowledge', requireAuth, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.send(getKnowledgeHTML(req.session.user));
+});
 
 // ── Mount route modules ──────────────────────────────────────────────────────
 app.use(accountRoutes);
@@ -68,6 +74,7 @@ app.use(require('./routes/aidata'));
 app.use(require('./routes/intelligence'));
 app.use(require('./routes/learning'));
 app.use(require('./routes/simulator'));
+app.use(require('./routes/knowledge'));
 app.use(require('./routes/cb'));
 app.use('/', cooldownRoutes);
 

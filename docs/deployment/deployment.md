@@ -13,6 +13,14 @@ TELEGRAM_AI_MAX_TOKENS=400
 
 Después de cambiar configuración se recrea sólo `telegram_control`. El arranque crea idempotentemente `telegram_ai_usage` y `telegram_ai_cache`; no altera trading ni workflows.
 
+## Decision Knowledge
+
+```env
+KNOWLEDGE_CACHE_TTL_MS=30000
+```
+
+La ruta `/knowledge` y `/api/knowledge/*` viven en Dashboard. Requieren acceso read-only al volumen n8n ya montado en `/n8n-data` para reconstruir la secuencia de nodos. No requieren credenciales de Claude/OpenAI.
+
 ## Position Guard
 
 ```env

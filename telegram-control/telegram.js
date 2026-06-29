@@ -94,6 +94,7 @@ class TelegramClient {
       health: 'Salud de servicios', logs: 'Eventos importantes', news: 'Noticias', ai: 'Uso y ahorro de IA',
       context: 'Contexto Intelligence', ask: 'Preguntar al Copiloto',
       why: 'Explicar decisión por símbolo', history: 'Historial por símbolo', changes: 'Cambios del sistema',
+      trade: 'Decisión completa por ID', timeline: 'Timeline de una decisión', evidence: 'Evidencia por símbolo',
       simulate: 'Simulación read-only (moderator)', scan: 'Scans persistidos (moderator)',
       rebuild_report: 'Recomponer reporte (moderator)', users: 'Usuarios y roles (admin)'
     };

@@ -47,6 +47,15 @@ class ApiClient {
   aiData(limit = 100, period = 90) { return this.dashboard(`/db/ai-data?limit=${limit}&period=${period}`); }
   intelligence() { return this.dashboard('/api/intelligence/summary?page=aidata'); }
   simulatorReport() { return this.dashboard('/api/simulator/report'); }
+  knowledgeDecisions(symbol = '', limit = 10) {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (symbol) query.set('symbol', symbol);
+    return this.dashboard(`/api/knowledge/trades?${query}`);
+  }
+  knowledgeTrade(ref) { return this.dashboard(`/api/knowledge/trade/${encodeURIComponent(ref)}`); }
+  knowledgeTimeline(ref) { return this.dashboard(`/api/knowledge/timeline/${encodeURIComponent(ref)}`); }
+  knowledgeEvidence(ref) { return this.dashboard(`/api/knowledge/evidence/${encodeURIComponent(ref)}`); }
+  knowledgeRules() { return this.dashboard('/api/knowledge/rules'); }
 }
 
 module.exports = { ApiClient };

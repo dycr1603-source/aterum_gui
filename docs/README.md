@@ -10,6 +10,7 @@ Este indice es la entrada canonica a la documentacion del sistema. Los archivos 
 | [Telegram](./telegram/README.md) | Centro de operaciones, RBAC y Copiloto. |
 | [Research](./research/README.md) | Informes, Anthropic, recomendaciones y auditorias. |
 | [Learning](./learning/README.md) | Reglas, decisiones, cambios y rollback. |
+| [Knowledge](./knowledge/README.md) | Decision Explorer, Timeline, Graph, Diff y evidencia. |
 | [Analytics](./analytics/README.md) | Mapeo y restauracion de datos de la GUI. |
 | [Trading](./trading/README.md) | Evidencia sobre ejecucion, trailing, grafico y PnL. |
 | [Simulator](./simulator/README.md) | Alcance y referencias del simulador. |

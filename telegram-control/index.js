@@ -11,7 +11,7 @@ const knowledge = require('./knowledge');
 
 const KNOWN_COMMANDS = new Set([
   'start','help','guide','tutorial','menu','new','status','balance','positions','performance','research','learning',
-  'health','logs','news','ai','context','ask','why','history','changes','simulate','simulator','scan','rebuild-report',
+  'health','logs','news','ai','context','ask','trade','timeline','evidence','why','history','changes','simulate','simulator','scan','rebuild-report',
   'rebuild_report','users','role','enable','disable'
 ]);
 
@@ -75,6 +75,9 @@ function directSources(command) {
     health: ['mysql:ping', 'redis:PING', 'external:Binance', 'external:Telegram'],
     logs: ['mysql:events', 'n8n-sqlite:execution_entity'],
     scan: ['mysql:scan_events'], simulator: ['n8n-sqlite:workflow_entity'],
+    trade: ['dashboard:/api/knowledge/trade'], timeline: ['dashboard:/api/knowledge/timeline'],
+    why: ['dashboard:/api/knowledge/trade'], evidence: ['dashboard:/api/knowledge/evidence'],
+    changes: ['dashboard:/api/knowledge/rules'],
     users: ['mysql:telegram_users'], role: ['mysql:telegram_users'],
     enable: ['mysql:telegram_users'], disable: ['mysql:telegram_users']
   };

@@ -1,5 +1,15 @@
 # Aterum Telegram Control
 
+## Decision Knowledge
+
+- `/trade 50`: decisión completa por ID.
+- `/timeline 50`: secuencia persistida de una decisión.
+- `/why BTCUSDT`: última decisión del símbolo.
+- `/evidence BTCUSDT`: IDs de evidencia relacionados.
+- `/changes`: impacto y estado de cambios persistidos.
+
+Estos comandos consultan exclusivamente `/api/knowledge/*`. No llaman Claude ni OpenAI y muestran evidencia ausente como tal.
+
 ## Copiloto conversacional
 
 Además de los comandos operativos, el bot acepta `/ask pregunta`, texto libre en chat privado, respuestas a un mensaje del bot y `@Delcon8n_bot pregunta` dentro del grupo. El orden de resolución es comando, FAQ local, caché y Claude.

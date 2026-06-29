@@ -5,8 +5,9 @@
   "scripts": {
     "start": "node trade.js",
     "chart-api": "node server.js",
-    "check": "node -c trade.js && node -c server.js && node -c routes/learning.js && node -c services/learning_changes.js && node -c views/research.js",
-    "test:learning": "node tests/learning_changes.test.js"
+    "check": "node -c trade.js && node -c server.js && node -c routes/learning.js && node -c routes/knowledge.js && node -c services/learning_changes.js && node -c services/knowledge_graph.js && node -c views/research.js && node -c views/knowledge.js",
+    "test:learning": "node tests/learning_changes.test.js",
+    "test:knowledge": "node tests/knowledge_graph.test.js"
   },
   "keywords": [],
   "author": "",

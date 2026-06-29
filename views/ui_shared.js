@@ -3034,6 +3034,7 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
       <a href="/dashboard" class="nav-link${current==='dashboard'?' active':''}">Trading</a>
       <a href="/analytics" class="nav-link${current==='analytics'?' active':''}">Analytics</a>
       <a href="/research" class="nav-link${current==='research'?' active':''}">Research</a>
+      <a href="/knowledge" class="nav-link${current==='knowledge'?' active':''}">Decisions</a>
       <a href="/ai-data#inteligencia" class="nav-link${current==='aidata'?' active':''}">News</a>
       <a href="/simulator" class="nav-link${current==='simulator'?' active':''}">Simulator</a>
       <a href="/ai-data#asistente-ia" class="nav-link${current==='assistant'?' active':''}">AI Assistant</a>
@@ -3066,6 +3067,7 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
     <a href="/dashboard" class="nav-drawer-link${current==='dashboard'?' active':''}">Trading</a>
     <a href="/analytics" class="nav-drawer-link${current==='analytics'?' active':''}">Analytics</a>
     <a href="/research" class="nav-drawer-link${current==='research'?' active':''}">Research</a>
+    <a href="/knowledge" class="nav-drawer-link${current==='knowledge'?' active':''}">Decisions</a>
     <a href="/ai-data#inteligencia" class="nav-drawer-link${current==='aidata'?' active':''}">News</a>
     <a href="/simulator" class="nav-drawer-link${current==='simulator'?' active':''}">Simulator</a>
     <a href="/ai-data#asistente-ia" class="nav-drawer-link${current==='assistant'?' active':''}">AI Assistant</a>

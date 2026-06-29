@@ -77,6 +77,7 @@ services:
       OPENAI_ASSISTANT_MODEL: ${OPENAI_ASSISTANT_MODEL:-gpt-5-mini}
       N8N_SQLITE_DB: /n8n-data/database.sqlite
       N8N_TRADING_WORKFLOW_ID: ${N8N_TRADING_WORKFLOW_ID:-Cz4TfvaVAygWGRJm}
+      KNOWLEDGE_CACHE_TTL_MS: ${KNOWLEDGE_CACHE_TTL_MS:-30000}
       SIMULATOR_POLICY_KEY: ${SIMULATOR_POLICY_KEY:-aterum_policy_v1}
       TRADES_FILE: /data/trades.json
       TZ: ${TZ:-Etc/UTC}

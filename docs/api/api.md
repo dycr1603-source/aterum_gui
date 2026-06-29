@@ -1,5 +1,19 @@
 # API usada por Telegram Control
 
+## Decision Knowledge
+
+| Metodo | Ruta | Resultado |
+| --- | --- | --- |
+| GET | `/api/knowledge/trades?symbol=&limit=` | Lista de trades y rechazos con referencias estables. |
+| GET | `/api/knowledge/trade/:id` | Objeto completo de decisión. |
+| GET | `/api/knowledge/timeline/:id` | Eventos MySQL y nodos n8n correlacionados. |
+| GET | `/api/knowledge/graph/:id` | Nodos y relaciones del grafo. |
+| GET | `/api/knowledge/diff?id1=&id2=` | Únicamente diferencias entre dos decisiones. |
+| GET | `/api/knowledge/rules` | Cambios, rule impact y reviews persistidos. |
+| GET | `/api/knowledge/evidence/:id` | IDs de evidencia y ausencias explícitas. |
+
+`:id` acepta `50`, `trade:50`, `t50`, `rejection:588` o `r588`. Las respuestas se cachean 30 segundos y exponen `X-Knowledge-Duration-Ms`.
+
 No se crearon endpoints de negocio nuevos. El servicio compone los contratos existentes.
 
 El Copiloto conserva este principio: selecciona y compacta un subconjunto de estos contratos según la pregunta. No mantiene una API paralela ni envía secretos, imágenes o respuestas completas a Claude.

@@ -38,3 +38,5 @@
 - Añadida lectura de órdenes algo al estado live del Dashboard.
 - Auditada la separación de órdenes: ambas ramas Execute Trade crean la protección inicial y Position Guard deja de crear, reemplazar o cancelar SL/TP.
 - Corregido Chart API tras recreación del namespace compartido y añadidos healthchecks cruzados para `3000`.
+- Incorporado Decision Knowledge Graph read-only con Explorer, Timeline, Graph, Diff, Rule Impact, Evidence y Change History.
+- Telegram `/trade`, `/timeline`, `/why`, `/evidence` y `/changes` reutilizan Knowledge API sin IA generativa.

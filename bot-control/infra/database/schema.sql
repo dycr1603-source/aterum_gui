@@ -107,7 +107,8 @@ CREATE TABLE IF NOT EXISTS trade_rejections (
   macro_fear_greed INT NULL,
   rejected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_trade_rejections_rejected_at (rejected_at),
-  INDEX idx_trade_rejections_symbol (symbol)
+  INDEX idx_trade_rejections_symbol (symbol),
+  INDEX idx_trade_rejections_symbol_time (symbol,rejected_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS scan_events (
@@ -134,7 +135,8 @@ CREATE TABLE IF NOT EXISTS scan_events (
   open_interest DECIMAL(24,6) NULL,
   scanned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_scan_events_scanned_at (scanned_at),
-  INDEX idx_scan_events_symbol (symbol)
+  INDEX idx_scan_events_symbol (symbol),
+  INDEX idx_scan_events_symbol_time (symbol,scanned_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS circuit_breaker (

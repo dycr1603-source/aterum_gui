@@ -108,6 +108,19 @@ flowchart LR
 
 La matriz autoritativa de creación, modificación y cancelación de órdenes está en [order-responsibility-audit.md](./order-responsibility-audit.md). Position Guard no crea ni modifica SL/TP.
 
+## Decision Knowledge Graph
+
+```mermaid
+flowchart LR
+  GUI[GUI /knowledge] --> KAPI[Knowledge API read-only]
+  TELEGRAM[Telegram /trade /timeline /why] --> KAPI
+  KAPI --> MYSQL[(MySQL evidence)]
+  KAPI --> N8NDB[(n8n SQLite RO)]
+  KAPI --> CACHE[TTL cache]
+```
+
+Esta capa reconstruye decisiones sin participar en el flujo de trading. La especificación de relaciones está en [Knowledge Graph](../knowledge/knowledge.md).
+
 ## Flujo de apertura de trade
 
 ```mermaid
