@@ -11,7 +11,7 @@ Este documento separa lo reconstruido de lo que no aparece en GitHub ni en `/tmp
 | Dockerfile original de `aterum_gui` | No existia. | No habia imagen reproducible. | Reconstruido en `/home/aterum_gui/Dockerfile`. |
 | nginx original | No existia config nginx en repos. | No habia proxy unificado. | Reconstruido en `/home/nginx/nginx.conf`. |
 | Dump/migraciones SQL | No hay `*.sql` ni migraciones originales. | MySQL no podia arrancar con esquema conocido. | Reconstruido en `/home/database/schema.sql`. |
-| Credenciales n8n | Los exports referencian credenciales por ID/nombre, pero no incluyen secretos gestionables. | Workflows importados requieren recrear credenciales. | Documentado en `docs/n8n.md`. |
+| Credenciales n8n | Los exports referencian credenciales por ID/nombre, pero no incluyen secretos gestionables. | Workflows importados requieren recrear credenciales. | Documentado en `docs/operations/n8n.md`. |
 | Historico de datos | No hay dump productivo. | Dashboard arranca vacio. | Schema inicial listo; restaurar backup si existe. |
 | Configuracion exacta PM2/systemd productiva | Solo hay `ecosystem.config.cjs`; no hay unidad systemd ni deploy scripts. | No afecta Docker final. | Docker Compose reemplaza esa capa. |
 

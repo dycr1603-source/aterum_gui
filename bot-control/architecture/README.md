@@ -4,10 +4,16 @@
 
 ```mermaid
 flowchart LR
-  Internet --> NGINX[nginx :80]
+  Internet --> DNS[aterum.duckdns.org]
+  DNS --> NGINX[nginx :80/:443 TLS]
   NGINX --> GUI[Dashboard y GUI :3001]
   NGINX --> N8N[n8n :5678]
   NGINX --> CHART[Chart API :3000]
+  TELEGRAM[Telegram] <-->|long polling| TGCTRL[telegram-control]
+  TGCTRL --> GUI
+  TGCTRL --> MYSQL
+  TGCTRL --> REDIS
+  TGCTRL -->|health + SQLite RO| N8N
 
   N8N --> BINANCE[Binance Futures]
   N8N --> ANTHROPIC[Anthropic]
@@ -20,6 +26,8 @@ flowchart LR
   GUI --> N8NDB[(n8n SQLite, solo lectura)]
   CHART --> MARKET[Datos de mercado]
 ```
+
+Telegram Control incorpora un router local-first: comandos sobre APIs existentes, conocimiento local para FAQs y Claude sólo para razonamiento con contexto compacto. `telegram_ai_usage` y `telegram_ai_cache` auditan coste, latencia y reutilización sin participar en decisiones de trading.
 
 ## Flujo de trading
 
@@ -56,6 +64,7 @@ flowchart TD
 | MariaDB | Trades, cierres, telemetria, research y learning | Volumen `mysql_data` |
 | Redis | Estado/cache efimero | Volumen `redis_data` |
 | nginx | Entrada publica y reverse proxy | Configuracion versionada |
+| telegram-control | Centro de operaciones multiusuario con RBAC | `telegram_users`, `telegram_audit` |
 
 ## Contratos de red
 
@@ -65,5 +74,9 @@ flowchart TD
 | `/chart` | Chart API `:3000` |
 | `/n8n/`, `/rest/`, `/webhook/` | n8n `:5678` |
 | `/ws` | WebSocket del dashboard |
+
+La entrada canonica es `https://aterum.duckdns.org`; HTTP solo atiende ACME y redirige. Los puertos `3000`, `3001` y `5678` estan ligados a `127.0.0.1` y no permiten bypass publico de nginx.
+
+La arquitectura TLS detallada se encuentra en [`../infra/architecture.md`](../infra/architecture.md).
 
 Los workflows historicos usan `127.0.0.1`. Por compatibilidad, Dashboard, Chart API y n8n comparten namespace de red en Compose.

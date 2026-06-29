@@ -432,6 +432,66 @@ CREATE TABLE IF NOT EXISTS learning_reversion_guards (
   CONSTRAINT fk_learning_guard_change FOREIGN KEY (change_id) REFERENCES learning_changes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS telegram_audit (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  update_id BIGINT NULL,
+  user_id BIGINT NULL,
+  username VARCHAR(255) NULL,
+  role VARCHAR(16) NULL,
+  group_name VARCHAR(255) NULL,
+  chat_id BIGINT NOT NULL,
+  command VARCHAR(64) NOT NULL,
+  response MEDIUMTEXT NULL,
+  duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
+  result VARCHAR(32) NOT NULL,
+  endpoints_used JSON NULL,
+  errors TEXT NULL,
+  ip VARCHAR(45) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_telegram_audit_update (update_id),
+  INDEX idx_telegram_audit_chat_date (chat_id,created_at),
+  INDEX idx_telegram_audit_result_date (result,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS telegram_users (
+  telegram_id BIGINT PRIMARY KEY,
+  username VARCHAR(255) NULL,
+  first_name VARCHAR(255) NULL,
+  role ENUM('viewer','moderator','admin') NOT NULL DEFAULT 'viewer',
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_telegram_users_role_enabled (role,enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS telegram_ai_usage (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NULL,
+  question_hash CHAR(64) NOT NULL,
+  route ENUM('local','knowledge','cache','claude') NOT NULL,
+  estimated_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+  input_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+  output_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+  saved_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+  duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
+  cache_hit TINYINT(1) NOT NULL DEFAULT 0,
+  model VARCHAR(100) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_telegram_ai_usage_created (created_at),
+  INDEX idx_telegram_ai_usage_route_created (route,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS telegram_ai_cache (
+  question_hash CHAR(64) PRIMARY KEY,
+  normalized_question TEXT NOT NULL,
+  response MEDIUMTEXT NOT NULL,
+  model VARCHAR(100) NULL,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_telegram_ai_cache_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
 CREATE OR REPLACE VIEW daily_pnl AS
 SELECT
   DATE(closed_at) AS day,

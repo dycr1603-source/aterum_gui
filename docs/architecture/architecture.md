@@ -2,6 +2,48 @@
 
 La arquitectura final preserva los contratos historicos que aparecen en los workflows: n8n espera hablar con el backend en `http://127.0.0.1:3001`, con la chart API en `http://localhost:3000` y consigo mismo en `http://127.0.0.1:5678/webhook/...`.
 
+## Telegram Control
+
+```mermaid
+flowchart LR
+  Telegram <-->|long polling| TC[telegram-control read-only]
+  TC -->|APIs existentes| DASH[Dashboard API]
+  TC --> MYSQL[(telegram_users + telegram_audit + eventos)]
+  TC --> REDIS[(PING)]
+  TC -->|health + SQLite RO| N8N[n8n]
+```
+
+El sidecar no participa en el flujo de trading. Los nodos Telegram de n8n siguen enviando notificaciones de operaciones y reportes de forma independiente. Dentro del grupo, `telegram_users` aplica roles viewer/moderator/admin antes de consultar cualquier fuente.
+
+El Copiloto aplica un router local-first dentro del mismo sidecar: comandos e intenciones conocidas usan APIs existentes, las FAQs se resuelven desde conocimiento local y sólo las preguntas transversales llegan a Claude con contexto compacto. `telegram_ai_usage` y `telegram_ai_cache` hacen visible el uso, la latencia y el ahorro.
+
+```mermaid
+flowchart LR
+  Q[Comando o pregunta] --> R{Router local-first}
+  R -->|Comando| API[APIs existentes]
+  R -->|FAQ| KB[Knowledge local]
+  R -->|Razonamiento| CACHE{Cache}
+  CACHE -->|hit| RESP[Respuesta]
+  CACHE -->|miss| CLAUDE[Claude + contexto minimo]
+  API --> METRICS[(telegram_ai_usage)]
+  KB --> METRICS
+  CLAUDE --> METRICS
+```
+
+```mermaid
+sequenceDiagram
+  participant U as Usuario Telegram
+  participant TC as telegram-control
+  participant DB as telegram_users/audit
+  participant API as APIs existentes
+  U->>TC: /why BTCUSDT o @Delcon8n_bot status
+  TC->>DB: validar grupo, enabled y rol
+  TC->>API: consultar contratos read-only
+  API-->>TC: datos reales persistidos/live
+  TC->>DB: guardar respuesta, endpoints, duración y resultado
+  TC-->>U: MarkdownV2 + InlineKeyboard
+```
+
 Para mantener esa compatibilidad sin reescribir workflows, los servicios `dashboard`, `aterum_gui` y `n8n` comparten namespace de red mediante `network_mode: "service:dashboard"`.
 
 ## Servicios Docker
@@ -13,6 +55,7 @@ Para mantener esa compatibilidad sin reescribir workflows, los servicios `dashbo
 | `dashboard` | build `./aterum_gui` | `3001`, `3000`, `5678` | `3001` | API dashboard, endpoints `/db/*`, `/cb/*`, `/cooldown/*`, `/trade/*`, inteligencia. |
 | `aterum_gui` | misma imagen que dashboard | comparte red con `dashboard` | `3000` | Chart API `/chart` y healthcheck. |
 | `n8n` | `n8nio/n8n` | comparte puerto `5678` via dashboard | `5678` | Ejecucion/importacion de workflows. |
+| `telegram_control` | `aterum-dashboard:local` | no expuesto | `3090` health interno | RBAC, consultas, Copiloto local-first, cache y auditoria. |
 | `nginx` | `nginx:1.27-alpine` | `80` | `80` | Reverse proxy hacia dashboard, chart API y n8n. |
 
 ## Diagrama de componentes
@@ -23,6 +66,7 @@ flowchart LR
     NGINX["nginx :80"]
     MYSQL["mysql / MariaDB :3306"]
     REDIS["redis :6379"]
+    TC["telegram-control :3090"]
 
     subgraph SharedNS["Namespace compartido dashboard"]
       DASH["dashboard API :3001"]
@@ -43,6 +87,9 @@ flowchart LR
   NGINX --> DASH
   NGINX --> CHART
   NGINX --> N8N
+  TC --> DASH
+  TC --> MYSQL
+  TC --> REDIS
 
   WF --> BINANCE["Binance Futures API"]
   WF --> ANTHROPIC["Anthropic Messages API"]

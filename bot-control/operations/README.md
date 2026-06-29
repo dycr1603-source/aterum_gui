@@ -37,7 +37,7 @@ Comprobar en GUI:
 
 Referencias detalladas:
 
-- [`../../docs/deployment.md`](../../docs/deployment.md)
-- [`../../docs/n8n-recovery-report.md`](../../docs/n8n-recovery-report.md)
-- [`../../docs/disk-cleanup-report.md`](../../docs/disk-cleanup-report.md)
-- [`../../docs/dashboard-data-consistency.md`](../../docs/dashboard-data-consistency.md)
+- [`../../docs/deployment/deployment.md`](../../docs/deployment/deployment.md)
+- [`../../docs/operations/n8n-recovery-report.md`](../../docs/operations/n8n-recovery-report.md)
+- [`../../docs/reports/disk-cleanup-report.md`](../../docs/reports/disk-cleanup-report.md)
+- [`../../docs/operations/dashboard-data-consistency.md`](../../docs/operations/dashboard-data-consistency.md)

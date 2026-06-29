@@ -1,5 +1,7 @@
 # Acceso publico
 
+> Estado vigente desde 2026-06-28: la URL canonica es `https://aterum.duckdns.org`. Las referencias por IP que aparecen mas abajo son evidencia historica y no deben usarse como instrucciones operativas. La configuracion actual esta documentada en [`../../bot-control/infra/`](../../bot-control/infra/README.md).
+
 Fecha: 2026-06-21.
 
 ## IP y entorno

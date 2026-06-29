@@ -17,13 +17,13 @@ Las credenciales no se incluyen. Despues de importar deben reasignarse Telegram,
 
 ## Historial existente
 
-Los snapshots historicos siguen en `docs/` para conservar enlaces anteriores:
+Los snapshots historicos operativos se conservan fuera del repositorio en `/home/docs`; el backup Telegram versionado está en `docs/archive`:
 
-- [`main-active.before-research-learning.json`](../../docs/main-active.before-research-learning.json)
-- [`main-active.before-trading-logic.json`](../../docs/main-active.before-trading-logic.json)
-- [`main-before-claude-ssh-fix.json`](../../docs/main-before-claude-ssh-fix.json)
-- [`recommendation-review.before-research-learning.json`](../../docs/recommendation-review.before-research-learning.json)
-- [`sl-active.before-trading-logic.json`](../../docs/sl-active.before-trading-logic.json)
-- [`trailing-manager-telegram-row-backup.json`](../../docs/trailing-manager-telegram-row-backup.json)
+- [`main-active.before-research-learning.json`](/home/docs/main-active.before-research-learning.json)
+- [`main-active.before-trading-logic.json`](/home/docs/main-active.before-trading-logic.json)
+- [`main-before-claude-ssh-fix.json`](/home/docs/main-before-claude-ssh-fix.json)
+- [`recommendation-review.before-research-learning.json`](/home/docs/recommendation-review.before-research-learning.json)
+- [`sl-active.before-trading-logic.json`](/home/docs/sl-active.before-trading-logic.json)
+- [`trailing-manager-telegram-row-backup.json`](../../docs/archive/trailing-manager-telegram-row-backup.json)
 
 Algunos snapshots historicos pueden contener configuracion sensible heredada. No deben redistribuirse sin ejecutar primero el sanitizador.

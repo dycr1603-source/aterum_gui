@@ -4,7 +4,9 @@ Actualizado: 2026-04-29
 
 ## Importante
 
-Este repo es el que actualmente sirve el dashboard live en `http://177.71.200.164:3001/dashboard`.
+Este repo sirve el sistema live mediante `https://aterum.duckdns.org`. Los puertos directos del Dashboard, Chart API y n8n solo estan disponibles en loopback; nginx es la entrada publica.
+
+El módulo [`telegram-control/`](./telegram-control/) expone el centro de monitoreo remoto de sólo lectura reutilizando las APIs existentes. No forma parte del flujo de trading.
 
 Antes de hacer cambios visuales del dashboard, validar:
 
@@ -27,6 +29,8 @@ Dashboard web para monitorear el bot de trading, revisar posiciones, analitica, 
 ## Bot Control Center
 
 La vista completa del sistema esta en [`bot-control/`](./bot-control/README.md): arquitectura, indice de documentos, workflows n8n sanitizados, infraestructura Docker de referencia y runbooks de operacion/recuperacion.
+
+La documentacion tecnica canonica esta organizada por dominio en [`docs/`](./docs/README.md).
 
 ## Que incluye
 
