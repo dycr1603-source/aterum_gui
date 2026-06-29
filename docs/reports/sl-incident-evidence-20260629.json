@@ -1,0 +1,44 @@
+{
+  "incident": "HYPEUSDT missing native stop",
+  "position": {
+    "symbol": "HYPEUSDT",
+    "side": "SHORT",
+    "quantity": 2.21,
+    "databaseEntry": 61.307,
+    "binanceAverageEntry": 61.354,
+    "expectedStop": 62.45,
+    "expectedTakeProfit": 58.97
+  },
+  "binance": {
+    "entryOrder": { "orderId": "10048646628", "type": "MARKET", "status": "FILLED", "time": "2026-06-28T23:30:30.324Z" },
+    "takeProfitOrder": { "orderId": "10048648288", "type": "LIMIT", "status": "EXPIRED", "time": "2026-06-28T23:30:33.150Z" },
+    "stopOrders": [],
+    "manualCloseOrder": { "orderId": "10056048339", "type": "MARKET", "status": "FILLED", "reduceOnly": true, "clientSource": "ios", "averagePrice": 62.565, "time": "2026-06-29T02:47:12.605Z" },
+    "realizedPnl": -2.67631
+  },
+  "market": {
+    "firstOneMinuteCandleCrossingStop": "2026-06-29T02:40:00.000Z",
+    "candleHigh": 62.463,
+    "maximumHighBeforeAudit": 62.658
+  },
+  "n8n": {
+    "setStateExecution": 81789,
+    "getStateExecution": 81790,
+    "overwritingExecution": 81788,
+    "lastCloseExecution": 81791,
+    "firstEmptyStateExecution": 81792,
+    "error81791": "Telegram HTML parse error after BTC close",
+    "marketScannerTimeoutExecution": 83839,
+    "recoveredScheduledExecution": 83957,
+    "recoveredScheduledExecutionStatus": "success"
+  },
+  "reconciliation": {
+    "tradeId": 50,
+    "status": "CLOSED",
+    "closeReason": "MANUAL",
+    "exitPrice": 62.565,
+    "pnlUsdt": -2.67631,
+    "durationMinutes": 197,
+    "eventType": "DB_RECONCILED_CLOSED"
+  }
+}

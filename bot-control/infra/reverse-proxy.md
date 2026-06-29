@@ -1,5 +1,7 @@
 # Reverse Proxy
 
+`/static/base-path.js` declara `/n8n/` para que el router SPA del editor coincida con la ruta pública. nginx mantiene `/webhook/*` sin prefijo para compatibilidad histórica.
+
 La configuracion runtime esta en `/home/nginx/nginx.conf`. Compose la monta como `/etc/nginx/templates/default.conf.template`; el entrypoint oficial de nginx reemplaza `APP_DOMAIN` al iniciar.
 
 ## Comportamiento
@@ -25,4 +27,3 @@ sudo docker compose config --quiet
 sudo docker compose up -d --force-recreate --no-deps nginx
 sudo docker compose ps nginx
 ```
-

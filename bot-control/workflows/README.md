@@ -1,5 +1,7 @@
 # Workflows n8n
 
+Las dos ramas `Execute Trade` colocan y verifican un `STOP_MARKET` nativo antes del TP. SL Monitor conserva el cierre lógico y el registro, Trailing Manager conserva el SL lógico en ganancia y Position Guard solo audita/reconcilia; no administra SL/TP.
+
 ## Snapshot actual
 
 Los JSON en [`current/`](./current/) son exportaciones sanitizadas y se guardan con `active=false` para que una importacion no opere accidentalmente. El inventario conserva el estado que tenian al exportarse, junto con nombre, id, cantidad de nodos y SHA-256.

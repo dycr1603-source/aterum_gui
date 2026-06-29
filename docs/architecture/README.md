@@ -1,6 +1,7 @@
 # Arquitectura
 
 - [Arquitectura reconstruida](./architecture.md)
+- [Responsabilidades de ordenes](./order-responsibility-audit.md)
 - [Flujo de datos](./data-flow.md)
 - [Analisis de repositorios](./repository-analysis.md)
 - [Componentes reconstruidos](./missing-components.md)

@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-06-27T20:53:55.334Z",
-  "source": "all-workflows-current.json",
+  "generatedAt": "2026-06-29T05:03:21.981Z",
+  "source": "runtime responsibility audit 2026-06-29",
   "sanitized": true,
   "workflows": [
     {
       "id": "Cz4TfvaVAygWGRJm",
       "name": "Advanced AI Trading Bot v2 - Clean",
       "activeAtExport": true,
-      "nodeCount": 44,
+      "nodeCount": 46,
       "filename": "advanced-ai-trading-bot-v2-clean.workflow.json",
-      "sha256": "4bff22756addfe3189f72219d178259c8ed224ee5904f8b1f79dec8da3c6e68d"
+      "sha256": "796ff5b1fc4a0888bfc9a9dd753fc8feccb010d2a4a91b61a4ff4149c8549968"
     },
     {
       "id": "RecommendationReviewEngine",

@@ -2,6 +2,7 @@
 
 Informes puntuales conservados como evidencia operativa:
 
+- [Evidencia incidente Stop Loss](./sl-incident-evidence-20260629.json)
 - [Telemetria](./telemetry-gap-analysis.md)
 - [Analisis de disco](./disk-analysis.md)
 - [Limpieza de disco](./disk-cleanup-report.md)

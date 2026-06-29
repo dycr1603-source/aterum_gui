@@ -1,5 +1,18 @@
 # Environment
 
+## Position Guard
+
+| Variable | Default | Uso |
+| --- | --- | --- |
+| `POSITION_GUARD_BINANCE_API_KEY` | obligatorio | Clave Futures aislada para verificación y protección. |
+| `POSITION_GUARD_BINANCE_API_SECRET` | obligatorio | Firma HMAC del guardia. |
+| `POSITION_GUARD_ENFORCE` | `true` | Permite cierre de emergencia tras la ventana; nunca crea/modifica SL/TP. |
+| `POSITION_GUARD_POLL_MS` | `5000` | Frecuencia de auditoria de protección. |
+| `POSITION_GUARD_UNPROTECTED_GRACE_MS` | `60000` | Espera antes de cerrar una posición que continúa sin STOP. |
+| `POSITION_GUARD_HEALTH_MS` | `60000` | Frecuencia de health completo. |
+
+Las claves no se documentan ni se exponen en puertos públicos.
+
 ## Telegram Copilot
 
 | Variable | Default | Uso |

@@ -56,6 +56,7 @@ Para mantener esa compatibilidad sin reescribir workflows, los servicios `dashbo
 | `aterum_gui` | misma imagen que dashboard | comparte red con `dashboard` | `3000` | Chart API `/chart` y healthcheck. |
 | `n8n` | `n8nio/n8n` | comparte puerto `5678` via dashboard | `5678` | Ejecucion/importacion de workflows. |
 | `telegram_control` | `aterum-dashboard:local` | no expuesto | `3090` health interno | RBAC, consultas, Copiloto local-first, cache y auditoria. |
+| `position_guard` | `aterum-dashboard:local` | no expuesto | `3091` health interno | Auditoría de protección, reconciliación, alertas y cierre de emergencia con espera. |
 | `nginx` | `nginx:1.27-alpine` | `80` | `80` | Reverse proxy hacia dashboard, chart API y n8n. |
 
 ## Diagrama de componentes
@@ -67,6 +68,7 @@ flowchart LR
     MYSQL["mysql / MariaDB :3306"]
     REDIS["redis :6379"]
     TC["telegram-control :3090"]
+    PG["position-guard :3091"]
 
     subgraph SharedNS["Namespace compartido dashboard"]
       DASH["dashboard API :3001"]
@@ -90,6 +92,11 @@ flowchart LR
   TC --> DASH
   TC --> MYSQL
   TC --> REDIS
+  PG --> MYSQL
+  PG --> REDIS
+  PG --> N8N
+  PG --> BINANCE
+  PG --> TELEGRAM
 
   WF --> BINANCE["Binance Futures API"]
   WF --> ANTHROPIC["Anthropic Messages API"]
@@ -98,6 +105,8 @@ flowchart LR
   DASH --> OPENAI["OpenAI API"]
   DASH --> BINANCE
 ```
+
+La matriz autoritativa de creación, modificación y cancelación de órdenes está en [order-responsibility-audit.md](./order-responsibility-audit.md). Position Guard no crea ni modifica SL/TP.
 
 ## Flujo de apertura de trade
 

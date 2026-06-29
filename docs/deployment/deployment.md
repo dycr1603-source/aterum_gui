@@ -13,6 +13,19 @@ TELEGRAM_AI_MAX_TOKENS=400
 
 Después de cambiar configuración se recrea sólo `telegram_control`. El arranque crea idempotentemente `telegram_ai_usage` y `telegram_ai_cache`; no altera trading ni workflows.
 
+## Position Guard
+
+```env
+POSITION_GUARD_BINANCE_API_KEY=
+POSITION_GUARD_BINANCE_API_SECRET=
+POSITION_GUARD_ENFORCE=true
+POSITION_GUARD_POLL_MS=5000
+POSITION_GUARD_UNPROTECTED_GRACE_MS=60000
+POSITION_GUARD_HEALTH_MS=60000
+```
+
+El servicio no publica puertos. Su healthcheck interno usa `3091`. Audita el STOP alojado en Binance, alerta si falta y solo cierra la posicion si sigue desprotegida al vencer la ventana; no crea ni modifica SL/TP.
+
 ## Acceso publico actual
 
 - URL canonica: `https://aterum.duckdns.org`.

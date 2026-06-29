@@ -33,3 +33,8 @@
 - Incorporadas métricas persistentes de rutas, latencia, tokens utilizados y ahorro estimado mediante `/ai`.
 - Añadidos `/guide`, `/tutorial`, `/menu`, `/new`, preguntas libres y botones contextuales.
 - Reorganizada la documentación técnica por dominios con índices y enlaces canónicos.
+- Corregido el incidente de SL lógico con STOP_MARKET nativo en Binance.
+- Incorporado Position Guard independiente con reconciliación, auditoría y alertas críticas.
+- Añadida lectura de órdenes algo al estado live del Dashboard.
+- Auditada la separación de órdenes: ambas ramas Execute Trade crean la protección inicial y Position Guard deja de crear, reemplazar o cancelar SL/TP.
+- Corregido Chart API tras recreación del namespace compartido y añadidos healthchecks cruzados para `3000`.

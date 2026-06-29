@@ -220,8 +220,8 @@ function classifyExitOrder(positionSide, order) {
   const orderSide = String(order.side || '').toUpperCase();
   if (orderSide !== closeSide) return null;
 
-  const type = String(order.type || order.origType || '').toUpperCase();
-  const stopPrice = parseFloat(order.stopPrice || 0) || 0;
+  const type = String(order.orderType || order.type || order.origType || '').toUpperCase();
+  const stopPrice = parseFloat(order.triggerPrice || order.stopPrice || 0) || 0;
   const limitPrice = parseFloat(order.price || 0) || 0;
   const price = stopPrice > 0 ? stopPrice : limitPrice;
   if (price <= 0) return null;
@@ -243,16 +243,24 @@ function classifyExitOrder(positionSide, order) {
 
 async function fetchAccountSnapshot() {
   try {
-    const [balances, positions, openOrders] = await Promise.all([
+    const [balances, positions, openOrders, openAlgoOrders] = await Promise.all([
       httpsGet(`https://fapi.binance.com/fapi/v2/balance?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT }),
       httpsGet(`https://fapi.binance.com/fapi/v2/positionRisk?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT }),
-      httpsGet(`https://fapi.binance.com/fapi/v1/openOrders?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT })
+      httpsGet(`https://fapi.binance.com/fapi/v1/openOrders?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT }),
+      httpsGet(`https://fapi.binance.com/fapi/v1/openAlgoOrders?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT })
     ]);
     const usdt    = (Array.isArray(balances) ? balances : []).find(b => b.asset === 'USDT') || {};
     const openPos = (Array.isArray(positions) ? positions : []).filter(p => Math.abs(parseFloat(p.positionAmt || 0)) > 0);
     const bySymbolOrders = {};
     (Array.isArray(openOrders) ? openOrders : []).forEach((o) => {
       if (String(o.status || '').toUpperCase() !== 'NEW') return;
+      const sym = String(o.symbol || '').toUpperCase();
+      if (!sym) return;
+      if (!bySymbolOrders[sym]) bySymbolOrders[sym] = [];
+      bySymbolOrders[sym].push(o);
+    });
+    (Array.isArray(openAlgoOrders) ? openAlgoOrders : []).forEach((o) => {
+      if (String(o.algoStatus || o.status || '').toUpperCase() !== 'NEW') return;
       const sym = String(o.symbol || '').toUpperCase();
       if (!sym) return;
       if (!bySymbolOrders[sym]) bySymbolOrders[sym] = [];

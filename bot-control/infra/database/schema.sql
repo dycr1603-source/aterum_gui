@@ -492,6 +492,23 @@ CREATE TABLE IF NOT EXISTS telegram_ai_cache (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
++CREATE TABLE IF NOT EXISTS position_guard_events (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  event_type VARCHAR(64) NOT NULL,
+  severity ENUM('INFO','WARNING','CRITICAL') NOT NULL DEFAULT 'INFO',
+  symbol VARCHAR(24) NULL,
+  position_side VARCHAR(12) NULL,
+  expected JSON NULL,
+  actual JSON NULL,
+  action VARCHAR(80) NULL,
+  action_status VARCHAR(32) NULL,
+  error TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_position_guard_created (created_at),
+  INDEX idx_position_guard_symbol_created (symbol,created_at),
+  INDEX idx_position_guard_severity_created (severity,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE OR REPLACE VIEW daily_pnl AS
 SELECT
   DATE(closed_at) AS day,

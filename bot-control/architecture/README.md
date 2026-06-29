@@ -14,6 +14,10 @@ flowchart LR
   TGCTRL --> MYSQL
   TGCTRL --> REDIS
   TGCTRL -->|health + SQLite RO| N8N
+  GUARD[position-guard] --> MYSQL
+  GUARD --> BINANCE
+  GUARD --> TELEGRAM
+  GUARD -->|health + SQLite RO| N8N
 
   N8N --> BINANCE[Binance Futures]
   N8N --> ANTHROPIC[Anthropic]
@@ -60,6 +64,7 @@ flowchart TD
 |---|---|---|
 | n8n | Orquestacion, señales, ordenes, SL, trailing y reportes | SQLite n8n + MySQL via API |
 | Dashboard API | Contratos `/api`, `/db`, learning, research y estado live | MariaDB + Redis |
+| Position Guard | Auditoria de STOP, reconciliacion, alertas y cierre tras grace | MariaDB + Binance read-only; MARKET de emergencia |
 | GUI | Trading, Analytics, Simulator, Intelligence y Research | Sin estado autoritativo |
 | MariaDB | Trades, cierres, telemetria, research y learning | Volumen `mysql_data` |
 | Redis | Estado/cache efimero | Volumen `redis_data` |
@@ -80,3 +85,5 @@ La entrada canonica es `https://aterum.duckdns.org`; HTTP solo atiende ACME y re
 La arquitectura TLS detallada se encuentra en [`../infra/architecture.md`](../infra/architecture.md).
 
 Los workflows historicos usan `127.0.0.1`. Por compatibilidad, Dashboard, Chart API y n8n comparten namespace de red en Compose.
+
+La separacion detallada de responsabilidades de ordenes se documenta en [`../../docs/architecture/order-responsibility-audit.md`](../../docs/architecture/order-responsibility-audit.md).
