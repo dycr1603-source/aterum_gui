@@ -1,0 +1,662 @@
+'use strict';
+
+const { randomUUID } = require('crypto');
+const { normalizePosition, isStop, isTakeProfit, triggerPrice } = require('./binance');
+
+const EXECUTION_TYPES = new Set([
+  'OPEN_POSITION', 'MOVE_STOP_LOSS', 'MOVE_TAKE_PROFIT', 'PARTIAL_TAKE_PROFIT', 'TRAILING_STOP', 'CLOSE_POSITION'
+]);
+const TERMINAL_STATUSES = new Set(['VERIFIED', 'FAILED']);
+const ACTIVE_ORDER_STATUSES = new Set(['NEW', 'PARTIALLY_FILLED']);
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function json(value) { return JSON.stringify(value ?? null); }
+function parsedJson(value) {
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch (_) { return value; }
+}
+function number(value, name) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${name} must be a positive number`);
+  return parsed;
+}
+function closeSide(positionSide) { return positionSide === 'LONG' ? 'SELL' : 'BUY'; }
+function orderId(order) { return order?.algoId ?? order?.orderId ?? null; }
+function clientId(order) { return String(order?.clientAlgoId || order?.clientOrderId || ''); }
+function active(order) {
+  return ACTIVE_ORDER_STATUSES.has(String(order?.algoStatus || order?.status || '').toUpperCase());
+}
+function near(left, right) {
+  const a = Number(left); const b = Number(right);
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= Math.max(1e-8, Math.abs(b) * 1e-7);
+}
+function safeId(prefix, executionId) {
+  return `${prefix}_${executionId.replace(/-/g, '')}`.slice(0, 36);
+}
+function retryable(error) {
+  if (error?.retryable === false) return false;
+  const code = Number(error?.code);
+  const message = String(error?.message || error || '');
+  return [-1001, -1007, -1008, -1021, 408, 418, 429, 500, 502, 503, 504].includes(code)
+    || /timeout|timed out|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|fetch failed/i.test(message);
+}
+function serializeError(error) {
+  return { message: String(error?.message || error), code: error?.code ?? null, body: error?.body ?? null };
+}
+
+class ExecutionEngine {
+  constructor({ config, db, binance }) {
+    this.config = config;
+    this.db = db;
+    this.binance = binance;
+    this.inFlight = new Map();
+  }
+
+  async initialize() {
+    await this.db.execute(`CREATE TABLE IF NOT EXISTS trade_executions (
+      execution_id CHAR(36) PRIMARY KEY,
+      request_type VARCHAR(40) NOT NULL,
+      symbol VARCHAR(24) NOT NULL,
+      position_side VARCHAR(12) NOT NULL,
+      request_payload JSON NOT NULL,
+      exchange_order_id VARCHAR(64) NULL,
+      exchange_response JSON NULL,
+      verification_result JSON NULL,
+      requested_at DATETIME(3) NOT NULL,
+      executed_at DATETIME(3) NULL,
+      verified_at DATETIME(3) NULL,
+      completed_at DATETIME(3) NULL,
+      final_status VARCHAR(24) NOT NULL,
+      attempt_count INT NOT NULL DEFAULT 0,
+      error TEXT NULL,
+      INDEX idx_trade_execution_symbol_time (symbol,requested_at),
+      INDEX idx_trade_execution_status_time (final_status,requested_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    await this.db.execute(`CREATE TABLE IF NOT EXISTS trade_execution_events (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      execution_id CHAR(36) NOT NULL,
+      event_type VARCHAR(48) NOT NULL,
+      event_payload JSON NULL,
+      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      INDEX idx_trade_execution_event (execution_id,created_at),
+      CONSTRAINT fk_trade_execution_event FOREIGN KEY (execution_id)
+        REFERENCES trade_executions(execution_id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+  }
+
+  normalize(input) {
+    const request = { ...input };
+    request.executionId = String(request.executionId || randomUUID());
+    request.type = String(request.type || '').toUpperCase();
+    request.symbol = String(request.symbol || '').toUpperCase();
+    request.positionSide = String(request.positionSide || request.side || '').toUpperCase();
+    if (!/^[0-9a-f-]{36}$/i.test(request.executionId)) throw new Error('executionId must be a UUID');
+    if (!EXECUTION_TYPES.has(request.type)) throw new Error(`Unsupported execution type: ${request.type}`);
+    if (!/^[A-Z0-9_]{3,24}$/.test(request.symbol)) throw new Error('Invalid symbol');
+    if (!['LONG', 'SHORT'].includes(request.positionSide)) throw new Error('positionSide must be LONG or SHORT');
+    if (request.type === 'OPEN_POSITION') {
+      request.quantity = number(request.quantity, 'quantity');
+      request.stopLoss = number(request.stopLoss, 'stopLoss');
+      request.takeProfit = number(request.takeProfit, 'takeProfit');
+      request.leverage = Math.min(125, Math.max(1, Math.trunc(number(request.leverage, 'leverage'))));
+    }
+    if (['MOVE_STOP_LOSS', 'MOVE_TAKE_PROFIT'].includes(request.type)) request.targetPrice = number(request.targetPrice, 'targetPrice');
+    if (request.type === 'TRAILING_STOP') {
+      request.targetPrice = number(request.targetPrice, 'targetPrice');
+      if (request.callbackRate != null) request.callbackRate = number(request.callbackRate, 'callbackRate');
+    }
+    if (request.type === 'PARTIAL_TAKE_PROFIT') request.quantity = number(request.quantity, 'quantity');
+    request.maxAttempts = Math.min(4, Math.max(1, Number(request.maxAttempts || 3)));
+    return request;
+  }
+
+  async event(executionId, eventType, payload) {
+    await this.db.execute(`INSERT INTO trade_execution_events (execution_id,event_type,event_payload)
+      VALUES (?,?,?)`, [executionId, eventType, json(payload)]);
+  }
+
+  async existing(executionId) {
+    const [rows] = await this.db.execute('SELECT * FROM trade_executions WHERE execution_id=? LIMIT 1', [executionId]);
+    if (!rows.length) return null;
+    const row = rows[0];
+    return {
+      ok: row.final_status === 'VERIFIED', executionId: row.execution_id, type: row.request_type,
+      symbol: row.symbol, positionSide: row.position_side, exchangeOrderId: row.exchange_order_id,
+      exchangeResponse: parsedJson(row.exchange_response), verificationResult: parsedJson(row.verification_result),
+      timestamp: row.completed_at || row.requested_at, finalStatus: row.final_status,
+      attemptCount: row.attempt_count, error: row.error
+    };
+  }
+
+  async execute(input) {
+    let request;
+    try { request = this.normalize(input); }
+    catch (error) {
+      return { ok: false, executionId: input?.executionId || null, timestamp: new Date().toISOString(),
+        finalStatus: 'FAILED', error: error.message };
+    }
+    if (this.inFlight.has(request.executionId)) return this.inFlight.get(request.executionId);
+    const promise = this.run(request).finally(() => this.inFlight.delete(request.executionId));
+    this.inFlight.set(request.executionId, promise);
+    return promise;
+  }
+
+  async run(request) {
+    const previous = await this.existing(request.executionId);
+    if (previous && TERMINAL_STATUSES.has(previous.finalStatus)) return previous;
+    if (!previous) {
+      await this.db.execute(`INSERT INTO trade_executions
+        (execution_id,request_type,symbol,position_side,request_payload,requested_at,final_status)
+        VALUES (?,?,?,?,?,NOW(3),'REQUESTED')`, [request.executionId, request.type, request.symbol,
+        request.positionSide, json(request)]);
+      await this.event(request.executionId, 'EXECUTION_REQUESTED', request);
+    }
+
+    let exchangeResponse = null;
+    let verificationResult = null;
+    let exchangeOrderId = null;
+    let lastError = null;
+    let attempts = 0;
+    for (attempts = 1; attempts <= request.maxAttempts; attempts++) {
+      try {
+        await this.db.execute(`UPDATE trade_executions SET final_status='EXECUTING',attempt_count=? WHERE execution_id=?`,
+          [attempts, request.executionId]);
+        await this.event(request.executionId, 'EXECUTION_ATTEMPTED', { attempt: attempts });
+        const result = await this.dispatch(request);
+        exchangeResponse = result.exchangeResponse;
+        verificationResult = result.verificationResult;
+        exchangeOrderId = result.exchangeOrderId;
+        if (!verificationResult?.verified) throw Object.assign(new Error('Binance read-back verification failed'), { verificationResult });
+        await this.persistVerifiedState(request, verificationResult, exchangeResponse);
+        await this.db.execute(`UPDATE trade_executions SET exchange_order_id=?,exchange_response=?,
+          verification_result=?,executed_at=NOW(3),verified_at=NOW(3),completed_at=NOW(3),final_status='VERIFIED',error=NULL
+          WHERE execution_id=?`, [String(exchangeOrderId), json(exchangeResponse), json(verificationResult), request.executionId]);
+        await this.event(request.executionId, 'EXECUTION_VERIFIED', verificationResult);
+        return { ok: true, executionId: request.executionId, type: request.type, symbol: request.symbol,
+          positionSide: request.positionSide, exchangeOrderId: String(exchangeOrderId), exchangeResponse,
+          verificationResult, timestamp: new Date().toISOString(), finalStatus: 'VERIFIED', attemptCount: attempts };
+      } catch (error) {
+        lastError = error;
+        verificationResult = error.verificationResult || verificationResult;
+        exchangeResponse = error.exchangeResponse || exchangeResponse;
+        exchangeOrderId = error.exchangeOrderId || exchangeOrderId;
+        await this.event(request.executionId, 'EXECUTION_ATTEMPT_FAILED', { attempt: attempts, error: serializeError(error) });
+        if (!retryable(error) || attempts === request.maxAttempts) break;
+        await sleep(Math.min(60000, Math.max(300 * attempts, Number(error.retryAfterMs || 0))));
+      }
+    }
+    const exchangeWasVerified = verificationResult?.verified === true;
+    const failureVerification = { ...(verificationResult || {}), verified: false,
+      exchangeVerified: exchangeWasVerified, pipelineVerified: false,
+      checkedAt: verificationResult?.checkedAt || new Date().toISOString(), error: serializeError(lastError) };
+    await this.db.execute(`UPDATE trade_executions SET exchange_order_id=?,exchange_response=?,verification_result=?,
+      executed_at=COALESCE(executed_at,NOW(3)),completed_at=NOW(3),final_status='FAILED',attempt_count=?,error=?
+      WHERE execution_id=?`, [
+      exchangeOrderId == null ? null : String(exchangeOrderId), json(exchangeResponse), json(failureVerification), attempts,
+      String(lastError?.message || lastError || 'Execution failed').slice(0, 10000), request.executionId
+    ]);
+    await this.event(request.executionId, 'EXECUTION_FAILED', failureVerification);
+    let failureNotificationSent = false;
+    try { failureNotificationSent = await this.notifyFailure(request, lastError, exchangeWasVerified) === true; }
+    catch (_) { failureNotificationSent = false; }
+    return { ok: false, executionId: request.executionId, type: request.type, symbol: request.symbol,
+      positionSide: request.positionSide, exchangeOrderId: exchangeOrderId == null ? null : String(exchangeOrderId),
+      exchangeResponse, verificationResult: failureVerification, timestamp: new Date().toISOString(),
+      finalStatus: 'FAILED', attemptCount: attempts, failureNotificationSent,
+      error: String(lastError?.message || lastError || 'Execution failed') };
+  }
+
+  async snapshot(request) {
+    const [rows, regular, algo] = await Promise.all([
+      this.binance.positions(request.symbol), this.binance.openOrders(request.symbol), this.binance.openAlgoOrders(request.symbol)
+    ]);
+    const position = rows.map(normalizePosition).filter(Boolean)
+      .find(row => row.symbol === request.symbol && row.side === request.positionSide) || null;
+    const orders = [...regular, ...algo].filter(order => order.symbol === request.symbol && active(order));
+    const contextual = position || { symbol: request.symbol, side: request.positionSide, positionSide: request.positionSide };
+    return {
+      position,
+      protectiveOrders: orders.filter(order => isStop(order, contextual) || isTakeProfit(order, contextual))
+    };
+  }
+
+  async readUntil(request, predicate, label) {
+    let snapshot;
+    for (let attempt = 1; attempt <= 8; attempt++) {
+      snapshot = await this.snapshot(request);
+      if (predicate(snapshot)) return snapshot;
+      await sleep(Math.min(1000, 150 * attempt));
+    }
+    const error = new Error(`${label} was not visible on Binance after read-back`);
+    error.verificationResult = { verified: false, label, checkedAt: new Date().toISOString(), actual: snapshot };
+    throw error;
+  }
+
+  dispatch(request) {
+    if (request.type === 'OPEN_POSITION') return this.openPosition(request);
+    if (['MOVE_STOP_LOSS', 'MOVE_TAKE_PROFIT', 'TRAILING_STOP'].includes(request.type)) {
+      return this.replaceProtection(request);
+    }
+    return this.reducePosition(request);
+  }
+
+  async symbolRules(symbol) {
+    const exchange = await this.binance.exchangeInfo();
+    const row = exchange.symbols?.find(item => item.symbol === symbol);
+    if (!row) throw new Error(`Symbol ${symbol} is not available on Binance Futures`);
+    const price = row.filters.find(filter => filter.filterType === 'PRICE_FILTER');
+    const lot = row.filters.find(filter => filter.filterType === 'LOT_SIZE');
+    const notional = row.filters.find(filter => ['MIN_NOTIONAL', 'NOTIONAL'].includes(filter.filterType));
+    return { tick: Number(price?.tickSize || 0), step: Number(lot?.stepSize || 0),
+      minQty: Number(lot?.minQty || 0), minNotional: Number(notional?.notional || notional?.minNotional || 0) };
+  }
+
+  rounded(value, increment, mode = 'nearest') {
+    if (!(increment > 0)) return Number(value);
+    const places = Math.max(0, String(increment).split('.')[1]?.replace(/0+$/, '').length || 0);
+    const ratio = Number(value) / increment;
+    const units = mode === 'floor' ? Math.floor(ratio) : Math.round(ratio);
+    return Number((units * increment).toFixed(places));
+  }
+
+  async abortOpen(request, position, cause) {
+    const id = safeId('aterum_abort', request.executionId);
+    let response = await this.recoverMarketOrder(request, id);
+    if (!response) {
+      try {
+        response = await this.binance.createOrder({
+          symbol: request.symbol, side: closeSide(request.positionSide), positionSide: request.positionSide,
+          type: 'MARKET', quantity: position.qty, newOrderRespType: 'RESULT', newClientOrderId: id
+        });
+      } catch (error) {
+        response = await this.recoverMarketOrder(request, id);
+        if (!response) throw error;
+      }
+    }
+    const after = await this.readUntil(request, snapshot => !snapshot.position, 'emergency rollback close');
+    for (const order of after.protectiveOrders) await this.cancelProtection(order);
+    const verified = await this.readUntil(request, snapshot => !snapshot.position && snapshot.protectiveOrders.length === 0,
+      'emergency rollback cleanup');
+    const error = new Error(`Open position rolled back because protection failed: ${cause.message}`);
+    error.retryable = false;
+    error.exchangeOrderId = orderId(response);
+    error.exchangeResponse = { emergencyClose: response };
+    error.verificationResult = { verified: false, rolledBack: true, after: verified, cause: serializeError(cause),
+      checkedAt: new Date().toISOString() };
+    throw error;
+  }
+
+  async openPosition(request) {
+    const before = await this.snapshot(request);
+    const marketClientId = safeId('aterum_entry', request.executionId);
+    let marketOrder = await this.recoverMarketOrder(request, marketClientId);
+    if (before.position && !marketOrder) throw new Error(`${request.symbol} ${request.positionSide} is already open on Binance`);
+    const [rules, ticker] = await Promise.all([this.symbolRules(request.symbol), this.binance.tickerPrice(request.symbol)]);
+    const livePrice = number(ticker.price, 'livePrice');
+    const quantity = this.rounded(request.quantity, rules.step, 'floor');
+    const stopLoss = this.rounded(request.stopLoss, rules.tick);
+    const takeProfit = this.rounded(request.takeProfit, rules.tick);
+    if (!(quantity >= rules.minQty) || quantity * livePrice < rules.minNotional) {
+      throw new Error(`Requested quantity violates Binance minimums (qty=${quantity}, notional=${quantity * livePrice})`);
+    }
+    const long = request.positionSide === 'LONG';
+    if ((long && stopLoss >= livePrice) || (!long && stopLoss <= livePrice)) {
+      throw new Error(`Stop loss ${stopLoss} would immediately trigger at Binance price ${livePrice}`);
+    }
+    if ((long && takeProfit <= livePrice) || (!long && takeProfit >= livePrice)) {
+      throw new Error(`Take profit ${takeProfit} is on the wrong side of Binance price ${livePrice}`);
+    }
+    try { await this.binance.changePositionMode(true); }
+    catch (error) { if (Number(error.code) !== -4059) throw error; }
+    try { await this.binance.changeMarginType(request.symbol, 'ISOLATED'); }
+    catch (error) { if (Number(error.code) !== -4046) throw error; }
+    await this.binance.changeLeverage(request.symbol, request.leverage);
+
+    if (!before.position && !marketOrder) {
+      try {
+        marketOrder = await this.binance.createOrder({ symbol: request.symbol, side: long ? 'BUY' : 'SELL',
+          positionSide: request.positionSide, type: 'MARKET', quantity, newOrderRespType: 'RESULT',
+          newClientOrderId: marketClientId });
+      } catch (error) {
+        marketOrder = await this.recoverMarketOrder(request, marketClientId);
+        if (!marketOrder) throw error;
+      }
+    }
+    const afterMarket = before.position ? before
+      : await this.readUntil(request, snapshot => Boolean(snapshot.position), 'opened position');
+    const confirmed = afterMarket.position;
+    let stopResult; let takeProfitResult;
+    try {
+      stopResult = await this.replaceProtection({ ...request, type: 'MOVE_STOP_LOSS', targetPrice: stopLoss });
+      takeProfitResult = await this.replaceProtection({ ...request, type: 'MOVE_TAKE_PROFIT', targetPrice: takeProfit });
+      const after = await this.readUntil(request, snapshot => {
+        const context = snapshot.position;
+        return Boolean(context)
+          && snapshot.protectiveOrders.some(order => isStop(order, context) && near(triggerPrice(order), stopLoss))
+          && snapshot.protectiveOrders.some(order => isTakeProfit(order, context) && near(triggerPrice(order), takeProfit));
+      }, 'opened position with stop loss and take profit');
+      return {
+        exchangeOrderId: orderId(marketOrder),
+        exchangeResponse: { marketOrder, stopOrder: stopResult.exchangeResponse,
+          takeProfitOrder: takeProfitResult.exchangeResponse },
+        verificationResult: { verified: true, requested: { type: request.type, quantity, stopLoss, takeProfit },
+          before, after, checkedAt: new Date().toISOString() }
+      };
+    } catch (error) {
+      try { await this.abortOpen(request, confirmed, error); }
+      catch (rollbackError) {
+        rollbackError.exchangeOrderId = orderId(marketOrder);
+        rollbackError.exchangeResponse = { marketOrder, stopOrder: stopResult?.exchangeResponse || null,
+          takeProfitOrder: takeProfitResult?.exchangeResponse || null,
+          rollback: rollbackError.exchangeResponse || null };
+        throw rollbackError;
+      }
+    }
+    throw new Error('Open position rollback did not return a terminal result');
+  }
+
+  protectionMatcher(request, order) {
+    const context = { symbol: request.symbol, side: request.positionSide, positionSide: request.positionSide };
+    if (request.type === 'MOVE_TAKE_PROFIT') return isTakeProfit(order, context);
+    return isStop(order, context);
+  }
+
+  requestedOrderMatches(request, order, ids) {
+    if (!this.protectionMatcher(request, order) || !active(order)) return false;
+    if (ids?.length && !ids.includes(clientId(order))) return false;
+    if (request.type === 'TRAILING_STOP' && request.callbackRate != null) {
+      return String(order.orderType || order.type || '').toUpperCase() === 'TRAILING_STOP_MARKET'
+        && near(order.callbackRate, request.callbackRate)
+        && near(order.activatePrice, request.activationPrice || request.targetPrice);
+    }
+    return near(triggerPrice(order), request.targetPrice);
+  }
+
+  async createProtection(request, position, ids) {
+    const isTp = request.type === 'MOVE_TAKE_PROFIT';
+    const trailingNative = request.type === 'TRAILING_STOP' && request.callbackRate != null;
+    const params = {
+      algoType: 'CONDITIONAL', symbol: request.symbol, side: closeSide(request.positionSide),
+      positionSide: request.positionSide,
+      type: trailingNative ? 'TRAILING_STOP_MARKET' : isTp ? 'TAKE_PROFIT_MARKET' : 'STOP_MARKET',
+      closePosition: 'true', workingType: request.workingType || (isTp ? 'MARK_PRICE' : 'CONTRACT_PRICE'),
+      priceProtect: 'false', clientAlgoId: ids[0]
+    };
+    if (trailingNative) {
+      params.callbackRate = request.callbackRate;
+      params.activatePrice = request.activationPrice != null
+        ? number(request.activationPrice, 'activationPrice') : request.targetPrice;
+    } else params.triggerPrice = request.targetPrice;
+    try {
+      return await this.binance.createAlgoOrder(params);
+    } catch (error) {
+      const visible = await this.snapshot(request).catch(() => null);
+      const recovered = visible?.protectiveOrders.find(order => this.requestedOrderMatches(request, order, ids));
+      if (recovered) return recovered;
+      if (retryable(error) || trailingNative) throw error;
+      const fallback = { ...params, quantity: position.qty, clientAlgoId: ids[1] };
+      delete fallback.closePosition;
+      return this.binance.createAlgoOrder(fallback);
+    }
+  }
+
+  async cancelProtection(order) {
+    let lastError;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return order.algoId != null
+          ? await this.binance.cancelAlgoOrder(order.algoId)
+          : await this.binance.cancelOrder(order.symbol, order.orderId);
+      } catch (error) {
+        lastError = error;
+        if ([-2011, -2013].includes(Number(error.code))) return { alreadyAbsent: true, orderId: orderId(order) };
+        if (!retryable(error)) throw error;
+        await sleep(200 * attempt);
+      }
+    }
+    throw lastError;
+  }
+
+  async replaceProtection(request) {
+    const before = await this.snapshot(request);
+    if (!before.position) throw new Error(`No ${request.symbol} ${request.positionSide} position exists on Binance`);
+    const prefix = request.type === 'MOVE_TAKE_PROFIT' ? 'aterum_tp' : request.type === 'TRAILING_STOP' ? 'aterum_trail' : 'aterum_sl';
+    const ids = [safeId(prefix, request.executionId), safeId(`${prefix}q`, request.executionId)];
+    let created = before.protectiveOrders.find(order => this.requestedOrderMatches(request, order, ids));
+    if (!created) created = await this.createProtection(request, before.position, ids);
+    const exchangeOrderId = orderId(created);
+    if (exchangeOrderId == null) throw Object.assign(new Error('Binance did not return an exchange order ID'), { exchangeResponse: created });
+    const afterCreate = await this.readUntil(request,
+      snapshot => snapshot.protectiveOrders.some(order => this.requestedOrderMatches(request, order, ids)), 'new protective order');
+    const target = afterCreate.protectiveOrders.find(order => this.requestedOrderMatches(request, order, ids));
+    const superseded = afterCreate.protectiveOrders.filter(order =>
+      this.protectionMatcher(request, order) && String(orderId(order)) !== String(orderId(target)));
+    const cancellations = [];
+    for (const order of superseded) cancellations.push(await this.cancelProtection(order));
+    const after = await this.readUntil(request, snapshot => {
+      const desired = snapshot.protectiveOrders.filter(order => this.requestedOrderMatches(request, order, ids));
+      const stale = snapshot.protectiveOrders.filter(order => superseded.some(old => String(orderId(old)) === String(orderId(order))));
+      return Boolean(snapshot.position) && desired.length === 1 && stale.length === 0;
+    }, 'final protective order state');
+    return {
+      exchangeOrderId,
+      exchangeResponse: { create: created, cancellations },
+      verificationResult: {
+        verified: true, requested: { type: request.type, targetPrice: request.targetPrice || null,
+          callbackRate: request.callbackRate || null }, before, after, checkedAt: new Date().toISOString()
+      }
+    };
+  }
+
+  async recoverMarketOrder(request, id) {
+    try { return await this.binance.queryOrder(request.symbol, id); }
+    catch (_) { return null; }
+  }
+
+  async reducePosition(request) {
+    const id = safeId(request.type === 'CLOSE_POSITION' ? 'aterum_close' : 'aterum_partial', request.executionId);
+    let response = await this.recoverMarketOrder(request, id);
+    const before = await this.snapshot(request);
+    if (!before.position && !(request.type === 'CLOSE_POSITION' && response)) {
+      throw new Error(`No ${request.symbol} ${request.positionSide} position exists on Binance`);
+    }
+    if (!before.position && response) {
+      let after = before;
+      const cancellations = [];
+      for (const order of after.protectiveOrders) cancellations.push(await this.cancelProtection(order));
+      after = await this.readUntil(request, snapshot => !snapshot.position && snapshot.protectiveOrders.length === 0,
+        'closed position without stale protective orders');
+      return { exchangeOrderId: orderId(response), exchangeResponse: { order: response, cancellations, recovered: true },
+        verificationResult: { verified: true, requested: { type: request.type }, before: null, after,
+          checkedAt: new Date().toISOString() } };
+    }
+    if (request.type === 'PARTIAL_TAKE_PROFIT' && request.quantity >= before.position.qty) {
+      throw new Error('Partial take profit quantity must be smaller than the current Binance position; use CLOSE_POSITION');
+    }
+    const quantity = request.type === 'CLOSE_POSITION'
+      ? before.position.qty
+      : Math.min(request.quantity, before.position.qty);
+    if (response && request.type === 'PARTIAL_TAKE_PROFIT') {
+      const status = String(response.status || '').toUpperCase();
+      if (!['FILLED', 'PARTIALLY_FILLED'].includes(status)) {
+        throw Object.assign(new Error(`Recovered partial order is ${status || 'UNKNOWN'}`), { exchangeResponse: response });
+      }
+      return { exchangeOrderId: orderId(response), exchangeResponse: { order: response, recovered: true },
+        verificationResult: { verified: true, requested: { type: request.type,
+          quantity: Number(response.executedQty || response.origQty || request.quantity) }, before: null, after: before,
+          checkedAt: new Date().toISOString() } };
+    }
+    if (!response) {
+      const params = { symbol: request.symbol, side: closeSide(request.positionSide), type: 'MARKET', quantity,
+        positionSide: request.positionSide, newClientOrderId: id, newOrderRespType: 'RESULT' };
+      try { response = await this.binance.createOrder(params); }
+      catch (error) {
+        response = await this.recoverMarketOrder(request, id);
+        if (!response) throw error;
+      }
+    }
+    const exchangeOrderId = orderId(response);
+    if (exchangeOrderId == null) throw Object.assign(new Error('Binance did not return an exchange order ID'), { exchangeResponse: response });
+    const expectedMax = Math.max(0, before.position.qty - quantity);
+    let after = await this.readUntil(request, snapshot => request.type === 'CLOSE_POSITION'
+      ? !snapshot.position
+      : !snapshot.position || snapshot.position.qty <= expectedMax + Math.max(1e-8, before.position.qty * 1e-7),
+    request.type === 'CLOSE_POSITION' ? 'closed position' : 'reduced position');
+    const cancellations = [];
+    if (!after.position) {
+      for (const order of after.protectiveOrders) cancellations.push(await this.cancelProtection(order));
+      after = await this.readUntil(request, snapshot => !snapshot.position && snapshot.protectiveOrders.length === 0,
+        'closed position without stale protective orders');
+    }
+    return {
+      exchangeOrderId,
+      exchangeResponse: { order: response, cancellations },
+      verificationResult: { verified: true, requested: { type: request.type, quantity }, before, after,
+        checkedAt: new Date().toISOString() }
+    };
+  }
+
+  async persistVerifiedState(request, verification, exchangeResponse) {
+    const after = verification.after;
+    if (request.type === 'OPEN_POSITION') {
+      await this.persistOpenState(request, verification, exchangeResponse);
+    } else if (['MOVE_STOP_LOSS', 'TRAILING_STOP'].includes(request.type)) {
+      const stage = ['INITIAL','BREAKEVEN','TIME_LOCK','LOCK','TRAILING'].includes(request.requestedStage)
+        ? request.requestedStage : null;
+      const [updated] = await this.db.execute(`UPDATE trades SET sl_price=?,trailing_stage=COALESCE(?,trailing_stage),updated_at=NOW()
+        WHERE symbol=? AND direction=? AND status='OPEN'`,
+        [request.targetPrice || triggerPrice(after.protectiveOrders.find(order => this.protectionMatcher(request, order))),
+          stage, request.symbol, request.positionSide]);
+      if (!updated.affectedRows) throw new Error('Verified Binance SL could not be matched to an open local trade');
+      await this.publishOpenState(request);
+    } else if (request.type === 'MOVE_TAKE_PROFIT') {
+      const [updated] = await this.db.execute(`UPDATE trades SET tp_price=?,updated_at=NOW() WHERE symbol=? AND direction=? AND status='OPEN'`,
+        [request.targetPrice, request.symbol, request.positionSide]);
+      if (!updated.affectedRows) throw new Error('Verified Binance TP could not be matched to an open local trade');
+      await this.publishOpenState(request);
+    } else if (request.type === 'PARTIAL_TAKE_PROFIT') {
+      const [updated] = await this.db.execute(`UPDATE trades SET qty=?,updated_at=NOW() WHERE symbol=? AND direction=? AND status='OPEN'`,
+        [after.position?.qty || 0, request.symbol, request.positionSide]);
+      if (!updated.affectedRows) throw new Error('Verified Binance reduction could not be matched to an open local trade');
+      await this.publishOpenState(request);
+    } else if (request.type === 'CLOSE_POSITION') {
+      const connection = await this.db.getConnection();
+      try {
+        await connection.beginTransaction();
+        const [rows] = await connection.execute(`SELECT * FROM trades WHERE symbol=? AND direction=? AND status='OPEN'
+          ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`, [request.symbol, request.positionSide]);
+        const trade = rows[0];
+        if (trade) {
+          const exitPrice = Number(exchangeResponse?.order?.avgPrice || verification.before?.position?.markPrice
+            || trade.entry_price);
+          const qty = Number(verification.before?.position?.qty || trade.qty || 0);
+          const entryPrice = Number(trade.entry_price || verification.before?.position?.entryPrice || 0);
+          const pnl = request.positionSide === 'SHORT' ? (entryPrice - exitPrice) * qty : (exitPrice - entryPrice) * qty;
+          const initialRisk = Math.abs(entryPrice - Number(trade.initial_sl_price ?? trade.sl_price ?? entryPrice));
+          const rFinal = initialRisk > 0 ? (Math.abs(exitPrice - entryPrice) / initialRisk) * (pnl >= 0 ? 1 : -1) : 0;
+          const reasonText = String(request.reason || '').toUpperCase();
+          const closeReason = reasonText.includes('STOP') ? 'SL' : reasonText.includes('TIME') ? 'TIME_EXIT' : 'MANUAL';
+          const [existingClose] = await connection.execute('SELECT id FROM trade_closes WHERE trade_id=? LIMIT 1', [trade.id]);
+          if (!existingClose.length) {
+            await connection.execute(`INSERT INTO trade_closes
+              (trade_id,symbol,exit_price,pnl_usdt,pnl_pct,r_final,close_reason,trailing_stage,duration_minutes,closed_at)
+              VALUES (?,?,?,?,?,?,?,?,?,NOW())`, [trade.id, request.symbol, exitPrice, pnl,
+              entryPrice * qty > 0 ? pnl / (entryPrice * qty) * 100 : 0, rFinal, closeReason,
+              trade.trailing_stage || 'INITIAL', Math.max(0, Math.round((Date.now() - new Date(trade.opened_at).getTime()) / 60000))]);
+          }
+          await connection.execute("UPDATE trades SET status='CLOSED',updated_at=NOW() WHERE id=?", [trade.id]);
+        }
+        await connection.commit();
+      } catch (error) { await connection.rollback(); throw error; }
+      finally { connection.release(); }
+      await this.removeLocalState(request, exchangeResponse);
+    }
+  }
+
+  async persistOpenState(request, verification, exchangeResponse) {
+    const context = request.tradeContext || {};
+    const position = verification.after.position;
+    const confirmed = verification.requested;
+    const stopCreate = exchangeResponse?.stopOrder?.create || {};
+    const tpCreate = exchangeResponse?.takeProfitOrder?.create || {};
+    const response = await fetch(`${this.config.dashboardBase}/db/trade/open`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(10000),
+      body: JSON.stringify({ ...context, executionId: request.executionId, symbol: request.symbol,
+        direction: request.positionSide, entryPrice: position.entryPrice, initialSL: confirmed.stopLoss,
+        sl: confirmed.stopLoss, tp: confirmed.takeProfit, qty: position.qty, leverage: request.leverage,
+        marketOrderId: orderId(exchangeResponse?.marketOrder), slOrderId: orderId(stopCreate),
+        tpOrderId: orderId(tpCreate), slMonitorRequired: true, trailingStage: 'INITIAL' })
+    });
+    if (!response.ok) throw new Error(`Verified entry persistence failed with Dashboard HTTP ${response.status}`);
+    await this.publishOpenState(request);
+  }
+
+  async publishOpenState(request) {
+    const [rows] = await this.db.execute(`SELECT * FROM trades
+      WHERE symbol=? AND direction=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1`,
+    [request.symbol, request.positionSide]);
+    const trade = rows[0];
+    if (!trade) throw new Error('Open local trade disappeared before state publication');
+    const payload = { symbol: request.symbol, executionId: request.executionId, positionSide: request.positionSide,
+      slPrice: trade.sl_price == null ? null : Number(trade.sl_price), qty: Number(trade.qty),
+      side: closeSide(request.positionSide), entryPrice: Number(trade.entry_price),
+      initialSL: Number(trade.initial_sl_price ?? trade.sl_price), stage: trade.trailing_stage || 'INITIAL',
+      tp: trade.tp_price == null ? null : Number(trade.tp_price), leverage: Number(trade.leverage),
+      openedAt: new Date(trade.opened_at).getTime(), source: 'VERIFIED_EXECUTION' };
+    const [monitorResponse, dashboardResponse] = await Promise.all([
+      fetch(`${this.config.n8nBase}/webhook/sl-monitor-set`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000)
+      }),
+      fetch(`${this.config.dashboardBase}/trade`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+          symbol: request.symbol, side: request.positionSide, entryPrice: payload.entryPrice, sl: payload.slPrice,
+          tp: payload.tp, qty: payload.qty, leverage: payload.leverage, openedAt: payload.openedAt,
+          stage: payload.stage, initialSL: payload.initialSL
+        }), signal: AbortSignal.timeout(5000)
+      })
+    ]);
+    if (!monitorResponse.ok || !dashboardResponse.ok) {
+      throw new Error(`Local state publication failed (n8n=${monitorResponse.status}, dashboard=${dashboardResponse.status})`);
+    }
+  }
+
+  async removeLocalState(request, exchangeResponse) {
+    const exitPrice = Number(exchangeResponse?.order?.avgPrice || 0) || null;
+    const reasonText = String(request.reason || '').toUpperCase();
+    const reason = reasonText.includes('STOP') ? 'sl' : reasonText.includes('TIME') ? 'time_exit' : 'manual';
+    const [monitorResponse, dashboardResponse] = await Promise.all([
+      fetch(`${this.config.n8nBase}/webhook/sl-monitor-delete`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ symbol: request.symbol, executionId: request.executionId }),
+        signal: AbortSignal.timeout(5000)
+      }),
+      fetch(`${this.config.dashboardBase}/trade/${request.symbol}?reason=${reason}${exitPrice ? `&exitPrice=${exitPrice}` : ''}`, {
+        method: 'DELETE', signal: AbortSignal.timeout(5000)
+      })
+    ]);
+    if (!monitorResponse.ok || !dashboardResponse.ok) {
+      throw new Error(`Closed-state publication failed (n8n=${monitorResponse.status}, dashboard=${dashboardResponse.status})`);
+    }
+  }
+
+  async notifyFailure(request, error, exchangeWasVerified = false) {
+    if (!this.config.telegramToken || !this.config.telegramChatId) return false;
+    const message = [
+      '🚨 ATERUM EXECUTION FAILED', `${request.type} ${request.symbol} ${request.positionSide}`,
+      `Execution ID: ${request.executionId}`,
+      exchangeWasVerified
+        ? 'Binance confirmed the exchange action, but local persistence/synchronization failed. No success was announced.'
+        : 'Binance did not verify the requested action. Local trade state was not advanced.',
+      `Error: ${String(error?.message || error || 'unknown').slice(0, 500)}`
+    ].join('\n');
+    const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message }), signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) throw new Error(`Telegram failure notification HTTP ${response.status}`);
+    return true;
+  }
+}
+
+module.exports = { ExecutionEngine, EXECUTION_TYPES, retryable, near, safeId };

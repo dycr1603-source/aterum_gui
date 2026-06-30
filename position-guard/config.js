@@ -20,6 +20,7 @@ module.exports = {
   alertCooldownMs: Math.max(60000, Number(process.env.POSITION_GUARD_ALERT_COOLDOWN_MS || 300000)),
   enforce: String(process.env.POSITION_GUARD_ENFORCE || 'true').toLowerCase() === 'true',
   port: Number(process.env.POSITION_GUARD_PORT || 3091),
+  executionToken: secret('EXECUTION_ENGINE_TOKEN'),
   db: {
     host: process.env.DB_HOST || 'mysql',
     user: process.env.DB_USER || 'tradingbot',

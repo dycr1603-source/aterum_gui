@@ -734,6 +734,11 @@ router.post('/db/trade/open', async (req, res) => {
   try {
     await ensureTradeLearningColumns();
     try{
+      await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS sl_order_id VARCHAR(64) NULL`);
+      await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS execution_id CHAR(36) NULL`);
+      await db.execute(`ALTER TABLE trades ADD UNIQUE INDEX IF NOT EXISTS uq_trades_execution_id (execution_id)`);
+      await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS initial_sl_price DECIMAL(24,10) NULL`);
+      await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS trailing_stage ENUM('INITIAL','BREAKEVEN','TIME_LOCK','LOCK','TRAILING') NOT NULL DEFAULT 'INITIAL'`);
       await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS tf4h_trend VARCHAR(10) NULL`);
       await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS tf4h_status VARCHAR(15) NULL`);
       await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS tf4h_rsi DECIMAL(6,2) NULL`);
@@ -745,24 +750,31 @@ router.post('/db/trade/open', async (req, res) => {
       await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS effective_risk_pct DECIMAL(5,2) NULL`);
     }catch(e){ /* columns may already exist */ }
 
+    if (t.executionId) {
+      const [existing] = await db.execute('SELECT id FROM trades WHERE execution_id=? LIMIT 1', [t.executionId]);
+      if (existing.length) return res.json({ ok: true, id: existing[0].id, idempotent: true });
+    }
+
     const sql = `INSERT INTO trades
-      (symbol, direction, status, entry_price, sl_price, tp_price, qty, leverage,
+      (execution_id, symbol, direction, status, entry_price, initial_sl_price, sl_price, tp_price, qty, leverage,
        margin, risk_pct, max_loss, max_gain, rr_ratio, final_score, scan_score,
        ai_regime, ai_bias, ai_reasoning, ai_key_risk, recommended_leverage,
        vision_state, vision_approved, vision_reason, used_fallback, original_symbol,
-       market_order_id, tp_order_id, sl_monitor,
+       market_order_id, sl_order_id, tp_order_id, sl_monitor, trailing_stage,
        tf4h_trend, tf4h_status, tf4h_rsi,
        macro_bias, macro_fear_greed, macro_btc_change, macro_size_mult,
        score_multiplier, effective_risk_pct,
        rsi14, atr_pct, vol_ratio, funding_rate, vwap, current_price,
        dynamic_threshold, entry_reason, setup_label,
        opened_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`;
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`;
     const params = [
+      t.executionId || null,
       t.symbol || null,
       t.direction || null,
       'OPEN',
       t.entryPrice || null,
+      t.initialSL || t.sl || null,
       t.sl || null,
       t.tp || null,
       t.qty || null,
@@ -785,8 +797,10 @@ router.post('/db/trade/open', async (req, res) => {
       t.usedFallback ? 1 : 0,
       t.originalSymbol || null,
       t.marketOrderId || null,
+      t.slOrderId || null,
       t.tpOrderId || null,
       t.slMonitorRequired ? 1 : 0,
+      t.trailingStage || 'INITIAL',
       t.tf4h?.trend || null,
       t.tf4h?.status || null,
       t.tf4h?.rsi || null,
@@ -821,10 +835,15 @@ router.post('/db/trade/close', async (req, res) => {
   const t = req.body;
   try {
     const [rows] = await db.execute(
-      `SELECT id FROM trades WHERE symbol=? AND status='OPEN' ORDER BY opened_at DESC LIMIT 1`,
+      `SELECT t.id,t.status,tc.id AS close_id FROM trades t
+       LEFT JOIN trade_closes tc ON tc.trade_id=t.id
+       WHERE t.symbol=? ORDER BY t.opened_at DESC LIMIT 1`,
       [t.symbol]
     );
-    if (!rows?.length) return res.status(404).json({ error: 'No open trade for ' + t.symbol });
+    if (!rows?.length) return res.status(404).json({ error: 'No trade for ' + t.symbol });
+    if (rows[0].status === 'CLOSED' && rows[0].close_id) return res.json({
+      ok: true, tradeId: rows[0].id, alreadyPersisted: true
+    });
     const tradeId = rows[0].id;
     await db.execute(`UPDATE trades SET status='CLOSED' WHERE id=?`, [tradeId]);
 
@@ -1220,7 +1239,8 @@ router.post('/db/trade/update-sl', async (req, res) => {
     );
     if (!rows?.length) return res.status(404).json({ error: 'No open trade for ' + t.symbol });
     const tradeId = rows[0].id;
-    await db.execute(`UPDATE trades SET sl_price=? WHERE id=?`, [t.newSL || null, tradeId]);
+    await db.execute(`UPDATE trades SET sl_price=?,trailing_stage=COALESCE(?,trailing_stage) WHERE id=?`,
+      [t.newSL || null, t.stage || null, tradeId]);
     console.log(`DB: SL actualizado ${t.symbol} → ${t.newSL}`);
     res.json({ ok: true, tradeId });
   } catch(e) {
