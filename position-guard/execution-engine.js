@@ -1,6 +1,6 @@
 'use strict';
 
-const { randomUUID } = require('crypto');
+const { randomUUID, createHash } = require('crypto');
 const { normalizePosition, isStop, isTakeProfit, triggerPrice } = require('./binance');
 
 const EXECUTION_TYPES = new Set([
@@ -33,6 +33,13 @@ function near(left, right) {
 function safeId(prefix, executionId) {
   return `${prefix}_${executionId.replace(/-/g, '')}`.slice(0, 36);
 }
+function externalCloseExecutionId(symbol, positionSide, exchangeOrderId) {
+  const chars = createHash('sha256').update(`${symbol}:${positionSide}:${exchangeOrderId}`).digest('hex').slice(0, 32).split('');
+  chars[12] = '4';
+  chars[16] = ((parseInt(chars[16], 16) & 3) | 8).toString(16);
+  const hex = chars.join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 function retryable(error) {
   if (error?.retryable === false) return false;
   const code = Number(error?.code);
@@ -41,7 +48,12 @@ function retryable(error) {
     || /timeout|timed out|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|fetch failed/i.test(message);
 }
 function serializeError(error) {
-  return { message: String(error?.message || error), code: error?.code ?? null, body: error?.body ?? null };
+  return { message: String(error?.message || error), code: error?.code ?? null,
+    httpMethod: error?.httpMethod || error?.config?.method || null,
+    url: error?.url || error?.config?.url || null,
+    statusCode: error?.statusCode || error?.response?.status || error?.code || null,
+    responseBody: error?.responseBody || error?.response?.body || error?.response?.data || error?.body || null,
+    stackTrace: error?.stack || null };
 }
 
 class ExecutionEngine {
@@ -128,6 +140,64 @@ class ExecutionEngine {
     };
   }
 
+  async recordExternalClose(input) {
+    const symbol = String(input.symbol || '').toUpperCase();
+    const positionSide = String(input.positionSide || '').toUpperCase();
+    const persistenceStatus = String(input.persistenceStatus || 'PENDING').toUpperCase();
+    const exchangeVerified = input.verificationResult?.verified === true;
+    const exchangeOrderId = String(input.exchangeOrderId || '');
+    if (!/^[A-Z0-9_]{3,24}$/.test(symbol)) throw new Error('Invalid reconciliation symbol');
+    if (!['LONG', 'SHORT'].includes(positionSide)) throw new Error('Invalid reconciliation positionSide');
+    if (!exchangeVerified && persistenceStatus !== 'VERIFICATION_FAILED') {
+      throw new Error('External close reconciliation requires Binance verification');
+    }
+    if (exchangeVerified && !exchangeOrderId) throw new Error('Verified external close requires an exchange order ID');
+
+    let correlationId = input.correlationId || null;
+    if (!correlationId) {
+      const params = [symbol, positionSide];
+      let match = '';
+      if (input.protectiveOrderId != null) {
+        match = ' AND exchange_order_id=?';
+        params.push(String(input.protectiveOrderId));
+      }
+      const [rows] = await this.db.execute(`SELECT execution_id FROM trade_executions
+        WHERE symbol=? AND position_side=? AND request_type IN ('MOVE_STOP_LOSS','TRAILING_STOP')
+          AND final_status='VERIFIED'${match} ORDER BY completed_at DESC LIMIT 1`, params);
+      correlationId = rows[0]?.execution_id || null;
+    }
+
+    const executionId = String(input.executionId || (exchangeOrderId
+      ? externalCloseExecutionId(symbol, positionSide, exchangeOrderId) : randomUUID()));
+    const finalStatus = persistenceStatus === 'VERIFIED' ? 'VERIFIED'
+      : ['FAILED', 'VERIFICATION_FAILED'].includes(persistenceStatus) ? 'FAILED' : 'EXECUTING';
+    const verificationResult = { ...input.verificationResult, verified: exchangeVerified, exchangeVerified,
+      persistenceStatus: exchangeVerified ? persistenceStatus : 'NOT_STARTED', cleanup: input.cleanup || null,
+      checkedAt: input.verificationResult?.checkedAt || new Date().toISOString() };
+    const request = { type: 'RECONCILE_EXTERNAL_CLOSE', symbol, positionSide, correlationId,
+      protectiveOrderId: input.protectiveOrderId || null };
+    const error = input.errorContext ? JSON.stringify(input.errorContext).slice(0, 10000) : null;
+    await this.db.execute(`INSERT INTO trade_executions
+      (execution_id,request_type,symbol,position_side,request_payload,exchange_order_id,exchange_response,
+       verification_result,requested_at,executed_at,verified_at,completed_at,final_status,attempt_count,error)
+      VALUES (?,?,?,?,?,?,?,?,NOW(3),NOW(3),NOW(3),IF(?='EXECUTING',NULL,NOW(3)),?,1,?)
+      ON DUPLICATE KEY UPDATE
+        exchange_response=VALUES(exchange_response),verification_result=VALUES(verification_result),
+        completed_at=IF(VALUES(final_status)='EXECUTING',completed_at,NOW(3)),
+        final_status=IF(final_status='VERIFIED','VERIFIED',VALUES(final_status)),error=VALUES(error)`,
+    [executionId, 'RECONCILE_EXTERNAL_CLOSE', symbol, positionSide, json(request), exchangeOrderId,
+      json(input.exchangeResponse), json(verificationResult), finalStatus, finalStatus, error]);
+    await this.event(executionId, persistenceStatus === 'VERIFICATION_FAILED' ? 'EXTERNAL_CLOSE_VERIFICATION_FAILED'
+      : persistenceStatus === 'FAILED' ? 'RECONCILIATION_PERSISTENCE_FAILED'
+      : persistenceStatus === 'VERIFIED' ? 'RECONCILIATION_VERIFIED' : 'EXTERNAL_CLOSE_VERIFIED', {
+      correlationId, exchangeOrderId: exchangeOrderId || null,
+      verificationStatus: exchangeVerified ? 'VERIFIED' : 'FAILED', persistenceStatus: verificationResult.persistenceStatus,
+      cleanup: input.cleanup || null, error: input.errorContext || null
+    });
+    return { ok: finalStatus !== 'FAILED', executionId, correlationId: correlationId || executionId,
+      exchangeOrderId, verificationResult, persistenceStatus, finalStatus };
+  }
+
   async execute(input) {
     let request;
     try { request = this.normalize(input); }
@@ -186,6 +256,9 @@ class ExecutionEngine {
       }
     }
     const exchangeWasVerified = verificationResult?.verified === true;
+    const failureCategory = exchangeWasVerified ? 'PERSISTENCE_FAILURE'
+      : (lastError?.verificationResult || /verif|read-back|visible on Binance/i.test(String(lastError?.message || '')))
+        ? 'VERIFICATION_FAILURE' : 'EXECUTION_FAILURE';
     const failureVerification = { ...(verificationResult || {}), verified: false,
       exchangeVerified: exchangeWasVerified, pipelineVerified: false,
       checkedAt: verificationResult?.checkedAt || new Date().toISOString(), error: serializeError(lastError) };
@@ -202,7 +275,11 @@ class ExecutionEngine {
     return { ok: false, executionId: request.executionId, type: request.type, symbol: request.symbol,
       positionSide: request.positionSide, exchangeOrderId: exchangeOrderId == null ? null : String(exchangeOrderId),
       exchangeResponse, verificationResult: failureVerification, timestamp: new Date().toISOString(),
-      finalStatus: 'FAILED', attemptCount: attempts, failureNotificationSent,
+      finalStatus: 'FAILED', attemptCount: attempts, failureCategory, failureNotificationSent,
+      errorContext: { executionId: request.executionId, correlationId: request.correlationId || request.executionId,
+        ...serializeError(lastError), verificationStatus: exchangeWasVerified ? 'VERIFIED'
+          : failureCategory === 'VERIFICATION_FAILURE' ? 'FAILED' : 'NOT_STARTED',
+        persistenceStatus: exchangeWasVerified ? 'FAILED' : 'NOT_STARTED' },
       error: String(lastError?.message || lastError || 'Execution failed') };
   }
 
@@ -642,14 +719,22 @@ class ExecutionEngine {
 
   async notifyFailure(request, error, exchangeWasVerified = false) {
     if (!this.config.telegramToken || !this.config.telegramChatId) return false;
-    const message = [
-      '🚨 ATERUM EXECUTION FAILED', `${request.type} ${request.symbol} ${request.positionSide}`,
-      `Execution ID: ${request.executionId}`,
-      exchangeWasVerified
-        ? 'Binance confirmed the exchange action, but local persistence/synchronization failed. No success was announced.'
-        : 'Binance did not verify the requested action. Local trade state was not advanced.',
-      `Error: ${String(error?.message || error || 'unknown').slice(0, 500)}`
-    ].join('\n');
+    const details = serializeError(error);
+    const verificationFailure = !exchangeWasVerified
+      && (error?.verificationResult || /verif|read-back|visible on Binance/i.test(String(error?.message || '')));
+    const title = exchangeWasVerified ? 'PERSISTENCE FAILED' : verificationFailure ? 'VERIFICATION FAILED' : 'EXECUTION FAILED';
+    const message = [`🚨 ATERUM ${title}`, `${request.type} ${request.symbol} ${request.positionSide}`,
+      `Execution ID: ${request.executionId}`, `Correlation ID: ${request.correlationId || request.executionId}`,
+      exchangeWasVerified ? 'Local persistence failed after verified Binance action.'
+        : verificationFailure ? 'Unable to verify the requested change on Binance.'
+          : 'Binance rejected or did not execute the requested change.',
+      `HTTP Method: ${details.httpMethod || 'N/A'}`, `URL: ${details.url || 'N/A'}`,
+      `Status Code: ${details.statusCode ?? 'N/A'}`,
+      `Response Body: ${JSON.stringify(details.responseBody).slice(0, 1000)}`,
+      `Stack Trace: ${String(details.stackTrace || 'unavailable').slice(0, 1500)}`,
+      `Verification Status: ${exchangeWasVerified ? 'VERIFIED' : verificationFailure ? 'FAILED' : 'NOT_STARTED'}`,
+      `Persistence Status: ${exchangeWasVerified ? 'FAILED' : 'NOT_STARTED'}`,
+      `Error: ${String(error?.message || error || 'unknown').slice(0, 500)}`].join('\n');
     const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message }), signal: AbortSignal.timeout(8000)
@@ -659,4 +744,4 @@ class ExecutionEngine {
   }
 }
 
-module.exports = { ExecutionEngine, EXECUTION_TYPES, retryable, near, safeId };
+module.exports = { ExecutionEngine, EXECUTION_TYPES, retryable, near, safeId, externalCloseExecutionId };

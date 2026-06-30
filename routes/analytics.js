@@ -831,21 +831,36 @@ router.post('/db/trade/open', async (req, res) => {
   }
 });
 
-router.post('/db/trade/close', async (req, res) => {
-  const t = req.body;
+async function persistTradeClose(database, t) {
+  const connection = await database.getConnection();
+  let tradeId = null;
   try {
-    const [rows] = await db.execute(
-      `SELECT t.id,t.status,tc.id AS close_id FROM trades t
-       LEFT JOIN trade_closes tc ON tc.trade_id=t.id
-       WHERE t.symbol=? ORDER BY t.opened_at DESC LIMIT 1`,
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT id,status FROM trades WHERE symbol=? ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`,
       [t.symbol]
     );
-    if (!rows?.length) return res.status(404).json({ error: 'No trade for ' + t.symbol });
-    if (rows[0].status === 'CLOSED' && rows[0].close_id) return res.json({
-      ok: true, tradeId: rows[0].id, alreadyPersisted: true
-    });
-    const tradeId = rows[0].id;
-    await db.execute(`UPDATE trades SET status='CLOSED' WHERE id=?`, [tradeId]);
+    if (!rows?.length) {
+      await connection.rollback();
+      return { found: false };
+    }
+    tradeId = rows[0].id;
+    const [closeRows] = await connection.execute(
+      `SELECT id FROM trade_closes WHERE trade_id=? LIMIT 1 FOR UPDATE`, [tradeId]
+    );
+    if (rows[0].status === 'CLOSED' || closeRows.length) {
+      if (t.exchangeVerified === true && closeRows.length) {
+        const verifiedReason = t.closeReason?.toUpperCase() || 'MANUAL';
+        const verifiedStage = t.trailingStage || 'INITIAL';
+        await connection.execute(`UPDATE trade_closes SET close_reason=?,trailing_stage=?,
+          exit_price=COALESCE(?,exit_price),pnl_usdt=COALESCE(?,pnl_usdt),pnl_pct=COALESCE(?,pnl_pct),
+          r_final=COALESCE(?,r_final),duration_minutes=COALESCE(?,duration_minutes) WHERE id=?`,
+        [verifiedReason, verifiedStage, t.exitPrice ?? null, t.pnlUsdt ?? null, t.pnlPct ?? null,
+          t.rFinal ?? null, t.durationMinutes ?? null, closeRows[0].id]);
+      }
+      await connection.commit();
+      return { found: true, ok: true, status: 'ok', tradeId, alreadyPersisted: true };
+    }
 
     const closeReason  = t.closeReason?.toUpperCase() || 'MANUAL';
     const trailingStage = t.trailingStage || 'INITIAL';
@@ -876,12 +891,30 @@ router.post('/db/trade/close', async (req, res) => {
       }
     }
 
-    await db.execute(
+    await connection.execute(`UPDATE trades SET status='CLOSED' WHERE id=?`, [tradeId]);
+    await connection.execute(
       `INSERT INTO trade_closes (trade_id,symbol,exit_price,pnl_usdt,pnl_pct,r_final,close_reason,trailing_stage,duration_minutes,closed_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())`,
       [tradeId, t.symbol, t.exitPrice||null, pnlUsdt, pnlPct, rFinal, closeReason, trailingStage, t.durationMinutes||null]
     );
+    await connection.commit();
     console.log(`DB: Trade cerrado ${t.symbol} id=${tradeId} pnl=${pnlUsdt} reason=${closeReason} stage=${trailingStage}`);
-    res.json({ ok: true, tradeId });
+    return { found: true, ok: true, status: 'ok', tradeId, alreadyPersisted: false };
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    if (Number(error.code) === 1062 && tradeId != null) {
+      return { found: true, ok: true, status: 'ok', tradeId, alreadyPersisted: true };
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+router.post('/db/trade/close', async (req, res) => {
+  try {
+    const result = await persistTradeClose(db, req.body);
+    if (!result.found) return res.status(404).json({ error: 'No trade for ' + req.body.symbol });
+    res.json(result);
   } catch(e) {
     console.error('DB trade/close error:', e.message);
     res.status(500).json({ error: e.message });
@@ -1250,3 +1283,4 @@ router.post('/db/trade/update-sl', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.persistTradeClose = persistTradeClose;

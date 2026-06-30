@@ -16,7 +16,8 @@ class BinanceFutures {
       if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
     });
     if (signed) query.set('signature', crypto.createHmac('sha256', this.secret).update(query.toString()).digest('hex'));
-    const response = await fetch(`${this.base}${path}${query.size ? `?${query}` : ''}`, {
+    const url = `${this.base}${path}${query.size ? `?${query}` : ''}`;
+    const response = await fetch(url, {
       method,
       headers: signed ? { 'X-MBX-APIKEY': this.key } : {},
       signal: AbortSignal.timeout(10000)
@@ -26,6 +27,10 @@ class BinanceFutures {
       const error = new Error(body?.msg || `Binance HTTP ${response.status}`);
       error.code = body?.code || response.status;
       error.body = body;
+      error.httpMethod = method;
+      error.url = url;
+      error.statusCode = response.status;
+      error.responseBody = body;
       const retryAfter = Number(response.headers.get('retry-after') || 0);
       error.retryAfterMs = retryAfter > 0 ? retryAfter * 1000 : 0;
       throw error;

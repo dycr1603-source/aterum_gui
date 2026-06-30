@@ -3,6 +3,25 @@
 const { normalizePosition, isStop, isTakeProfit, triggerPrice } = require('./binance');
 
 function json(value) { return JSON.stringify(value ?? null); }
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function exchangeOrderId(order) { return order?.algoId ?? order?.orderId ?? null; }
+function orderType(order) {
+  return String(order?.orderType || order?.origType || order?.type || '').toUpperCase();
+}
+function matchesClosingFill(order, fillOrderId) {
+  return [order?.actualOrderId, order?.orderId, order?.algoId]
+    .filter(value => value != null).some(value => String(value) === String(fillOrderId));
+}
+function classifyClosingOrder(orders, algos, fillOrderId) {
+  const matchingAlgos = (algos || []).filter(order => matchesClosingFill(order, fillOrderId));
+  const stop = matchingAlgos.find(order => orderType(order).includes('STOP'));
+  const takeProfit = matchingAlgos.find(order => orderType(order).includes('TAKE_PROFIT'));
+  const regular = (orders || []).find(order => matchesClosingFill(order, fillOrderId));
+  const order = stop || takeProfit || regular || null;
+  const type = orderType(order);
+  return { order, type, closeReason: stop ? 'SL' : takeProfit ? 'TP'
+    : type.includes('STOP') ? 'SL' : type.includes('TAKE_PROFIT') || type === 'LIMIT' ? 'TP' : 'MANUAL' };
+}
 function near(left, right) {
   if (left == null && right == null) return true;
   const a = Number(left); const b = Number(right);
@@ -34,6 +53,7 @@ class PositionGuard {
     await this.db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS sl_order_id VARCHAR(64) NULL`);
     await this.db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS trailing_stage
       ENUM('INITIAL','BREAKEVEN','TIME_LOCK','LOCK','TRAILING') NOT NULL DEFAULT 'INITIAL'`);
+    await this.db.execute(`ALTER TABLE trade_closes ADD UNIQUE INDEX IF NOT EXISTS uq_trade_closes_trade_id (trade_id)`);
     await this.db.execute(`UPDATE trades SET initial_sl_price=sl_price
       WHERE initial_sl_price IS NULL AND sl_price IS NOT NULL`);
     await this.db.execute(`CREATE TABLE IF NOT EXISTS position_guard_events (
@@ -221,6 +241,46 @@ class PositionGuard {
     return true;
   }
 
+  async cleanupOrphanProtection(expected) {
+    const context = { symbol: expected.symbol, side: expected.direction, positionSide: expected.direction };
+    const cancellations = [];
+    let remaining = [];
+    try {
+      for (let attempt = 1; attempt <= 8; attempt++) {
+        const [regular, algos] = await Promise.all([
+          this.binance.openOrders(expected.symbol), this.binance.openAlgoOrders(expected.symbol)
+        ]);
+        remaining = [...regular, ...algos].filter(order => isStop(order, context) || isTakeProfit(order, context));
+        if (!remaining.length) {
+          const result = { verified: true, cancelled: cancellations, remaining: [], checkedAt: new Date().toISOString() };
+          await this.event({ eventType: 'ORPHAN_PROTECTION_CLEANUP', severity: 'INFO', symbol: expected.symbol,
+            positionSide: expected.direction, expected: { positionClosed: true, protectiveOrders: 0 },
+            actual: result, action: 'CANCEL_ORPHAN_PROTECTION', actionStatus: 'VERIFIED' });
+          return result;
+        }
+        for (const order of remaining) {
+          try {
+            const response = order.algoId != null
+              ? await this.binance.cancelAlgoOrder(order.algoId)
+              : await this.binance.cancelOrder(order.symbol, order.orderId);
+            cancellations.push({ orderId: exchangeOrderId(order), response });
+          } catch (error) {
+            if (![-2011, -2013].includes(Number(error.code))) throw error;
+            cancellations.push({ orderId: exchangeOrderId(order), alreadyAbsent: true });
+          }
+        }
+        await sleep(Math.min(1000, 150 * attempt));
+      }
+      throw new Error(`Protective orders remain after verified close: ${remaining.map(exchangeOrderId).join(',')}`);
+    } catch (error) {
+      await this.event({ eventType: 'ORPHAN_PROTECTION_CLEANUP_FAILED', severity: 'CRITICAL', symbol: expected.symbol,
+        positionSide: expected.direction, expected: { positionClosed: true, protectiveOrders: 0 },
+        actual: { cancelled: cancellations, remaining: remaining.map(exchangeOrderId) },
+        action: 'CANCEL_ORPHAN_PROTECTION', actionStatus: 'FAILED', error: error.stack || error.message });
+      throw error;
+    }
+  }
+
   async reconcileClosed(expected) {
     const startTime = Math.max(0, new Date(expected.opened_at).getTime() - 60000);
     const [orders, algos, trades] = await Promise.all([
@@ -252,12 +312,13 @@ class PositionGuard {
         await connection.commit();
       } catch (error) { await connection.rollback(); throw error; }
       finally { connection.release(); }
+      const cleanup = await this.cleanupOrphanProtection(expected);
       await fetch(`${this.config.dashboardBase}/trade/${expected.symbol}?reason=sync&exitPrice=${exitPrice}`, {
         method: 'DELETE', signal: AbortSignal.timeout(5000)
       }).catch(() => null);
       await this.event({ eventType: 'DB_RECONCILED_CLOSED_NO_FILL', severity: 'CRITICAL', symbol: expected.symbol,
         positionSide: expected.direction, expected: { dbStatus: 'OPEN' },
-        actual: { binanceStatus: 'CLOSED', fillEvidence: false, estimatedExitPrice: exitPrice },
+        actual: { binanceStatus: 'CLOSED', fillEvidence: false, estimatedExitPrice: exitPrice, cleanup },
         action: 'CLOSE_DB_TRADE_SYNC', actionStatus: 'SUCCESS' });
       await this.alert(`db-close-sync:${expected.id}`,
         `🚨 ATERUM SYNC\n${expected.symbol} is closed on Binance but no closing fill was available. Local state was closed as SYNC; exit/PnL are estimates.`, true);
@@ -268,14 +329,19 @@ class PositionGuard {
     const qty = latest.reduce((sum, row) => sum + Number(row.qty || 0), 0);
     const exitPrice = qty > 0 ? latest.reduce((sum, row) => sum + Number(row.price || 0) * Number(row.qty || 0), 0) / qty : Number(expected.entry_price);
     const pnl = latest.reduce((sum, row) => sum + Number(row.realizedPnl || 0), 0);
-    const filledOrder = [...orders, ...algos].find(order =>
-      String(order.orderId || order.actualOrderId || order.algoId) === String(latest[0].orderId));
-    const type = String(filledOrder?.orderType || filledOrder?.origType || filledOrder?.type || '').toUpperCase();
+    const classification = classifyClosingOrder(orders, algos, latest[0].orderId);
+    const filledOrder = classification.order;
     const clientId = String(filledOrder?.clientOrderId || filledOrder?.clientAlgoId || '');
-    const closeReason = type.includes('STOP') ? 'SL' : type.includes('TAKE_PROFIT') || type === 'LIMIT' ? 'TP' : 'MANUAL';
-    const initialRisk = Math.abs(Number(expected.entry_price) - Number(expected.sl_price));
+    const closeReason = classification.closeReason;
+    const initialRisk = Math.abs(Number(expected.entry_price) - Number(expected.initial_sl_price ?? expected.sl_price));
     const rFinal = initialRisk > 0 ? (Math.abs(exitPrice - Number(expected.entry_price)) / initialRisk) * (pnl >= 0 ? 1 : -1) : 0;
     const duration = Math.max(0, Math.round((latestTime - new Date(expected.opened_at).getTime()) / 60000));
+    let reconciliation = this.executionEngine?.recordExternalClose
+      ? await this.executionEngine.recordExternalClose({ symbol: expected.symbol, positionSide: expected.direction,
+        exchangeOrderId: latest[0].orderId, protectiveOrderId: filledOrder?.algoId || null,
+        exchangeResponse: { fills: latest, order: filledOrder },
+        verificationResult: { verified: true, position: null, fillVerified: true }, persistenceStatus: 'PENDING' })
+      : null;
     const connection = await this.db.getConnection();
     try {
       await connection.beginTransaction();
@@ -285,23 +351,75 @@ class PositionGuard {
           (trade_id,symbol,exit_price,pnl_usdt,pnl_pct,r_final,close_reason,trailing_stage,duration_minutes,closed_at)
           VALUES (?,?,?,?,?,?,?,?,?,FROM_UNIXTIME(?/1000))`, [expected.id, expected.symbol, exitPrice, pnl,
           Number(expected.entry_price) * Number(expected.qty) > 0 ? pnl / (Number(expected.entry_price) * Number(expected.qty)) * 100 : 0,
-          rFinal, closeReason, 'INITIAL', duration, latestTime]);
+          rFinal, closeReason, expected.trailing_stage || 'INITIAL', duration, latestTime]);
+      } else {
+        await connection.execute(`UPDATE trade_closes SET close_reason=?,trailing_stage=?,exit_price=?,
+          pnl_usdt=?,pnl_pct=?,r_final=?,duration_minutes=?,closed_at=FROM_UNIXTIME(?/1000) WHERE id=?`,
+        [closeReason, expected.trailing_stage || 'INITIAL', exitPrice, pnl,
+          Number(expected.entry_price) * Number(expected.qty) > 0
+            ? pnl / (Number(expected.entry_price) * Number(expected.qty)) * 100 : 0,
+          rFinal, duration, latestTime, exists[0].id]);
       }
       await connection.execute("UPDATE trades SET status='CLOSED',updated_at=FROM_UNIXTIME(?/1000) WHERE id=?", [latestTime, expected.id]);
       await connection.commit();
-    } catch (error) { await connection.rollback(); throw error; }
+    } catch (error) {
+      await connection.rollback();
+      if (reconciliation && this.executionEngine?.recordExternalClose) {
+        const errorContext = { executionId: reconciliation.executionId, correlationId: reconciliation.correlationId,
+          httpMethod: 'DATABASE', url: 'mysql://trade_closes', statusCode: null,
+          responseBody: null, stackTrace: error.stack || null,
+          verificationStatus: 'VERIFIED', persistenceStatus: 'FAILED' };
+        reconciliation = await this.executionEngine.recordExternalClose({ symbol: expected.symbol,
+          positionSide: expected.direction, executionId: reconciliation.executionId,
+          correlationId: reconciliation.correlationId, exchangeOrderId: latest[0].orderId,
+          protectiveOrderId: filledOrder?.algoId || null, exchangeResponse: { fills: latest, order: filledOrder },
+          verificationResult: { verified: true, position: null, fillVerified: true },
+          persistenceStatus: 'FAILED', errorContext });
+      }
+      throw error;
+    }
     finally { connection.release(); }
 
+    let cleanup;
+    try {
+      cleanup = await this.cleanupOrphanProtection(expected);
+    } catch (error) {
+      if (reconciliation && this.executionEngine?.recordExternalClose) {
+        const errorContext = { executionId: reconciliation.executionId, correlationId: reconciliation.correlationId,
+          httpMethod: error.httpMethod || null, url: error.url || null,
+          statusCode: error.statusCode || error.code || null,
+          responseBody: error.responseBody || error.body || null, stackTrace: error.stack || null,
+          verificationStatus: 'VERIFIED', persistenceStatus: 'FAILED' };
+        await this.executionEngine.recordExternalClose({ symbol: expected.symbol, positionSide: expected.direction,
+          executionId: reconciliation.executionId, correlationId: reconciliation.correlationId,
+          exchangeOrderId: latest[0].orderId, protectiveOrderId: filledOrder?.algoId || null,
+          exchangeResponse: { fills: latest, order: filledOrder },
+          verificationResult: { verified: true, position: null, fillVerified: true },
+          persistenceStatus: 'FAILED', errorContext });
+      }
+      throw error;
+    }
+    reconciliation = this.executionEngine?.recordExternalClose
+      ? await this.executionEngine.recordExternalClose({ symbol: expected.symbol, positionSide: expected.direction,
+        executionId: reconciliation?.executionId, correlationId: reconciliation?.correlationId,
+        exchangeOrderId: latest[0].orderId, protectiveOrderId: filledOrder?.algoId || null,
+        exchangeResponse: { fills: latest, order: filledOrder },
+        verificationResult: { verified: true, position: null, fillVerified: true },
+        persistenceStatus: 'VERIFIED', cleanup })
+      : null;
     await fetch(`${this.config.dashboardBase}/trade/${expected.symbol}?reason=${closeReason.toLowerCase()}&exitPrice=${exitPrice}`, {
       method: 'DELETE', signal: AbortSignal.timeout(5000)
     }).catch(() => null);
     await this.event({ eventType: 'DB_RECONCILED_CLOSED', severity: 'CRITICAL', symbol: expected.symbol,
       positionSide: expected.direction, expected: { dbStatus: 'OPEN' },
-      actual: { binanceStatus: 'CLOSED', exitPrice, pnl, closeReason, clientId: clientId ? `${clientId.slice(0, 4)}…` : null },
+      actual: { binanceStatus: 'CLOSED', exitPrice, pnl, closeReason, trailingStage: expected.trailing_stage || 'INITIAL',
+        executionId: reconciliation?.executionId || null, correlationId: reconciliation?.correlationId || null,
+        cleanup, clientId: clientId ? `${clientId.slice(0, 4)}…` : null },
       action: 'CLOSE_DB_TRADE', actionStatus: 'SUCCESS' });
     await this.alert(`db-close:${expected.id}`,
       `🚨 ATERUM RECONCILIATION\n${expected.symbol} was OPEN in MySQL but CLOSED on Binance. DB reconciled as ${closeReason} at ${exitPrice}, PnL ${pnl.toFixed(2)} USDT.`, true);
-    return { status: 'reconciled', closeReason, exitPrice, pnl };
+    return { status: 'reconciled', closeReason, exitPrice, pnl, cleanup,
+      executionId: reconciliation?.executionId || null, correlationId: reconciliation?.correlationId || null };
   }
 
   async scan() {
@@ -378,4 +496,4 @@ class PositionGuard {
   }
 }
 
-module.exports = { PositionGuard };
+module.exports = { PositionGuard, classifyClosingOrder };
