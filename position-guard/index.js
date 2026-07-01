@@ -6,6 +6,7 @@ const config = require('./config');
 const { BinanceFutures } = require('./binance');
 const { PositionGuard } = require('./guard');
 const { ExecutionEngine } = require('./execution-engine');
+const { PortfolioAllocator } = require('./portfolio-allocation');
 const { healthSnapshot } = require('./health');
 
 function sendJson(res, status, body) {
@@ -32,7 +33,8 @@ async function main() {
   if (!config.apiKey || !config.apiSecret) throw new Error('Position Guard Binance credentials are required');
   const db = mysql.createPool(config.db);
   const binance = new BinanceFutures(config);
-  const executionEngine = new ExecutionEngine({ config, db, binance });
+  const portfolioAllocator = new PortfolioAllocator({ config, binance });
+  const executionEngine = new ExecutionEngine({ config, db, binance, portfolioAllocator });
   const guard = new PositionGuard({ config, db, binance, executionEngine });
   await executionEngine.initialize();
   await guard.initialize();
@@ -70,6 +72,13 @@ async function main() {
         if (supplied !== config.executionToken) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         const result = await executionEngine.execute(await readJson(req));
         return sendJson(res, 200, result);
+      }
+      if (['GET', 'POST'].includes(req.method) && url.pathname === '/portfolio-capacity') {
+        if (!config.executionToken) return sendJson(res, 503, { allowed: false, error: 'execution engine token is not configured' });
+        const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+        if (supplied !== config.executionToken) return sendJson(res, 401, { allowed: false, error: 'unauthorized' });
+        const body = req.method === 'POST' ? await readJson(req) : {};
+        return sendJson(res, 200, await portfolioAllocator.capacity(body.candidate || null));
       }
       if (req.method === 'POST' && url.pathname === '/reconciliations') {
         if (!config.executionToken) return sendJson(res, 503, { ok: false, error: 'execution engine token is not configured' });

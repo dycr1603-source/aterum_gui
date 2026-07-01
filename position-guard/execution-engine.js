@@ -6,7 +6,7 @@ const { normalizePosition, isStop, isTakeProfit, triggerPrice } = require('./bin
 const EXECUTION_TYPES = new Set([
   'OPEN_POSITION', 'MOVE_STOP_LOSS', 'MOVE_TAKE_PROFIT', 'PARTIAL_TAKE_PROFIT', 'TRAILING_STOP', 'CLOSE_POSITION'
 ]);
-const TERMINAL_STATUSES = new Set(['VERIFIED', 'FAILED']);
+const TERMINAL_STATUSES = new Set(['VERIFIED', 'REJECTED', 'FAILED']);
 const ACTIVE_ORDER_STATUSES = new Set(['NEW', 'PARTIALLY_FILLED']);
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -57,11 +57,13 @@ function serializeError(error) {
 }
 
 class ExecutionEngine {
-  constructor({ config, db, binance }) {
+  constructor({ config, db, binance, portfolioAllocator = null }) {
     this.config = config;
     this.db = db;
     this.binance = binance;
+    this.portfolioAllocator = portfolioAllocator;
     this.inFlight = new Map();
+    this.openAllocationLock = Promise.resolve();
   }
 
   async initialize() {
@@ -405,6 +407,8 @@ class ExecutionEngine {
         exchangeOrderId = result.exchangeOrderId;
         if (!verificationResult?.verified) throw Object.assign(new Error('Binance read-back verification failed'), { verificationResult });
         await this.persistVerifiedState(request, verificationResult, exchangeResponse);
+        verificationResult = { ...verificationResult, verified: true, exchangeVerified: true,
+          pipelineVerified: true, persistenceStatus: 'VERIFIED' };
         await this.db.execute(`UPDATE trade_executions SET exchange_order_id=?,exchange_response=?,
           verification_result=?,executed_at=NOW(3),verified_at=NOW(3),completed_at=NOW(3),final_status='VERIFIED',error=NULL
           WHERE execution_id=?`, [String(exchangeOrderId), json(exchangeResponse), json(verificationResult), request.executionId]);
@@ -423,26 +427,33 @@ class ExecutionEngine {
       }
     }
     const exchangeWasVerified = verificationResult?.verified === true;
-    const failureCategory = exchangeWasVerified ? 'PERSISTENCE_FAILURE'
+    const portfolioRejected = request.type === 'OPEN_POSITION'
+      && lastError?.code === 'PORTFOLIO_CAPACITY_REJECTED';
+    const failureCategory = portfolioRejected ? 'EXECUTION_REJECTED'
+      : exchangeWasVerified ? 'PERSISTENCE_FAILURE'
       : (lastError?.verificationResult || /verif|read-back|visible on Binance/i.test(String(lastError?.message || '')))
         ? 'VERIFICATION_FAILURE' : 'EXECUTION_FAILURE';
+    const finalStatus = portfolioRejected ? 'REJECTED' : 'FAILED';
     const failureVerification = { ...(verificationResult || {}), verified: false,
       exchangeVerified: exchangeWasVerified, pipelineVerified: false,
       checkedAt: verificationResult?.checkedAt || new Date().toISOString(), error: serializeError(lastError) };
     await this.db.execute(`UPDATE trade_executions SET exchange_order_id=?,exchange_response=?,verification_result=?,
-      executed_at=COALESCE(executed_at,NOW(3)),completed_at=NOW(3),final_status='FAILED',attempt_count=?,error=?
+      executed_at=COALESCE(executed_at,NOW(3)),completed_at=NOW(3),final_status=?,attempt_count=?,error=?
       WHERE execution_id=?`, [
-      exchangeOrderId == null ? null : String(exchangeOrderId), json(exchangeResponse), json(failureVerification), attempts,
+      exchangeOrderId == null ? null : String(exchangeOrderId), json(exchangeResponse), json(failureVerification), finalStatus, attempts,
       String(lastError?.message || lastError || 'Execution failed').slice(0, 10000), request.executionId
     ]);
-    await this.event(request.executionId, 'EXECUTION_FAILED', failureVerification);
+    await this.event(request.executionId, portfolioRejected ? 'EXECUTION_REJECTED' : 'EXECUTION_FAILED', failureVerification);
     let failureNotificationSent = false;
-    try { failureNotificationSent = await this.notifyFailure(request, lastError, exchangeWasVerified) === true; }
+    try { failureNotificationSent = await this.notifyFailure(request, lastError, exchangeWasVerified, failureCategory) === true; }
     catch (_) { failureNotificationSent = false; }
     return { ok: false, executionId: request.executionId, type: request.type, symbol: request.symbol,
       positionSide: request.positionSide, exchangeOrderId: exchangeOrderId == null ? null : String(exchangeOrderId),
       exchangeResponse, verificationResult: failureVerification, timestamp: new Date().toISOString(),
-      finalStatus: 'FAILED', attemptCount: attempts, failureCategory, failureNotificationSent,
+      finalStatus, status: portfolioRejected ? 'PORTFOLIO_CAPACITY_REJECTED' : finalStatus,
+      rejectionReason: portfolioRejected ? lastError.body?.primaryReason || null : null,
+      portfolioCapacity: portfolioRejected ? lastError.body || null : null,
+      attemptCount: attempts, failureCategory, failureNotificationSent,
       errorContext: { executionId: request.executionId, correlationId: request.correlationId || request.executionId,
         ...serializeError(lastError), verificationStatus: exchangeWasVerified ? 'VERIFIED'
           : failureCategory === 'VERIFICATION_FAILURE' ? 'FAILED' : 'NOT_STARTED',
@@ -477,11 +488,20 @@ class ExecutionEngine {
   }
 
   dispatch(request) {
-    if (request.type === 'OPEN_POSITION') return this.openPosition(request);
+    if (request.type === 'OPEN_POSITION') return this.serializedOpenPosition(request);
     if (['MOVE_STOP_LOSS', 'MOVE_TAKE_PROFIT', 'TRAILING_STOP'].includes(request.type)) {
       return this.replaceProtection(request);
     }
     return this.reducePosition(request);
+  }
+
+  async serializedOpenPosition(request) {
+    const previous = this.openAllocationLock;
+    let release;
+    this.openAllocationLock = new Promise(resolve => { release = resolve; });
+    await previous;
+    try { return await this.openPosition(request); }
+    finally { release(); }
   }
 
   async symbolRules(symbol) {
@@ -550,6 +570,19 @@ class ExecutionEngine {
     if ((long && takeProfit <= livePrice) || (!long && takeProfit >= livePrice)) {
       throw new Error(`Take profit ${takeProfit} is on the wrong side of Binance price ${livePrice}`);
     }
+    let portfolioAllocation = null;
+    if (this.portfolioAllocator) {
+      portfolioAllocation = await this.portfolioAllocator.capacity({ symbol: request.symbol,
+        positionSide: request.positionSide, quantity, entryPrice: livePrice, stopLoss, leverage: request.leverage });
+      if (!portfolioAllocation.allowed) {
+        const primary = portfolioAllocation.primaryReason || { code: 'PORTFOLIO_CAPACITY_REJECTED' };
+        const error = new Error(`${primary.code}: portfolio capacity rejected the entry`);
+        error.code = 'PORTFOLIO_CAPACITY_REJECTED';
+        error.body = portfolioAllocation;
+        error.retryable = false;
+        throw error;
+      }
+    }
     try { await this.binance.changePositionMode(true); }
     catch (error) { if (Number(error.code) !== -4059) throw error; }
     try { await this.binance.changeMarginType(request.symbol, 'ISOLATED'); }
@@ -584,7 +617,7 @@ class ExecutionEngine {
         exchangeResponse: { marketOrder, stopOrder: stopResult.exchangeResponse,
           takeProfitOrder: takeProfitResult.exchangeResponse },
         verificationResult: { verified: true, requested: { type: request.type, quantity, stopLoss, takeProfit },
-          before, after, checkedAt: new Date().toISOString() }
+          portfolioAllocation, before, after, checkedAt: new Date().toISOString() }
       };
     } catch (error) {
       try { await this.abortOpen(request, confirmed, error); }
@@ -884,9 +917,35 @@ class ExecutionEngine {
     }
   }
 
-  async notifyFailure(request, error, exchangeWasVerified = false) {
+  async notifyFailure(request, error, exchangeWasVerified = false, failureCategory = null) {
     if (!this.config.telegramToken || !this.config.telegramChatId) return false;
     const details = serializeError(error);
+    if (failureCategory === 'EXECUTION_REJECTED') {
+      const capacity = error?.body || {};
+      const reason = capacity.primaryReason || {};
+      const currentPct = Number(reason.current || 0);
+      const maximumPct = Number(reason.maximum || 0);
+      const equity = Number(capacity.account?.equity || 0);
+      const current = equity > 0 ? equity * currentPct / 100 : currentPct;
+      const maximum = equity > 0 ? equity * maximumPct / 100 : maximumPct;
+      const remaining = Math.max(0, maximum - current);
+      const label = String(reason.code || 'PORTFOLIO_CAPACITY_REJECTED')
+        .toLowerCase().split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+      const direction = String(reason.direction || request.positionSide || '').toUpperCase();
+      const message = ['❌ TRADE REJECTED', request.symbol, '', `Reason: ${label}`,
+        direction ? `Current ${direction} Exposure: ${current.toFixed(2)} USDT (${currentPct.toFixed(2)}% equity)` : null,
+        maximum > 0 ? `Maximum Allowed: ${maximum.toFixed(2)} USDT (${maximumPct.toFixed(2)}% equity)` : null,
+        maximum > 0 ? `Remaining Capacity: ${remaining.toFixed(2)} USDT` : null,
+        `Execution ID: ${request.executionId}`, 'No Binance order was created.',
+        'Verification and persistence were not started.', 'This is an expected risk protection.']
+        .filter(Boolean).join('\n');
+      const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message }), signal: AbortSignal.timeout(8000)
+      });
+      if (!response.ok) throw new Error(`Telegram rejection notification HTTP ${response.status}`);
+      return true;
+    }
     const verificationFailure = !exchangeWasVerified
       && (error?.verificationResult || /verif|read-back|visible on Binance/i.test(String(error?.message || '')));
     const title = exchangeWasVerified ? 'PERSISTENCE FAILED' : verificationFailure ? 'VERIFICATION FAILED' : 'EXECUTION FAILED';

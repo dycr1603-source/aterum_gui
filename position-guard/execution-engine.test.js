@@ -152,6 +152,54 @@ async function testVerifiedOpen() {
   assert(binance.algos.some(row => row.orderType === 'TAKE_PROFIT_MARKET'));
 }
 
+async function testPortfolioCapacityRejectsOpenBeforeBinance() {
+  const binance = new FakeBinance();
+  binance.position = null;
+  binance.algos = [];
+  const allocator = { capacity: async () => ({ allowed: false,
+    primaryReason: { code: 'PORTFOLIO_RISK_FULL' } }) };
+  const instance = new ExecutionEngine({ config: {}, db: { execute: async () => [[], []] },
+    binance, portfolioAllocator: allocator });
+  await assert.rejects(() => instance.openPosition({
+    executionId: '12121212-1212-4212-8212-121212121212', type: 'OPEN_POSITION', symbol: 'BTCUSDT',
+    positionSide: 'LONG', quantity: 2, leverage: 5, stopLoss: 95, takeProfit: 110
+  }), /PORTFOLIO_RISK_FULL/);
+  assert.equal(binance.position, null, 'capacity rejection still opened Binance position');
+  assert.equal(binance.orders.length, 0, 'capacity rejection sent an entry order');
+}
+
+async function testPortfolioRejectionIsTerminalOutcome() {
+  const binance = new FakeBinance();
+  binance.position = null;
+  binance.algos = [];
+  const writes = [];
+  const db = { execute: async (sql, params) => {
+    writes.push({ sql, params });
+    if (sql.startsWith('SELECT * FROM trade_executions')) return [[], []];
+    return [{ affectedRows: 1 }, []];
+  } };
+  const capacity = { allowed: false,
+    primaryReason: { code: 'DIRECTION_EXPOSURE_LIMIT', direction: 'SHORT', current: 400.3756, maximum: 400 },
+    account: { equity: 203.7178 }, candidate: { symbol: 'ATOMUSDT', direction: 'SHORT',
+      quantity: 137.8, entryPrice: 1.501, stopLoss: 1.524, leverage: 5 } };
+  const instance = new ExecutionEngine({ config: {}, db, binance,
+    portfolioAllocator: { capacity: async () => capacity } });
+  instance.symbolRules = async () => ({ tick: 0.001, step: 0.1, minQty: 0.1, minNotional: 5 });
+  binance.tickerPrice = async () => ({ price: '1.501' });
+  const result = await instance.execute({ executionId: '13131313-1313-4313-8313-131313131313',
+    type: 'OPEN_POSITION', symbol: 'ATOMUSDT', positionSide: 'SHORT', quantity: 137.8,
+    leverage: 5, stopLoss: 1.524, takeProfit: 1.455 });
+  assert.equal(result.finalStatus, 'REJECTED');
+  assert.equal(result.status, 'PORTFOLIO_CAPACITY_REJECTED');
+  assert.equal(result.failureCategory, 'EXECUTION_REJECTED');
+  assert.equal(result.rejectionReason.code, 'DIRECTION_EXPOSURE_LIMIT');
+  assert.equal(result.symbol, 'ATOMUSDT');
+  assert.equal(result.exchangeOrderId, null);
+  assert.equal(result.verificationResult.exchangeVerified, false);
+  assert.equal(binance.orders.length, 0, 'rejected lifecycle created a Binance order');
+  assert(writes.some(row => /final_status=\?/.test(row.sql) && row.params.includes('REJECTED')));
+}
+
 async function testFailureNeverUpdatesTradeState() {
   const queries = [];
   const db = {
@@ -168,7 +216,7 @@ async function testFailureNeverUpdatesTradeState() {
   assert.equal(result.finalStatus, 'FAILED');
   assert.equal(result.failureNotificationSent, false);
   assert.equal(queries.some(row => /UPDATE trades SET/.test(row.sql)), false);
-  assert(queries.some(row => /final_status='FAILED'/.test(row.sql)));
+  assert(queries.some(row => /final_status=\?/.test(row.sql) && row.params.includes('FAILED')));
 }
 
 async function testTerminalSuccessRequiresPersistence() {
@@ -187,6 +235,8 @@ async function testTerminalSuccessRequiresPersistence() {
     type: 'CLOSE_POSITION', symbol: 'BTCUSDT', positionSide: 'LONG' });
   assert.equal(persisted, true);
   assert.equal(result.finalStatus, 'VERIFIED');
+  assert.equal(result.verificationResult.pipelineVerified, true);
+  assert.equal(result.verificationResult.persistenceStatus, 'VERIFIED');
   assert(queries.some(row => /final_status='VERIFIED'/.test(row.sql)));
 }
 
@@ -211,6 +261,8 @@ async function testLocalFailureBlocksTerminalSuccess() {
   await testVerifiedClose();
   await testVerifiedPartialTakeProfit();
   await testVerifiedOpen();
+  await testPortfolioCapacityRejectsOpenBeforeBinance();
+  await testPortfolioRejectionIsTerminalOutcome();
   await testFailureNeverUpdatesTradeState();
   await testTerminalSuccessRequiresPersistence();
   await testLocalFailureBlocksTerminalSuccess();

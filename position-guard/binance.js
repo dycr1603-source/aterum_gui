@@ -41,6 +41,7 @@ class BinanceFutures {
   ping() { return this.request('GET', '/fapi/v1/ping', {}, false); }
   exchangeInfo() { return this.request('GET', '/fapi/v1/exchangeInfo', {}, false); }
   tickerPrice(symbol) { return this.request('GET', '/fapi/v1/ticker/price', { symbol }, false); }
+  balance() { return this.request('GET', '/fapi/v2/balance'); }
   positions(symbol) { return this.request('GET', '/fapi/v2/positionRisk', { symbol }); }
   openOrders(symbol) { return this.request('GET', '/fapi/v1/openOrders', { symbol }); }
   openAlgoOrders(symbol) { return this.request('GET', '/fapi/v1/openAlgoOrders', { symbol }); }
