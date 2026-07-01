@@ -25,6 +25,10 @@ async function run(nodeName, input) {
   assert(conditions.includes('execution-pipeline-condition'));
   assert(conditions.includes('execution-persistence-condition'));
   assert(!code('Build Trade Alert').includes('/db/trade/open'));
+  for (const field of ['technicalScore', 'contributionTable', 'opportunityDecision',
+    'opportunityUniverse', 'opportunityRanking', 'learningDecision', 'riskDecision']) {
+    assert(code('Position Sizer').includes(field), `Position Sizer dropped ${field} decision provenance`);
+  }
 
   const opened = await run('Build Trade Alert', {
     success: true, finalStatus: 'VERIFIED', symbol: 'TAOUSDT', positionSide: 'SHORT',
@@ -33,11 +37,25 @@ async function run(nodeName, input) {
       takeProfitOrder: { create: { algoId: 'tp-1' } } },
     verificationResult: { verified: true, pipelineVerified: true, persistenceStatus: 'VERIFIED',
       requested: { stopLoss: 204.45, takeProfit: 194.49 },
-      after: { position: { side: 'SHORT', qty: 1.1, entryPrice: 201.12 } } },
+      after: { position: { side: 'SHORT', qty: 1.1, entryPrice: 201.12 } },
+      portfolioAllocation: { allowed: true,
+        account: { equity: 203.72, availableMargin: 116.43, marginUsed: 87.29, marginUsagePct: 42.85 },
+        risk: { openRiskPct: 2.22, maximumRiskPct: 5, remainingRiskPct: 2.78 },
+        exposure: { totalPct: 198.4 }, capacity: { remainingMargin: 116.43 },
+        limits: { maxExposurePct: 500 }, positions: [{ symbol: 'BTCUSDT' }] }
+    },
     technicalScore: 100, finalScore: 97.841, projectedEntry: 999,
-    learningDecision: { scoreDelta: -2.159 },
-    opportunityDecision: { rank: 1 }, opportunityUniverse: { total: 554, candidates: 32 },
+    learningDecision: { scoreDelta: -2.159, requiredScore: 65 }, dynamicThreshold: 65,
+    opportunityDecision: { rank: 1, longScore: 28, shortScore: 100, separation: 72,
+      hardBlockers: [] },
+    opportunityUniverse: { total: 554, eligible: 410, refreshed: 32, candidates: 32 },
+    opportunityRanking: [{ symbol: 'TAOUSDT', rank: 1 }],
     contributionTable: [
+      { component: 'base', value: 15 }, { component: 'trend_1h', value: 25 },
+      { component: 'momentum_rsi', value: 15 }, { component: 'vwap_structure', value: 10 },
+      { component: 'volume_quality', value: 4 }, { component: 'volatility_quality', value: 5 },
+      { component: 'funding', value: 0 }, { component: 'liquidity', value: 1 },
+      { component: 'open_interest', value: 3 },
       { component: 'trend_4h', value: 15 }, { component: 'macro', value: 8 },
       { component: 'intelligence', value: 0 }
     ],
@@ -48,15 +66,23 @@ async function run(nodeName, input) {
     sizingInfo: { tf4hMultiplier: 1.1, macroSizeMultiplier: 0.6,
       regimeMultiplier: 1.1, scoreMultiplier: 1.5, regime: 'TRENDING' }
   });
-  assert(opened.text.includes('✅ TRADE OPENED'));
-  assert(opened.text.includes('Persistence: VERIFIED'));
-  assert(opened.text.includes('Market Order ID: market-1'));
-  assert(opened.text.includes('Technical Score: 100.00/100'));
-  assert(opened.text.includes('Learning Adjustment: -2.16'));
-  assert(opened.text.includes('Final Decision Score: 97.84/100'));
-  assert(opened.text.includes('4H CONFIRMS: score +15.00, size 1.10x'));
-  assert(opened.text.includes('Intelligence NO OPERAR (baja): score +0.00 — ignored: baja confidence'));
-  assert(opened.text.includes('Macro BEARISH: score +8.00, size 0.60x'));
+  assert(opened.text.includes('✅ TRADE ABIERTO'));
+  assert(opened.text.includes('↓ Persistencia ✅ VERIFIED'));
+  assert(opened.text.includes('━━━ ¿POR QUÉ SE APROBÓ? ━━━'));
+  assert(opened.text.includes('━━━ PIPELINE DE DECISIÓN ━━━'));
+  assert(opened.text.includes('━━━ PUNTUACIÓN REAL ━━━'));
+  assert(opened.text.includes('Technical Composite  100.00/100'));
+  assert(opened.text.includes('[████████░░] 78.0'));
+  assert(opened.text.includes('[█████████░] 93.0'));
+  assert(opened.text.includes('↓ Learning aplicado  -2.16'));
+  assert(opened.text.includes('Intelligence NO OPERAR · IGNORADO (baja)'));
+  assert(opened.text.includes('Macro BEARISH  +8.00'));
+  assert(opened.text.includes('MARKET        ✅ market-1'));
+  assert(opened.text.includes('━━━ PRECIOS ━━━'));
+  assert(opened.text.includes('━━━ POSICIÓN Y RIESGO ━━━'));
+  assert(opened.text.includes('━━━ CUENTA · PREFLIGHT REAL ━━━'));
+  assert(opened.text.includes('━━━ INDICADORES ━━━'));
+  assert(opened.text.length <= 4096, `premium notification is ${opened.text.length} chars`);
   assert(!opened.text.includes('999'), 'projected execution value leaked into verified notification');
 
   await assert.rejects(() => run('Build Trade Alert', {
@@ -86,5 +112,5 @@ async function run(nodeName, input) {
     failureCategory: 'VERIFICATION_FAILURE', error: 'read-back timeout'
   });
   assert(unverified.telegramText.includes('⚠ VERIFICATION FAILED'));
-  console.log('open notification lifecycle tests: ok');
+  console.log(`open notification lifecycle tests: ok (${opened.text.length} premium chars)`);
 })().catch(error => { console.error(error); process.exit(1); });
