@@ -27,19 +27,37 @@ async function run(nodeName, input) {
   assert(!code('Build Trade Alert').includes('/db/trade/open'));
 
   const opened = await run('Build Trade Alert', {
-    success: true, finalStatus: 'VERIFIED', symbol: 'ATOMUSDT', positionSide: 'SHORT',
+    success: true, finalStatus: 'VERIFIED', symbol: 'TAOUSDT', positionSide: 'SHORT',
     executionId: 'verified-execution', exchangeOrderId: 'market-1',
     exchangeResponse: { stopOrder: { create: { algoId: 'stop-1' } },
       takeProfitOrder: { create: { algoId: 'tp-1' } } },
     verificationResult: { verified: true, pipelineVerified: true, persistenceStatus: 'VERIFIED',
-      requested: { stopLoss: 1.524, takeProfit: 1.455 },
-      after: { position: { side: 'SHORT', qty: 137.8, entryPrice: 1.501 } } },
-    finalScore: 99, projectedEntry: 999
+      requested: { stopLoss: 204.45, takeProfit: 194.49 },
+      after: { position: { side: 'SHORT', qty: 1.1, entryPrice: 201.12 } } },
+    technicalScore: 100, finalScore: 97.841, projectedEntry: 999,
+    learningDecision: { scoreDelta: -2.159 },
+    opportunityDecision: { rank: 1 }, opportunityUniverse: { total: 554, candidates: 32 },
+    contributionTable: [
+      { component: 'trend_4h', value: 15 }, { component: 'macro', value: 8 },
+      { component: 'intelligence', value: 0 }
+    ],
+    tf4h: { status: 'CONFIRMS' }, aiResult: { regime: 'TRENDING' },
+    marketContext: { market_bias: 'BEARISH', intelligenceSignal: {
+      signal: 'NO OPERAR', confidence: 'baja', scoreAdjustment: { ifLong: -2, ifShort: -2 }
+    } },
+    sizingInfo: { tf4hMultiplier: 1.1, macroSizeMultiplier: 0.6,
+      regimeMultiplier: 1.1, scoreMultiplier: 1.5, regime: 'TRENDING' }
   });
   assert(opened.text.includes('✅ TRADE OPENED'));
   assert(opened.text.includes('Persistence: VERIFIED'));
   assert(opened.text.includes('Market Order ID: market-1'));
-  assert(!opened.text.includes('99'), 'projected score leaked into verified execution notification');
+  assert(opened.text.includes('Technical Score: 100.00/100'));
+  assert(opened.text.includes('Learning Adjustment: -2.16'));
+  assert(opened.text.includes('Final Decision Score: 97.84/100'));
+  assert(opened.text.includes('4H CONFIRMS: score +15.00, size 1.10x'));
+  assert(opened.text.includes('Intelligence NO OPERAR (baja): score +0.00 — ignored: baja confidence'));
+  assert(opened.text.includes('Macro BEARISH: score +8.00, size 0.60x'));
+  assert(!opened.text.includes('999'), 'projected execution value leaked into verified notification');
 
   await assert.rejects(() => run('Build Trade Alert', {
     success: false, finalStatus: 'REJECTED', symbol: 'ATOMUSDT', exchangeOrderId: null,
