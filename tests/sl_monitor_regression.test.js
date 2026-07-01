@@ -54,7 +54,7 @@ async function runScenario({ price, hoursOpen = 1, engineFailure = false }) {
 
 function engineCall(calls) { return calls.find(call => call.url.endsWith('/executions')); }
 
-async function runExternalClose({ persistenceFailure = false } = {}) {
+async function runExternalClose({ finalizationFailure = false } = {}) {
   const calls = [];
   const stopExecutionId = '16446462-ebc2-473a-ba74-f44d980744b4';
   const state = { positions: { TAOUSDT: {
@@ -70,17 +70,23 @@ async function runExternalClose({ persistenceFailure = false } = {}) {
     if (options.url.includes('/fapi/v1/allOrders')) return [{ orderId: 11775207017, type: 'MARKET', side: 'BUY' }];
     if (options.url.includes('/fapi/v1/allAlgoOrders')) return [{ algoId: 3000001998111891,
       actualOrderId: 11775207017, orderType: 'STOP_MARKET', side: 'BUY', positionSide: 'SHORT' }];
-    if (options.url.endsWith('/reconciliations')) return { ok: options.body.persistenceStatus !== 'FAILED',
-      executionId: options.body.executionId, correlationId: options.body.correlationId || stopExecutionId,
-      cleanup: { verified: true, cancelled: [{ orderId: 3000001997551395 }], remaining: [] },
-      error: options.body.persistenceStatus === 'FAILED' ? 'recorded persistence failure' : null };
+    if (options.url.endsWith('/reconciliations')) {
+      if (finalizationFailure && options.body.persistenceStatus === 'PENDING') return { ok: false,
+        executionId: options.body.executionId, correlationId: options.body.correlationId || stopExecutionId,
+        error: 'verified close persistence unavailable', errorContext: { httpMethod: 'DATABASE',
+          url: 'mysql://trade_closes', statusCode: 500, responseBody: { error: 'database unavailable' },
+          verificationStatus: 'VERIFIED', persistenceStatus: 'FAILED', stackTrace: 'test stack' } };
+      if (options.body.persistenceStatus === 'FAILED') return { ok: false,
+        executionId: options.body.executionId, correlationId: options.body.correlationId || stopExecutionId,
+        error: 'recorded persistence failure' };
+      return { ok: true, status: 'FINISHED', finalStatus: 'VERIFIED', executionId: options.body.executionId,
+        correlationId: options.body.correlationId || stopExecutionId,
+        verificationResult: { verified: true, exchangeVerified: true, persistenceStatus: 'VERIFIED' },
+        cleanup: { verified: true, cancellations: [], remaining: [] },
+        canonicalClose: { symbol: 'TAOUSDT', closeReason: 'SL', trailingStage: 'TIME_LOCK' },
+        notification: { owner: true, sent: true } };
+    }
     if (options.url.includes('/db/trade/close')) {
-      if (persistenceFailure) {
-        const error = new Error('Request failed with status code 500');
-        error.config = { method: 'POST', url: options.url };
-        error.response = { status: 500, data: { error: 'database unavailable' } };
-        throw error;
-      }
       return { ok: true, status: 'ok', alreadyPersisted: true };
     }
     if (options.method === 'DELETE' && options.url.includes('/trade/TAOUSDT')) return { ok: true };
@@ -130,25 +136,29 @@ async function runExternalClose({ persistenceFailure = false } = {}) {
   assert.equal(rejected.calls.some(call => call.method === 'DELETE' && call.url.includes('/trade/BTCUSDT')), false);
 
   const external = await runExternalClose();
-  assert.equal(external.result.status, 'EXCHANGE_CLOSE_VERIFIED');
+  assert.equal(external.result.status, 'EXCHANGE_CLOSE_FINALIZED');
   assert.equal(external.result.closeType, 'SL', 'regular MARKET fill overrode matching STOP algo');
   assert.equal(external.result.finalStatus, 'VERIFIED');
   assert.equal(external.state.positions.TAOUSDT, undefined);
-  assert(!external.result.telegramText.includes('EXECUTION FAILED'));
+  assert.equal(external.result.telegramText, null, 'detector emitted a second lifecycle notification');
   assert.notEqual(external.result.executionId, 'not-created');
-  const closeCall = external.calls.find(call => call.url.includes('/db/trade/close'));
-  assert.equal(closeCall.body.trailingStage, 'TIME_LOCK');
-  assert.equal(closeCall.body.exchangeVerified, true);
+  assert.equal(external.calls.some(call => call.url.includes('/db/trade/close')), false,
+    'SL Monitor still owns close persistence');
+  assert.equal(external.calls.some(call => call.method === 'DELETE' && call.url.includes('/trade/TAOUSDT')), false,
+    'SL Monitor still owns dashboard closure');
   const reconciliationCalls = external.calls.filter(call => call.url.endsWith('/reconciliations'));
-  assert.deepStrictEqual(reconciliationCalls.map(call => call.body.persistenceStatus), ['PENDING', 'VERIFIED']);
+  assert.deepStrictEqual(reconciliationCalls.map(call => call.body.persistenceStatus), ['PENDING']);
   assert.equal(reconciliationCalls[0].body.correlationId, '16446462-ebc2-473a-ba74-f44d980744b4');
+  assert.equal(reconciliationCalls[0].body.trailingStage, 'TIME_LOCK');
   assert.equal(external.result.verificationResult.verified, true);
+  assert.equal(external.result.notification.sent, true);
 
-  const persistence = await runExternalClose({ persistenceFailure: true });
+  const persistence = await runExternalClose({ finalizationFailure: true });
   assert.equal(persistence.result.status, 'EXTERNAL_CLOSE_PERSISTENCE_FAILED');
   assert(persistence.result.telegramText.includes('ATERUM PERSISTENCE FAILED'));
   assert(persistence.result.telegramText.includes('Local persistence failed after verified Binance close.'));
-  assert(persistence.result.telegramText.includes('HTTP Method: POST'));
+  assert(persistence.result.telegramText.includes('HTTP Method: DATABASE'));
+  assert(persistence.result.telegramText.includes('URL: mysql://trade_closes'));
   assert(persistence.result.telegramText.includes('Status Code: 500'));
   assert(!persistence.result.telegramText.includes('Binance did not confirm'));
   assert(persistence.state.positions.TAOUSDT, 'Persistence failure removed local monitor state');

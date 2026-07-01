@@ -76,26 +76,22 @@ async function main() {
         const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
         if (supplied !== config.executionToken) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         const input = await readJson(req);
-        let result = await executionEngine.recordExternalClose(input);
         if (String(input.persistenceStatus || 'PENDING').toUpperCase() === 'PENDING') {
           try {
-            const cleanup = await guard.cleanupOrphanProtection({ symbol: input.symbol, direction: input.positionSide });
-            result = await executionEngine.recordExternalClose({ ...input, executionId: result.executionId,
-              correlationId: result.correlationId, cleanup, persistenceStatus: 'PENDING' });
-            result.cleanup = cleanup;
+            return sendJson(res, 200, await executionEngine.finalizeExternalClose(input));
           } catch (error) {
-            const errorContext = { executionId: result.executionId, correlationId: result.correlationId,
+            const errorContext = { executionId: input.executionId || null, correlationId: input.correlationId || null,
               httpMethod: error.httpMethod || null, url: error.url || null,
               statusCode: error.statusCode || error.code || null,
               responseBody: error.responseBody || error.body || null, stackTrace: error.stack || null,
               verificationStatus: 'VERIFIED', persistenceStatus: 'FAILED' };
-            result = await executionEngine.recordExternalClose({ ...input, executionId: result.executionId,
-              correlationId: result.correlationId, persistenceStatus: 'FAILED', errorContext });
-            return sendJson(res, 200, { ...result, ok: false,
-              error: 'Protective-order cleanup failed after verified Binance close', errorContext });
+            const failed = await executionEngine.recordExternalClose({ ...input,
+              persistenceStatus: 'FAILED', errorContext });
+            return sendJson(res, 200, { ...failed, ok: false,
+              error: 'Verified close lifecycle finalization failed', errorContext });
           }
         }
-        return sendJson(res, 200, result);
+        return sendJson(res, 200, await executionEngine.recordExternalClose(input));
       }
       return sendJson(res, 404, { ok: false, error: 'not found' });
     } catch (error) {

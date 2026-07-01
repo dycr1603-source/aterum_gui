@@ -94,6 +94,20 @@ class ExecutionEngine {
       CONSTRAINT fk_trade_execution_event FOREIGN KEY (execution_id)
         REFERENCES trade_executions(execution_id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    await this.db.execute(`CREATE TABLE IF NOT EXISTS trade_lifecycle_events (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      trade_id INT NOT NULL,
+      execution_id CHAR(36) NOT NULL,
+      event_type VARCHAR(40) NOT NULL,
+      event_payload JSON NULL,
+      notification_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+      notification_error TEXT NULL,
+      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      notified_at DATETIME(3) NULL,
+      UNIQUE KEY uq_trade_lifecycle_event (trade_id,event_type),
+      INDEX idx_trade_lifecycle_execution (execution_id),
+      CONSTRAINT fk_trade_lifecycle_trade FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
   }
 
   normalize(input) {
@@ -196,6 +210,159 @@ class ExecutionEngine {
     });
     return { ok: finalStatus !== 'FAILED', executionId, correlationId: correlationId || executionId,
       exchangeOrderId, verificationResult, persistenceStatus, finalStatus };
+  }
+
+  closeReasonLabel(closeReason, stage) {
+    if (closeReason === 'SL') {
+      return stage === 'TIME_LOCK' ? 'Time Lock Stop'
+        : stage === 'BREAKEVEN' ? 'Break Even Stop'
+          : stage === 'LOCK' ? 'Locked Profit Stop'
+            : stage === 'TRAILING' ? 'Trailing Stop' : 'Stop Loss';
+    }
+    if (closeReason === 'TP') return 'Take Profit';
+    if (closeReason === 'TIME_EXIT') return 'Time Exit';
+    return closeReason === 'SYNC' ? 'State Recovery' : 'Manual Close';
+  }
+
+  async cleanupVerifiedClose(symbol, positionSide) {
+    const request = { symbol, positionSide };
+    let snapshot = await this.snapshot(request);
+    const cancellations = [];
+    for (const order of snapshot.protectiveOrders) cancellations.push(await this.cancelProtection(order));
+    snapshot = await this.readUntil(request, state => !state.position && state.protectiveOrders.length === 0,
+      'verified close protective-order cleanup');
+    return { verified: true, cancellations, remaining: snapshot.protectiveOrders,
+      checkedAt: new Date().toISOString() };
+  }
+
+  async publishFinalizedClose(close) {
+    const dashboardResponse = await fetch(
+      `${this.config.dashboardBase}/trade/${close.symbol}?reason=${close.closeReason.toLowerCase()}&exitPrice=${close.exitPrice}`,
+      { method: 'DELETE', signal: AbortSignal.timeout(5000) }
+    );
+    if (!dashboardResponse.ok) {
+      const error = new Error(`Finalized-close Dashboard publication failed (HTTP ${dashboardResponse.status})`);
+      error.httpMethod = 'DELETE';
+      error.url = `${this.config.dashboardBase}/trade/${close.symbol}`;
+      error.statusCode = dashboardResponse.status;
+      throw error;
+    }
+  }
+
+  async removeFinalizedMonitorState(close) {
+    const response = await fetch(`${this.config.n8nBase}/webhook/sl-monitor-delete`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ symbol: close.symbol, executionId: close.executionId }),
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!response.ok) throw new Error(`Finalized-close SL Monitor cleanup failed (HTTP ${response.status})`);
+  }
+
+  async sendCanonicalClose(close) {
+    if (!this.config.telegramToken || !this.config.telegramChatId) {
+      throw new Error('Telegram close notification is not configured');
+    }
+    const pnl = Number(close.pnl || 0);
+    const rFinal = Number(close.rFinal || 0);
+    const message = ['🛑 TRADE CLOSED', `${close.symbol} ${close.positionSide}`,
+      `Reason: ${this.closeReasonLabel(close.closeReason, close.trailingStage)}`,
+      `Execution ID: ${close.executionId}`, `Final Stage: ${close.trailingStage}`,
+      `PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} USDT`,
+      `Final R: ${rFinal >= 0 ? '+' : ''}${rFinal.toFixed(2)}R`,
+      `Duration: ${close.durationMinutes} minutes`].join('\n');
+    const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.ok) throw new Error(body.description || `Telegram HTTP ${response.status}`);
+    return { messageId: body.result?.message_id || null };
+  }
+
+  async finalizeExternalClose(input) {
+    if (input.verificationResult?.verified !== true) {
+      throw new Error('External close finalization requires verified Binance evidence');
+    }
+    let reconciliation = await this.recordExternalClose({ ...input, persistenceStatus: 'PENDING' });
+    const [tradeRows] = await this.db.execute(`SELECT * FROM trades WHERE symbol=? AND direction=?
+      ORDER BY opened_at DESC LIMIT 1`, [input.symbol, input.positionSide]);
+    const trade = tradeRows[0];
+    if (!trade) throw new Error(`No trade lifecycle exists for ${input.symbol} ${input.positionSide}`);
+    const exitPrice = Number(input.exitPrice);
+    const pnl = Number(input.pnl);
+    const closeReason = String(input.closeReason || 'MANUAL').toUpperCase();
+    const trailingStage = trade.trailing_stage || input.trailingStage || 'INITIAL';
+    const initialRisk = Math.abs(Number(trade.entry_price) - Number(trade.initial_sl_price ?? trade.sl_price));
+    const rFinal = input.rFinal != null ? Number(input.rFinal)
+      : initialRisk > 0 ? (Math.abs(exitPrice - Number(trade.entry_price)) / initialRisk) * (pnl >= 0 ? 1 : -1) : 0;
+    const closedAt = Number(input.closedAt || Date.now());
+    const durationMinutes = input.durationMinutes != null ? Number(input.durationMinutes)
+      : Math.max(0, Math.round((closedAt - new Date(trade.opened_at).getTime()) / 60000));
+    const close = { tradeId: trade.id, executionId: reconciliation.executionId,
+      correlationId: reconciliation.correlationId, symbol: input.symbol, positionSide: input.positionSide,
+      exchangeOrderId: String(input.exchangeOrderId), exitPrice, pnl, rFinal, closeReason,
+      trailingStage, durationMinutes, closedAt };
+
+    const connection = await this.db.getConnection();
+    let lifecycleId;
+    try {
+      await connection.beginTransaction();
+      const [lockedTrades] = await connection.execute('SELECT id FROM trades WHERE id=? FOR UPDATE', [trade.id]);
+      if (!lockedTrades.length) throw new Error(`Trade ${trade.id} disappeared during close finalization`);
+      const [existingClose] = await connection.execute('SELECT id FROM trade_closes WHERE trade_id=? LIMIT 1 FOR UPDATE', [trade.id]);
+      const pnlPct = Number(trade.entry_price) * Number(trade.qty) > 0
+        ? pnl / (Number(trade.entry_price) * Number(trade.qty)) * 100 : 0;
+      if (!existingClose.length) {
+        await connection.execute(`INSERT INTO trade_closes
+          (trade_id,symbol,exit_price,pnl_usdt,pnl_pct,r_final,close_reason,trailing_stage,duration_minutes,closed_at)
+          VALUES (?,?,?,?,?,?,?,?,?,FROM_UNIXTIME(?/1000))`, [trade.id, input.symbol, exitPrice, pnl, pnlPct,
+          rFinal, closeReason, trailingStage, durationMinutes, closedAt]);
+      } else {
+        await connection.execute(`UPDATE trade_closes SET exit_price=?,pnl_usdt=?,pnl_pct=?,r_final=?,
+          close_reason=?,trailing_stage=?,duration_minutes=?,closed_at=FROM_UNIXTIME(?/1000) WHERE id=?`,
+        [exitPrice, pnl, pnlPct, rFinal, closeReason, trailingStage, durationMinutes, closedAt, existingClose[0].id]);
+      }
+      await connection.execute("UPDATE trades SET status='CLOSED',updated_at=FROM_UNIXTIME(?/1000) WHERE id=?",
+        [closedAt, trade.id]);
+      await connection.execute(`INSERT IGNORE INTO trade_lifecycle_events
+        (trade_id,execution_id,event_type,event_payload,notification_status)
+        VALUES (?,?,'CLOSE_FINALIZED',?,'PENDING')`, [trade.id, reconciliation.executionId, json(close)]);
+      const [lifecycleRows] = await connection.execute(`SELECT id FROM trade_lifecycle_events
+        WHERE trade_id=? AND event_type='CLOSE_FINALIZED' LIMIT 1`, [trade.id]);
+      lifecycleId = lifecycleRows[0].id;
+      await connection.commit();
+    } catch (error) { await connection.rollback(); throw error; }
+    finally { connection.release(); }
+
+    const cleanup = await this.cleanupVerifiedClose(input.symbol, input.positionSide);
+    await this.publishFinalizedClose(close);
+    reconciliation = await this.recordExternalClose({ ...input, executionId: reconciliation.executionId,
+      correlationId: reconciliation.correlationId, persistenceStatus: 'VERIFIED', cleanup });
+    await this.db.execute(`UPDATE trade_lifecycle_events SET event_payload=? WHERE id=?`,
+      [json({ ...close, cleanup, finalStatus: 'FINISHED' }), lifecycleId]);
+
+    const [claim] = await this.db.execute(`UPDATE trade_lifecycle_events SET notification_status='SENDING'
+      WHERE id=? AND notification_status='PENDING'`, [lifecycleId]);
+    let notification = { owner: false, sent: false };
+    if (claim.affectedRows) {
+      notification.owner = true;
+      try {
+        const telegram = await this.sendCanonicalClose(close);
+        await this.db.execute(`UPDATE trade_lifecycle_events SET notification_status='SENT',notified_at=NOW(3),
+          notification_error=NULL WHERE id=?`, [lifecycleId]);
+        notification = { owner: true, sent: true, ...telegram };
+      } catch (error) {
+        await this.db.execute(`UPDATE trade_lifecycle_events SET notification_status='FAILED',notification_error=? WHERE id=?`,
+          [String(error.stack || error.message).slice(0, 10000), lifecycleId]);
+        throw error;
+      }
+    }
+    await this.removeFinalizedMonitorState(close);
+    return { ok: true, status: 'FINISHED', finalStatus: 'VERIFIED', executionId: reconciliation.executionId,
+      correlationId: reconciliation.correlationId, exchangeOrderId: String(input.exchangeOrderId),
+      verificationResult: reconciliation.verificationResult, persistenceStatus: 'VERIFIED', cleanup,
+      canonicalClose: close, notification };
   }
 
   async execute(input) {

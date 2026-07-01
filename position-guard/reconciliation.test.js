@@ -63,9 +63,10 @@ const { ExecutionEngine, externalCloseExecutionId } = require('./execution-engin
     } };
   const fullGuard = new PositionGuard({ config: { dashboardBase: 'http://dashboard:3001' },
     db: { getConnection: async () => connection },
-    executionEngine: { recordExternalClose: async input => {
+    executionEngine: { finalizeExternalClose: async input => {
       reconciliationPhases.push(input.persistenceStatus);
-      return { executionId: id1, correlationId: '16446462-ebc2-473a-ba74-f44d980744b4' };
+      return { executionId: id1, correlationId: '16446462-ebc2-473a-ba74-f44d980744b4',
+        cleanup: { verified: true }, notification: { owner: true, sent: true } };
     } },
     binance: {
       allOrders: async () => regular,
@@ -85,10 +86,10 @@ const { ExecutionEngine, externalCloseExecutionId } = require('./execution-engin
       trailing_stage: 'TIME_LOCK', opened_at: new Date(Date.now() - 9 * 3600000) });
     assert.equal(result.closeReason, 'SL');
     assert.equal(result.cleanup.verified, true);
-    assert.deepStrictEqual(reconciliationPhases, ['PENDING', 'VERIFIED']);
-    assert.equal(inserts.length, 1);
-    assert.equal(inserts[0][6], 'SL');
-    assert.equal(inserts[0][7], 'TIME_LOCK');
+    assert.equal(reconciliationPhases.length, 1);
+    assert.equal(reconciliationPhases[0], undefined);
+    assert.equal(result.notification.sent, true);
+    assert.equal(inserts.length, 0, 'Position Guard persisted analytics outside the lifecycle owner');
   } finally { global.fetch = originalFetch; }
   console.log('position guard reconciliation tests: ok');
 })().catch(error => { console.error(error); process.exit(1); });
