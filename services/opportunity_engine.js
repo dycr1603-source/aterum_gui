@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const shared = require('../shared');
 const { computeLearningBias, number, clamp, round } = require('./learning_bias');
+const { buildDecisionTrace, POLICY_VERSION } = require('./decision_trace');
 
 const DEFAULTS = Object.freeze({
   minQuoteVolume: Number(process.env.OPPORTUNITY_MIN_QUOTE_VOLUME || 5_000_000),
@@ -472,12 +473,26 @@ async function loadLearningContext(candidates, config = {}) {
       || (rule.rule_type === 'combination' && rule.rule_key === combination)
     );
     const learning = computeLearningBias(matched, { symbol: candidate.symbol, setup, session, regime: candidate.regime, band }, learningConfig);
+    const finalScore = round(clamp(candidate.technicalScore + learning.totalDelta, 0, 100), 2);
+    const decisionTrace = buildDecisionTrace({
+      policyVersion: POLICY_VERSION,
+      symbol: candidate.symbol,
+      direction: candidate.direction,
+      technicalScore: candidate.technicalScore,
+      finalScore,
+      threshold: config.entryThreshold || DEFAULTS.entryThreshold,
+      technicalContributions: candidate.contributions,
+      learningContributions: learning.contributions,
+      learningDelta: learning.totalDelta
+    });
     return {
       ...candidate,
       setupLabel: setup,
       learning,
       learningDelta: learning.totalDelta,
-      finalScore: round(clamp(candidate.technicalScore + learning.totalDelta, 0, 100), 2),
+      finalScore,
+      policyVersion: POLICY_VERSION,
+      decisionTrace,
       hardBlockers: [...candidate.hardBlockers, ...learning.blockers]
     };
   });
@@ -647,6 +662,7 @@ async function scanAndSelect(input = {}) {
   }
 
   for (const candidate of ranked) {
+    candidate.decisionTrace.opportunityCycleId = cycleId;
     const primary = candidate === selected
       ? 'SELECTED_TOP_RANKED'
       : candidate.hardBlockers[0]?.code || (candidate.finalScore < config.entryThreshold ? 'SCORE_BELOW_THRESHOLD' : 'LOWER_PORTFOLIO_RANK');
@@ -656,7 +672,8 @@ async function scanAndSelect(input = {}) {
       cycleId, candidate.symbol, candidate.direction, candidate.scanScore, candidate.technicalScore,
       candidate.learningDelta, candidate.finalScore, config.entryThreshold, candidate.rank, candidate === selected ? 1 : 0,
       primary, JSON.stringify([...candidate.contributions, ...candidate.learning.contributions]),
-      JSON.stringify(candidate.hardBlockers), JSON.stringify({ indicators: candidate.indicators, tf4h: candidate.tf4h, setup: candidate.setupLabel })
+      JSON.stringify(candidate.hardBlockers), JSON.stringify({ indicators: candidate.indicators, tf4h: candidate.tf4h,
+        setup: candidate.setupLabel, scoreTrace: candidate.decisionTrace })
     ]);
     await shared.db.execute(`UPDATE market_symbol_state SET
       last_deep_scan_at=NOW(),next_scan_at=DATE_ADD(NOW(),INTERVAL ? MINUTE),last_score=?,last_direction=?,last_rank=?,consecutive_skips=0

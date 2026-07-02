@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-06-29T05:03:21.981Z",
-  "source": "runtime responsibility audit 2026-06-29",
+  "generatedAt": "2026-07-02T07:33:47.687Z",
+  "source": "Decision score and sizing trace 2026-07-02",
   "sanitized": true,
   "workflows": [
     {
       "id": "Cz4TfvaVAygWGRJm",
       "name": "Advanced AI Trading Bot v2 - Clean",
-      "activeAtExport": true,
-      "nodeCount": 46,
+      "activeAtExport": false,
+      "nodeCount": 30,
       "filename": "advanced-ai-trading-bot-v2-clean.workflow.json",
-      "sha256": "796ff5b1fc4a0888bfc9a9dd753fc8feccb010d2a4a91b61a4ff4149c8549968"
+      "sha256": "5116981111e3c4909fee42e23f556eda346826d6d7d314ea1afb4fd879a6efa1"
     },
     {
       "id": "RecommendationReviewEngine",
@@ -23,9 +23,9 @@
       "id": "ZYhtV8yWXjNukrW4",
       "name": "SL Monitor",
       "activeAtExport": true,
-      "nodeCount": 12,
+      "nodeCount": 14,
       "filename": "sl-monitor.workflow.json",
-      "sha256": "eaddce79636e138b4533bb1e3a670d929989989e69496b55e9faae5ac9f2f9a3"
+      "sha256": "6671e2e1eaf2737361891d0c5d915cc8f24983d5c1ebd70f9d71d2f4a7a0d183"
     },
     {
       "id": "telemetryPersistenceTest",
@@ -49,7 +49,7 @@
       "activeAtExport": true,
       "nodeCount": 4,
       "filename": "trailing-manager.workflow.json",
-      "sha256": "66b20c17a1ce9b2d7006b3940601bd7ae10ca992096d91f3f7f9c4f509b37be6"
+      "sha256": "e2eab622c272902675c027469e665ea668f9fdf74a2ca0c0d07ca0f3dac1c8b2"
     }
   ]
 }

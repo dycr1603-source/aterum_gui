@@ -5,6 +5,7 @@ const router = express.Router();
 const shared = require('../shared');
 const learningChanges = require('../services/learning_changes');
 const { computeLearningBias } = require('../services/learning_bias');
+const { buildDecisionTrace } = require('../services/decision_trace');
 
 const { db } = shared;
 
@@ -608,6 +609,18 @@ async function evaluateDecision(body = {}) {
   const sourceRecommendationIds = [...new Set((rules || []).flatMap(rule => jsonValue(rule.source_recommendation_ids, [])))];
   const action = allowed ? 'ALLOW' : capital.halted ? 'HALT' : 'REJECT';
   const decisionMargin = round(finalScore - requiredScore, 2);
+  const scoreTrace = buildDecisionTrace({
+    policyVersion: body.policyVersion,
+    opportunityCycleId: body.opportunityCycleId,
+    symbol,
+    direction: body.direction || null,
+    technicalScore: baseScore,
+    finalScore,
+    threshold: requiredScore,
+    technicalContributions: body.technicalContributions,
+    learningContributions: learning.contributions,
+    learningDelta: learning.totalDelta
+  });
   const payload = {
     allowed,
     action,
@@ -619,6 +632,7 @@ async function evaluateDecision(body = {}) {
     finalFactor: round(finalFactor, 6),
     scoreDelta: learning.totalDelta,
     decisionMargin,
+    scoreTrace,
     primaryReason: allowed ? 'SCORE_AT_OR_ABOVE_THRESHOLD' : capital.halted ? 'CAPITAL_PROTECTION' : learning.blockers.length ? learning.blockers[0].code : !incomingAllowed ? 'BASE_PIPELINE_REJECTED' : 'SCORE_BELOW_THRESHOLD',
     secondaryReasons: learning.contributions.filter(item => item.delta !== 0).map(item => `${item.component}:${item.delta >= 0 ? '+' : ''}${item.delta}`),
     contributions: learning.contributions,

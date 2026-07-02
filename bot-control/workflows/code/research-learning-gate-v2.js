@@ -19,6 +19,9 @@ try {
       incomingReason: null,
       balance: Number(d.balance || 0),
       entryTime: new Date().toISOString(),
+      policyVersion: d.policyVersion,
+      opportunityCycleId: d.opportunityCycleId,
+      technicalContributions: (d.contributionTable || []).filter(item => !String(item.component || '').startsWith('learning.')),
       capitalAlreadyChecked: true,
       dryRun: false
     }
@@ -41,6 +44,8 @@ return [{ json: {
   passAI,
   skipReason: passAI ? null : `${decision.primaryReason}: ${decision.reason}`,
   setupLabel,
+  policyVersion: decision.scoreTrace?.policyVersion || d.policyVersion,
+  scoreTrace: decision.scoreTrace,
   learningDecision: decision,
   decisionExplanation: {
     primaryReason: decision.primaryReason,
@@ -48,6 +53,6 @@ return [{ json: {
     threshold: decision.requiredScore,
     score: decision.finalScore,
     margin: decision.decisionMargin,
-    contributions: [...(d.contributionTable || []), ...(decision.contributions || [])]
+    contributions: decision.scoreTrace?.contributions || []
   }
 } }];

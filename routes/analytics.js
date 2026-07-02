@@ -2,6 +2,7 @@
 const express = require('express');
 const router  = express.Router();
 const shared  = require('../shared');
+const { buildDecisionTrace, buildSizingTrace } = require('../services/decision_trace');
 
 const { db, query } = shared;
 
@@ -28,7 +29,11 @@ async function ensureTradeLearningColumns() {
     `ALTER TABLE trades ADD COLUMN IF NOT EXISTS current_price DECIMAL(24,10) NULL`,
     `ALTER TABLE trades ADD COLUMN IF NOT EXISTS dynamic_threshold DECIMAL(8,3) NULL`,
     `ALTER TABLE trades ADD COLUMN IF NOT EXISTS entry_reason TEXT NULL`,
-    `ALTER TABLE trades ADD COLUMN IF NOT EXISTS setup_label VARCHAR(120) NULL`
+    `ALTER TABLE trades ADD COLUMN IF NOT EXISTS setup_label VARCHAR(120) NULL`,
+    `ALTER TABLE trades ADD COLUMN IF NOT EXISTS policy_version VARCHAR(80) NULL`,
+    `ALTER TABLE trades ADD COLUMN IF NOT EXISTS opportunity_cycle_id CHAR(36) NULL`,
+    `ALTER TABLE trades ADD COLUMN IF NOT EXISTS score_trace LONGTEXT NULL`,
+    `ALTER TABLE trades ADD COLUMN IF NOT EXISTS sizing_trace LONGTEXT NULL`
   ];
   for (const sql of columns) await db.execute(sql).catch(() => {});
 }
@@ -44,6 +49,12 @@ function buildSetupLabel(t) {
 function numberValue(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function jsonValue(value, fallback = null) {
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch (_) { return fallback; }
 }
 
 function round(value, decimals = 2) {
@@ -733,6 +744,20 @@ router.post('/db/trade/open', async (req, res) => {
   const t = req.body;
   try {
     await ensureTradeLearningColumns();
+    const scoreTrace = t.scoreTrace || buildDecisionTrace({
+      policyVersion: t.policyVersion,
+      opportunityCycleId: t.opportunityCycleId,
+      symbol: t.symbol,
+      direction: t.direction,
+      technicalScore: t.technicalScore ?? t.learningDecision?.baseScore ?? t.finalScore,
+      finalScore: t.finalScore,
+      threshold: t.dynamicThreshold ?? t.learningDecision?.requiredScore,
+      technicalContributions: t.contributionTable,
+      learningContributions: t.learningDecision?.contributions,
+      learningDelta: t.learningDecision?.scoreDelta
+    });
+    if (!scoreTrace.reconstruction?.valid) throw new Error('Decision score trace is not reconstructable');
+    const sizingTrace = t.sizingTrace || buildSizingTrace({ ...t, scoreTrace });
     try{
       await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS sl_order_id VARCHAR(64) NULL`);
       await db.execute(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS execution_id CHAR(36) NULL`);
@@ -766,8 +791,9 @@ router.post('/db/trade/open', async (req, res) => {
        score_multiplier, effective_risk_pct,
        rsi14, atr_pct, vol_ratio, funding_rate, vwap, current_price,
        dynamic_threshold, entry_reason, setup_label,
+       policy_version, opportunity_cycle_id, score_trace, sizing_trace,
        opened_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`;
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`;
     const params = [
       t.executionId || null,
       t.symbol || null,
@@ -818,7 +844,11 @@ router.post('/db/trade/open', async (req, res) => {
       t.indicators?.currentPrice || t.entryPrice || null,
       t.dynamicThreshold || null,
       t.entryReason || t.aiResult?.reasoning || null,
-      t.setupLabel || buildSetupLabel(t)
+      t.setupLabel || buildSetupLabel(t),
+      scoreTrace.policyVersion,
+      t.opportunityCycleId || scoreTrace.opportunityCycleId || null,
+      JSON.stringify(scoreTrace),
+      JSON.stringify(sizingTrace)
     ];
     const result = await db.execute(sql, params);
     const id = result[0]?.insertId;
@@ -828,6 +858,28 @@ router.post('/db/trade/open', async (req, res) => {
   } catch(e) {
     console.error('DB trade/open error:', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/api/trade/:id/decision-trace', async (req, res) => {
+  try {
+    await ensureTradeLearningColumns();
+    const [rows] = await db.execute(`SELECT id,symbol,direction,policy_version,opportunity_cycle_id,
+      score_trace,sizing_trace,opened_at FROM trades WHERE id=? LIMIT 1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'trade not found' });
+    const row = rows[0];
+    res.json({
+      id: row.id,
+      symbol: row.symbol,
+      direction: row.direction,
+      policyVersion: row.policy_version,
+      opportunityCycleId: row.opportunity_cycle_id,
+      scoreTrace: jsonValue(row.score_trace, null),
+      sizingTrace: jsonValue(row.sizing_trace, null),
+      openedAt: row.opened_at
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
