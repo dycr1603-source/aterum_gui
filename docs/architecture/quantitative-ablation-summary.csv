@@ -1,0 +1,15 @@
+cohort,scenario,operations,win_rate,expectancy_r,profit_factor,pnl_r,pnl_usd_1pct,max_drawdown_r,changed_cycles,delta_expectancy_r,ci95_low,ci95_high
+exploratoryAll,baseline,40,47.5,0.0152,1.0411,0.6068,1.1691,-3.5605,0,0,0,0
+exploratoryAll,noMacro,40,52.5,0.1494,1.5108,5.9753,11.5124,-2.9077,5,0.1342,-0.011,0.3372
+exploratoryAll,noIntelligence,40,45,-0.0062,0.9836,-0.249,-0.4797,-3.5605,1,-0.0214,-0.0642,0
+exploratoryAll,noLearning,40,42.5,-0.0637,0.846,-2.5488,-4.9107,-4.6914,5,-0.0789,-0.197,0
+exploratoryAll,noResearch,40,47.5,0.0152,1.0411,0.6068,1.1691,-3.5605,0,0,0,0
+exploratoryAll,noCorrelation,40,50,0.0016,1.004,0.0621,0.1197,-4.1435,4,-0.0136,-0.0921,0.0351
+exploratoryAll,noPortfolioCapacity,41,46.34,0.009,1.0245,0.3675,0.7081,-3.5605,1,-0.0058,-0.0175,0
+currentPolicy,baseline,6,33.33,-0.2103,0.5193,-1.2616,-2.4307,-2.4172,0,0,0,0
+currentPolicy,noMacro,6,50,0.0982,1.5466,0.5894,1.1355,-0.661,3,0.3085,-0.2853,0.9894
+currentPolicy,noIntelligence,6,16.67,-0.3529,0.3121,-2.1174,-4.0795,-2.4172,1,-0.1426,-0.4279,0
+currentPolicy,noLearning,6,0,-0.7362,0,-4.4172,-8.5104,-4.4172,5,-0.5259,-1.1795,-0.067
+currentPolicy,noResearch,6,33.33,-0.2103,0.5193,-1.2616,-2.4307,-2.4172,0,0,0,0
+currentPolicy,noCorrelation,6,33.33,-0.2103,0.5193,-1.2616,-2.4307,-2.4172,0,0,0,0
+currentPolicy,noPortfolioCapacity,6,33.33,-0.2103,0.5193,-1.2616,-2.4307,-2.4172,0,0,0,0
