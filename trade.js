@@ -75,6 +75,7 @@ app.use(require('./routes/intelligence'));
 app.use(require('./routes/learning'));
 app.use(require('./routes/simulator'));
 app.use(require('./routes/knowledge'));
+app.use(require('./routes/opportunities'));
 app.use(require('./routes/cb'));
 app.use('/', cooldownRoutes);
 

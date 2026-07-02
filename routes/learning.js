@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const shared = require('../shared');
 const learningChanges = require('../services/learning_changes');
+const { computeLearningBias } = require('../services/learning_bias');
 
 const { db } = shared;
 
@@ -134,6 +135,8 @@ async function ensureLearningTables() {
     ['max_weight', '1.12', 'Peso máximo por dimensión'],
     ['min_final_factor', '0.70', 'Multiplicador compuesto mínimo'],
     ['max_final_factor', '1.30', 'Multiplicador compuesto máximo'],
+    ['learning_component_delta_cap', '3', 'Máximo ajuste aditivo por dimensión'],
+    ['learning_delta_cap', '8', 'Máximo ajuste aditivo total de Learning'],
     ['block_expectancy_max', '-0.75', 'Expectancy máxima para bloqueo con muestra fuerte'],
     ['block_profit_factor_max', '0.75', 'Profit factor máximo para bloqueo con muestra fuerte'],
     ['block_win_rate_max', '40', 'Win rate máximo para bloqueo con muestra fuerte'],
@@ -292,6 +295,7 @@ function ruleAction(metrics, weight, config) {
     metrics.profitFactor <= configNum(config, 'block_profit_factor_max', 0.75) &&
     metrics.winRate <= configNum(config, 'block_win_rate_max', 40)
   ) return 'block';
+  if (metrics.expectancy >= 0 && metrics.profitFactor >= 1 && weight < 1) return 'neutral';
   if (weight <= 0.98) return 'reduce';
   if (weight >= 1.02) return 'prioritize';
   return 'neutral';
@@ -583,43 +587,27 @@ async function evaluateDecision(body = {}) {
       (rule_type='score_band' AND rule_key=?) OR
       (rule_type='combination' AND rule_key=?)
     )`, [symbol, setup, session, regime, band, combination]);
-  const byType = Object.fromEntries((rules || []).map(rule => [rule.rule_type, rule]));
-  const factorFor = type => num(byType[type]?.weight, 1);
-  const researchFactors = (rules || []).map(rule => num(rule.research_factor, 1));
-  const reviewFactors = (rules || []).map(rule => num(rule.review_factor, 1));
-  const researchFactor = researchFactors.length ? clamp(researchFactors.reduce((a, b) => a * b, 1), 0.94, 1.06) : 1;
-  const reviewFactor = reviewFactors.length ? clamp(reviewFactors.reduce((a, b) => a * b, 1), 0.96, 1.04) : 1;
-  const postTrade = await getPostTradeFactor({ ...body, symbol, setup, session, regime }, config);
-  const componentFactors = {
-    research: researchFactor,
-    historicalSymbol: factorFor('symbol'),
-    historicalSetup: factorFor('setup'),
-    historicalSession: factorFor('session'),
-    historicalRegime: factorFor('regime'),
-    historicalScoreBand: factorFor('score_band'),
-    historicalCombination: factorFor('combination'),
-    reviewEngine: reviewFactor,
-    postTrade: postTrade.factor
-  };
-  const rawFactor = Object.values(componentFactors).reduce((value, factor) => value * num(factor, 1), 1);
-  const finalFactor = clamp(rawFactor, configNum(config, 'min_final_factor', 0.70), configNum(config, 'max_final_factor', 1.30));
   const baseScore = clamp(num(body.baseScore ?? body.finalScore), 0, 100);
   const requiredScore = clamp(num(body.requiredScore ?? body.dynamicThreshold, 65), 0, 100);
-  const finalScore = clamp(baseScore * finalFactor, 0, 100);
-  const capital = await getCapitalStatus(body.balance, { symbol, setup, session, regime, entryTime: body.entryTime });
-  const blockedRules = (rules || []).filter(rule => rule.action === 'block');
+  const learning = computeLearningBias(rules || [], { symbol, setup, session, regime, band, combination }, config);
+  const finalScore = clamp(baseScore + learning.totalDelta, 0, 100);
+  const finalFactor = baseScore > 0 ? finalScore / baseScore : 1;
+  const capital = body.capitalAlreadyChecked === true
+    ? { halted: false, reasons: [], delegatedTo: 'risk_guard' }
+    : await getCapitalStatus(body.balance, { symbol, setup, session, regime, entryTime: body.entryTime });
   const incomingAllowed = body.incomingAllowed !== false && body.passAI !== false;
   const mode = config.learning_enabled === '1' ? (config.learning_mode || 'observe') : 'disabled';
-  const learningAllows = !capital.halted && !blockedRules.length && finalScore >= requiredScore;
+  const learningAllows = !capital.halted && !learning.blockers.length && finalScore >= requiredScore;
   const allowed = incomingAllowed && (mode === 'enforce' ? learningAllows : true);
   let reason = 'Learning Engine aprobado';
   if (!incomingAllowed) reason = body.incomingReason || 'La lógica base rechazó la entrada';
   else if (mode !== 'enforce') reason = `Learning Engine en modo ${mode}; decisión sólo registrada`;
   else if (capital.halted) reason = `Protección de capital: ${capital.reasons.join('; ')}`;
-  else if (blockedRules.length) reason = `Regla bloqueante: ${blockedRules.map(rule => `${rule.rule_type}:${rule.rule_key}`).join(', ')}`;
-  else if (finalScore < requiredScore) reason = `Score ajustado ${round(finalScore, 1)} < mínimo ${round(requiredScore, 1)}`;
+  else if (learning.blockers.length) reason = `Bloqueo explícito: ${learning.blockers.map(blocker => `${blocker.component}:${blocker.key} muestra=${blocker.sample}`).join(', ')}`;
+  else if (finalScore < requiredScore) reason = `Score final ${round(finalScore, 1)} < threshold ${round(requiredScore, 1)}; margen ${round(finalScore - requiredScore, 1)}; Learning ${learning.totalDelta >= 0 ? '+' : ''}${round(learning.totalDelta, 1)}`;
   const sourceRecommendationIds = [...new Set((rules || []).flatMap(rule => jsonValue(rule.source_recommendation_ids, [])))];
   const action = allowed ? 'ALLOW' : capital.halted ? 'HALT' : 'REJECT';
+  const decisionMargin = round(finalScore - requiredScore, 2);
   const payload = {
     allowed,
     action,
@@ -629,7 +617,12 @@ async function evaluateDecision(body = {}) {
     requiredScore: round(requiredScore, 2),
     finalScore: round(finalScore, 2),
     finalFactor: round(finalFactor, 6),
-    components: componentFactors,
+    scoreDelta: learning.totalDelta,
+    decisionMargin,
+    primaryReason: allowed ? 'SCORE_AT_OR_ABOVE_THRESHOLD' : capital.halted ? 'CAPITAL_PROTECTION' : learning.blockers.length ? learning.blockers[0].code : !incomingAllowed ? 'BASE_PIPELINE_REJECTED' : 'SCORE_BELOW_THRESHOLD',
+    secondaryReasons: learning.contributions.filter(item => item.delta !== 0).map(item => `${item.component}:${item.delta >= 0 ? '+' : ''}${item.delta}`),
+    contributions: learning.contributions,
+    components: { mode: 'additive', totalDelta: learning.totalDelta, selected: learning.contributions, suppressed: learning.suppressed },
     matchedRules: (rules || []).map(rule => ({
       id: rule.id,
       type: rule.rule_type,
@@ -642,13 +635,13 @@ async function evaluateDecision(body = {}) {
     })),
     capital,
     sourceRecommendationIds,
-    context: { symbol, setup, session, regime, scoreBand: band, postTradeSample: postTrade.sample }
+    context: { symbol, setup, session, regime, scoreBand: band }
   };
   await db.execute(`INSERT INTO learning_decisions
     (symbol,setup_key,session_key,regime_key,score_band,base_score,required_score,final_score,final_factor,allowed,action,reason,components,capital_status,source_recommendation_ids,dry_run)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [
     symbol || null, setup, session, regime, band, baseScore, requiredScore, finalScore, finalFactor, allowed ? 1 : 0, action, reason,
-    JSON.stringify(componentFactors), JSON.stringify(capital), JSON.stringify(sourceRecommendationIds), body.dryRun ? 1 : 0
+    JSON.stringify(payload.components), JSON.stringify(capital), JSON.stringify(sourceRecommendationIds), body.dryRun ? 1 : 0
   ]);
   return payload;
 }
