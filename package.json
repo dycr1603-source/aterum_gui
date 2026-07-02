@@ -10,6 +10,7 @@
     "test:knowledge": "node tests/knowledge_graph.test.js",
     "test:opportunity": "node tests/opportunity_engine.test.js",
     "test:decision": "node tests/decision_trace.test.js",
+    "test:research-shadow": "node tests/research_shadow.test.js",
     "test:workflow": "node tests/workflow_redesign.test.js && node tests/trailing_manager_regression.test.js && node tests/sl_monitor_regression.test.js",
     "test:execution": "node position-guard/execution-engine.test.js && node position-guard/synchronization.test.js"
   },

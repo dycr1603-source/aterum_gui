@@ -53,22 +53,31 @@ function computeLearningBias(rules = [], context = {}, config = {}) {
   const hardMin = number(config.hard_min_sample, 20);
   const { selected, suppressed } = chooseRules(rules, context, config);
 
+  function deltaFor(weight, profitable) {
+    const effectiveWeight = profitable && weight < 1 ? 1 : weight;
+    return clamp((effectiveWeight - 1) * 25, -componentCap, componentCap);
+  }
+
   const contributions = selected.map(rule => {
-    const observedWeight = number(rule.weight, 1)
+    const productionWeight = number(rule.weight, 1);
+    const shadowWeight = productionWeight
       * number(rule.research_factor, 1)
       * number(rule.review_factor, 1);
     const profitable = number(rule.expectancy) >= 0 && number(rule.profit_factor) >= 1;
-    const effectiveWeight = profitable && observedWeight < 1 ? 1 : observedWeight;
-    const delta = clamp((effectiveWeight - 1) * 25, -componentCap, componentCap);
+    const delta = deltaFor(productionWeight, profitable);
+    const shadowDelta = deltaFor(shadowWeight, profitable);
     return {
       ruleId: rule.id,
       component: `learning.${rule.rule_type}`,
       key: rule.rule_key,
       delta: round(delta),
-      weight: round(number(rule.weight, 1), 6),
+      shadowDelta: round(shadowDelta),
+      externalMarginalDelta: round(shadowDelta - delta),
+      weight: round(productionWeight, 6),
       researchFactor: round(number(rule.research_factor, 1), 6),
       reviewFactor: round(number(rule.review_factor, 1), 6),
-      profitabilityGuardApplied: profitable && observedWeight < 1,
+      profitabilityGuardApplied: profitable && productionWeight < 1,
+      shadowProfitabilityGuardApplied: profitable && shadowWeight < 1,
       sample: number(rule.sample_size),
       expectancy: round(number(rule.expectancy)),
       profitFactor: round(number(rule.profit_factor)),
@@ -79,6 +88,8 @@ function computeLearningBias(rules = [], context = {}, config = {}) {
 
   const rawDelta = contributions.reduce((sum, item) => sum + item.delta, 0);
   const totalDelta = round(clamp(rawDelta, -totalCap, totalCap));
+  const shadowRawDelta = contributions.reduce((sum, item) => sum + item.shadowDelta, 0);
+  const shadowTotalDelta = round(clamp(shadowRawDelta, -totalCap, totalCap));
   const blockers = selected
     .filter(rule => rule.action === 'block'
       && rule.evidence_level === 'high'
@@ -98,6 +109,13 @@ function computeLearningBias(rules = [], context = {}, config = {}) {
     totalDelta,
     rawDelta: round(rawDelta),
     capped: round(rawDelta) !== totalDelta,
+    shadow: {
+      mode: 'research_external_factors',
+      totalDelta: shadowTotalDelta,
+      rawDelta: round(shadowRawDelta),
+      marginalDelta: round(shadowTotalDelta - totalDelta),
+      wouldChangeScore: shadowTotalDelta !== totalDelta
+    },
     contributions,
     blockers,
     suppressed

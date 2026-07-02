@@ -421,6 +421,9 @@ async function ensureTables() {
     coarse_score DECIMAL(8,3) NULL,
     technical_score DECIMAL(8,3) NULL,
     learning_delta DECIMAL(8,3) NULL,
+    research_shadow_delta DECIMAL(8,3) NULL,
+    research_shadow_score DECIMAL(8,3) NULL,
+    research_shadow_would_change TINYINT(1) NOT NULL DEFAULT 0,
     final_score DECIMAL(8,3) NULL,
     threshold DECIMAL(8,3) NULL,
     rank_position INT NULL,
@@ -434,6 +437,9 @@ async function ensureTables() {
     INDEX idx_market_opportunity_symbol (symbol, evaluated_at),
     INDEX idx_market_opportunity_selected (selected, evaluated_at)
   )`);
+  await shared.db.execute(`ALTER TABLE market_opportunities ADD COLUMN IF NOT EXISTS research_shadow_delta DECIMAL(8,3) NULL`).catch(() => {});
+  await shared.db.execute(`ALTER TABLE market_opportunities ADD COLUMN IF NOT EXISTS research_shadow_score DECIMAL(8,3) NULL`).catch(() => {});
+  await shared.db.execute(`ALTER TABLE market_opportunities ADD COLUMN IF NOT EXISTS research_shadow_would_change TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
 }
 
 async function loadStates() {
@@ -474,6 +480,7 @@ async function loadLearningContext(candidates, config = {}) {
     );
     const learning = computeLearningBias(matched, { symbol: candidate.symbol, setup, session, regime: candidate.regime, band }, learningConfig);
     const finalScore = round(clamp(candidate.technicalScore + learning.totalDelta, 0, 100), 2);
+    const researchShadowScore = round(clamp(candidate.technicalScore + learning.shadow.totalDelta, 0, 100), 2);
     const decisionTrace = buildDecisionTrace({
       policyVersion: POLICY_VERSION,
       symbol: candidate.symbol,
@@ -493,6 +500,16 @@ async function loadLearningContext(candidates, config = {}) {
       finalScore,
       policyVersion: POLICY_VERSION,
       decisionTrace,
+      researchShadow: {
+        mode: 'shadow',
+        productionDelta: learning.totalDelta,
+        shadowDelta: learning.shadow.totalDelta,
+        marginalDelta: learning.shadow.marginalDelta,
+        productionScore: finalScore,
+        shadowScore: researchShadowScore,
+        wouldChangeEligibility: (finalScore >= number(config.entryThreshold, DEFAULTS.entryThreshold))
+          !== (researchShadowScore >= number(config.entryThreshold, DEFAULTS.entryThreshold))
+      },
       hardBlockers: [...candidate.hardBlockers, ...learning.blockers]
     };
   });
@@ -667,10 +684,14 @@ async function scanAndSelect(input = {}) {
       ? 'SELECTED_TOP_RANKED'
       : candidate.hardBlockers[0]?.code || (candidate.finalScore < config.entryThreshold ? 'SCORE_BELOW_THRESHOLD' : 'LOWER_PORTFOLIO_RANK');
     await shared.db.execute(`INSERT INTO market_opportunities
-      (cycle_id,symbol,direction,coarse_score,technical_score,learning_delta,final_score,threshold,rank_position,selected,primary_reason,contributions,blockers,metrics,evaluated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(3))`, [
+      (cycle_id,symbol,direction,coarse_score,technical_score,learning_delta,research_shadow_delta,
+       research_shadow_score,research_shadow_would_change,final_score,threshold,rank_position,selected,
+       primary_reason,contributions,blockers,metrics,evaluated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(3))`, [
       cycleId, candidate.symbol, candidate.direction, candidate.scanScore, candidate.technicalScore,
-      candidate.learningDelta, candidate.finalScore, config.entryThreshold, candidate.rank, candidate === selected ? 1 : 0,
+      candidate.learningDelta, candidate.researchShadow.marginalDelta, candidate.researchShadow.shadowScore,
+      candidate.researchShadow.wouldChangeEligibility ? 1 : 0, candidate.finalScore, config.entryThreshold,
+      candidate.rank, candidate === selected ? 1 : 0,
       primary, JSON.stringify([...candidate.contributions, ...candidate.learning.contributions]),
       JSON.stringify(candidate.hardBlockers), JSON.stringify({ indicators: candidate.indicators, tf4h: candidate.tf4h,
         setup: candidate.setupLabel, scoreTrace: candidate.decisionTrace })

@@ -125,6 +125,29 @@ async function ensureLearningTables() {
     created_at DATETIME NOT NULL DEFAULT NOW(),
     INDEX idx_learning_runs_created (created_at)
   )`);
+  await db.execute(`CREATE TABLE IF NOT EXISTS research_shadow_evaluations (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    symbol VARCHAR(24) NULL,
+    setup_key VARCHAR(255) NULL,
+    session_key VARCHAR(16) NULL,
+    regime_key VARCHAR(40) NULL,
+    source_recommendation_ids LONGTEXT NULL,
+    production_score DECIMAL(9,4) NOT NULL,
+    shadow_score DECIMAL(9,4) NOT NULL,
+    threshold_score DECIMAL(9,4) NOT NULL,
+    production_allowed TINYINT(1) NOT NULL,
+    shadow_allowed TINYINT(1) NOT NULL,
+    production_delta DECIMAL(9,4) NOT NULL,
+    shadow_delta DECIMAL(9,4) NOT NULL,
+    marginal_delta DECIMAL(9,4) NOT NULL,
+    context LONGTEXT NULL,
+    dry_run TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME(3) NOT NULL DEFAULT NOW(3),
+    INDEX idx_research_shadow_created (created_at),
+    INDEX idx_research_shadow_symbol (symbol,created_at),
+    INDEX idx_research_shadow_changed (production_allowed,shadow_allowed,created_at)
+  )`);
+  await db.execute(`ALTER TABLE research_shadow_evaluations ADD COLUMN IF NOT EXISTS dry_run TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
 
   const seeds = [
     ['learning_enabled', '1', 'Habilita el uso de reglas dinámicas antes de una entrada'],
@@ -138,6 +161,7 @@ async function ensureLearningTables() {
     ['max_final_factor', '1.30', 'Multiplicador compuesto máximo'],
     ['learning_component_delta_cap', '3', 'Máximo ajuste aditivo por dimensión'],
     ['learning_delta_cap', '8', 'Máximo ajuste aditivo total de Learning'],
+    ['research_policy_mode', 'shadow', 'Research genera hipótesis y contrafactuales; no modifica producción'],
     ['block_expectancy_max', '-0.75', 'Expectancy máxima para bloqueo con muestra fuerte'],
     ['block_profit_factor_max', '0.75', 'Profit factor máximo para bloqueo con muestra fuerte'],
     ['block_win_rate_max', '40', 'Win rate máximo para bloqueo con muestra fuerte'],
@@ -413,25 +437,25 @@ async function rebuildRules() {
       }, { config, ruleId: previous.id, source: 'learning_engine', actor: 'Learning Engine' });
     }
 
-    const implemented = new Set(generated
+    const shadowHypotheses = new Set(generated
       .filter(rule => rule.status === 'active' && rule.action !== 'neutral')
       .flatMap(rule => rule.ids));
     const contradicted = new Set(generated
       .filter(rule => rule.status === 'active' && rule.action !== 'neutral')
       .flatMap(rule => rule.conflictIds)
-      .filter(id => !implemented.has(id)));
+      .filter(id => !shadowHypotheses.has(id)));
     await connection.execute(`UPDATE ai_recommendations
       SET implementation_status='descartada', implementation_reason='Review Engine rechazó la recomendación; no participa en Learning Engine'
       WHERE status='rejected'`);
     await connection.execute(`UPDATE ai_recommendations
       SET implementation_status='en_prueba', implementation_reason='Aún no existe evidencia operativa suficiente o concordante'
       WHERE status<>'rejected'`);
-    for (const id of implemented) {
+    for (const id of shadowHypotheses) {
       await connection.execute(`UPDATE ai_recommendations
         SET impact_score=IF(implemented_at IS NULL,NULL,impact_score),
             outcome=IF(implemented_at IS NULL,NULL,outcome),
             notes=IF(implemented_at IS NULL,'Pendiente de revisión posterior a la implementación real',notes),
-            implementation_status='implementada', implemented_at=COALESCE(implemented_at,NOW()), implementation_reason='Regla dinámica respaldada por muestra operativa y Research concordante'
+            implementation_status='shadow', implemented_at=NULL, implementation_reason='Hipótesis Research aislada de producción; pendiente de validación fuera de muestra'
         WHERE id=? AND status<>'rejected'`, [id]);
     }
     for (const id of contradicted) {
@@ -453,13 +477,15 @@ async function rebuildRules() {
         active,
         monitoring,
         0,
-        implemented.size,
+        0,
         num(discardedRows?.[0]?.total),
-        JSON.stringify({ trades: tradeRows.length, generated: generated.length, mode: config.learning_mode || 'observe' })
+        JSON.stringify({ trades: tradeRows.length, generated: generated.length, mode: config.learning_mode || 'observe',
+          researchPolicyMode: 'shadow', shadowHypotheses: shadowHypotheses.size })
       ]);
     await connection.commit();
     const review = await learningChanges.reviewChanges().catch(error => ({ error: error.message }));
-    return { ok: true, trades: tradeRows.length, generated: generated.length, active, monitoring, implemented: implemented.size, changeReview: review };
+    return { ok: true, trades: tradeRows.length, generated: generated.length, active, monitoring,
+      implemented: 0, shadowHypotheses: shadowHypotheses.size, researchPolicyMode: 'shadow', changeReview: review };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -592,6 +618,7 @@ async function evaluateDecision(body = {}) {
   const requiredScore = clamp(num(body.requiredScore ?? body.dynamicThreshold, 65), 0, 100);
   const learning = computeLearningBias(rules || [], { symbol, setup, session, regime, band, combination }, config);
   const finalScore = clamp(baseScore + learning.totalDelta, 0, 100);
+  const shadowScore = clamp(baseScore + learning.shadow.totalDelta, 0, 100);
   const finalFactor = baseScore > 0 ? finalScore / baseScore : 1;
   const capital = body.capitalAlreadyChecked === true
     ? { halted: false, reasons: [], delegatedTo: 'risk_guard' }
@@ -599,6 +626,7 @@ async function evaluateDecision(body = {}) {
   const incomingAllowed = body.incomingAllowed !== false && body.passAI !== false;
   const mode = config.learning_enabled === '1' ? (config.learning_mode || 'observe') : 'disabled';
   const learningAllows = !capital.halted && !learning.blockers.length && finalScore >= requiredScore;
+  const shadowAllows = !capital.halted && !learning.blockers.length && shadowScore >= requiredScore;
   const allowed = incomingAllowed && (mode === 'enforce' ? learningAllows : true);
   let reason = 'Learning Engine aprobado';
   if (!incomingAllowed) reason = body.incomingReason || 'La lógica base rechazó la entrada';
@@ -631,6 +659,17 @@ async function evaluateDecision(body = {}) {
     finalScore: round(finalScore, 2),
     finalFactor: round(finalFactor, 6),
     scoreDelta: learning.totalDelta,
+    researchShadow: {
+      mode: 'shadow',
+      productionScore: round(finalScore, 2),
+      shadowScore: round(shadowScore, 2),
+      productionDelta: learning.totalDelta,
+      shadowDelta: learning.shadow.totalDelta,
+      marginalDelta: learning.shadow.marginalDelta,
+      productionAllowed: allowed,
+      shadowAllowed: incomingAllowed && shadowAllows,
+      wouldChangeDecision: allowed !== (incomingAllowed && shadowAllows)
+    },
     decisionMargin,
     scoreTrace,
     primaryReason: allowed ? 'SCORE_AT_OR_ABOVE_THRESHOLD' : capital.halted ? 'CAPITAL_PROTECTION' : learning.blockers.length ? learning.blockers[0].code : !incomingAllowed ? 'BASE_PIPELINE_REJECTED' : 'SCORE_BELOW_THRESHOLD',
@@ -656,6 +695,16 @@ async function evaluateDecision(body = {}) {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [
     symbol || null, setup, session, regime, band, baseScore, requiredScore, finalScore, finalFactor, allowed ? 1 : 0, action, reason,
     JSON.stringify(payload.components), JSON.stringify(capital), JSON.stringify(sourceRecommendationIds), body.dryRun ? 1 : 0
+  ]);
+  await db.execute(`INSERT INTO research_shadow_evaluations
+    (symbol,setup_key,session_key,regime_key,source_recommendation_ids,production_score,shadow_score,
+     threshold_score,production_allowed,shadow_allowed,production_delta,shadow_delta,marginal_delta,context,dry_run)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [
+    symbol || null, setup, session, regime, JSON.stringify(sourceRecommendationIds), finalScore, shadowScore,
+    requiredScore, allowed ? 1 : 0, incomingAllowed && shadowAllows ? 1 : 0, learning.totalDelta,
+    learning.shadow.totalDelta, learning.shadow.marginalDelta,
+    JSON.stringify({ scoreBand: band, matchedRules: payload.matchedRules, policyVersion: scoreTrace.policyVersion }),
+    body.dryRun ? 1 : 0
   ]);
   return payload;
 }
@@ -691,6 +740,23 @@ router.get('/api/learning/decisions', async (req, res) => {
     const limit = clamp(parseInt(req.query.limit || '50', 10) || 50, 1, 200);
     const [rows] = await db.query(`SELECT * FROM learning_decisions ORDER BY created_at DESC LIMIT ?`, [limit]);
     res.json({ decisions: rows || [] });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+router.get('/api/research/shadow-summary', async (_req, res) => {
+  try {
+    await ensureLearningTables();
+    const [rows] = await db.execute(`SELECT COUNT(*) evaluations,
+      SUM(production_allowed<>shadow_allowed) changed_decisions,
+      AVG(marginal_delta) avg_marginal_delta,
+      MIN(marginal_delta) min_marginal_delta,
+      MAX(marginal_delta) max_marginal_delta,
+      MAX(created_at) last_evaluation
+      FROM research_shadow_evaluations WHERE dry_run=0`);
+    const [recent] = await db.execute(`SELECT id,symbol,production_score,shadow_score,threshold_score,
+      production_allowed,shadow_allowed,marginal_delta,created_at
+      FROM research_shadow_evaluations WHERE dry_run=0 ORDER BY created_at DESC LIMIT 50`);
+    res.json({ mode: 'shadow', summary: rows[0] || {}, recent });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -731,11 +797,16 @@ router.get('/api/learning/summary', async (_req, res) => {
       db.execute(`SELECT COUNT(*) AS total,SUM(status='active') AS active,SUM(status='monitoring') AS monitoring,SUM(status='suspended') AS suspended,SUM(status='active' AND action='block') AS blocked,SUM(status='active' AND action='reduce') AS reduced,SUM(status='active' AND action='prioritize') AS prioritized,SUM(status='active' AND created_at>=DATE_SUB(NOW(),INTERVAL 1 DAY)) AS new_active FROM learning_rules`).then(([rows]) => rows),
       db.execute(`SELECT COUNT(*) AS total,SUM(allowed=1) AS allowed,SUM(allowed=0) AS rejected,MAX(created_at) AS last_decision FROM learning_decisions WHERE created_at>=DATE_SUB(NOW(),INTERVAL 7 DAY)`).then(([rows]) => rows),
       db.execute(`SELECT * FROM learning_runs ORDER BY created_at DESC LIMIT 1`).then(([rows]) => rows),
-      db.execute(`SELECT COUNT(*) AS total,SUM(implementation_status='implementada') AS implemented,SUM(implementation_status='descartada') AS discarded,SUM(implementation_status='en_prueba') AS testing,SUM(CASE WHEN implementation_status='implementada' THEN COALESCE(impact_score,0) ELSE 0 END) AS cumulative_impact FROM ai_recommendations`).then(([rows]) => rows)
+      db.execute(`SELECT COUNT(*) AS total,SUM(implementation_status='implementada') AS implemented,
+        SUM(implementation_status='shadow') AS shadow,SUM(implementation_status='descartada') AS discarded,
+        SUM(implementation_status='en_prueba') AS testing,
+        SUM(CASE WHEN implementation_status='implementada' THEN COALESCE(impact_score,0) ELSE 0 END) AS cumulative_impact
+        FROM ai_recommendations`).then(([rows]) => rows)
     ]);
     const capital = await getCapitalStatus(shared.accountState?.balance, {});
     res.json({
       mode: config.learning_enabled === '1' ? config.learning_mode : 'disabled',
+      researchPolicyMode: config.research_policy_mode || 'shadow',
       config: {
         softMinSample: configNum(config, 'soft_min_sample', 8),
         hardMinSample: configNum(config, 'hard_min_sample', 20),
