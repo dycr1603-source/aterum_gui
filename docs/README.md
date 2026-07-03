@@ -12,7 +12,7 @@ Este indice es la entrada canonica a la documentacion del sistema. Los archivos 
 | [Learning](./learning/README.md) | Reglas, decisiones, cambios y rollback. |
 | [Knowledge](./knowledge/README.md) | Decision Explorer, Timeline, Graph, Diff y evidencia. |
 | [Analytics](./analytics/README.md) | Mapeo y restauracion de datos de la GUI. |
-| [Trading](./trading/README.md) | Evidencia sobre ejecucion, trailing, grafico y PnL. |
+| [Trading](./trading/README.md) | Pipeline V2, ejecución, trailing, gráfico y PnL. |
 | [Simulator](./simulator/README.md) | Alcance y referencias del simulador. |
 | [Database](./database/README.md) | Esquema y auditoria de persistencia. |
 | [Operations](./operations/README.md) | n8n, estabilidad, sincronizacion y recuperacion. |

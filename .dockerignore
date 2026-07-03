@@ -5,3 +5,5 @@ npm-debug.log
 trades.json
 tmp
 *.log
+docs/archive/*.sqlite
+docs/screenshots

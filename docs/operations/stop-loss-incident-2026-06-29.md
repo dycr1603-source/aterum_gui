@@ -60,11 +60,11 @@ El error Telegram de `81791` no produjo la pérdida de HYPE: ocurrió al final, 
 En la ventana auditada, SL Monitor tuvo un gap máximo de 60 segundos durante reinicios y Trailing Manager 120 segundos. No hubo OOM ni evidencia de disco lleno durante el incidente.
 El ciclo programado siguiente del Advanced Bot, ejecución `83957`, terminó correctamente entre `04:00:13` y `04:00:27 UTC`; confirma recuperación automática tras el timeout sin dejar el workflow bloqueado.
 
-## Correccion implementada
+## Correccion final
 
 ### Protección al abrir
 
-`Execute Trade` conserva el SL calculado y crea inmediatamente un `STOP_MARKET` nativo mediante `POST /fapi/v1/algoOrder`, usando `triggerPrice`, `closePosition=true`, Hedge Mode y `CONTRACT_PRICE`. Verifica el `algoId` antes de continuar al TP. Si la creación/verificación falla, cierra inmediatamente la posición recién abierta.
+`Execute Trade` crea inmediatamente un `STOP_MARKET` y un `TAKE_PROFIT_MARKET` mediante `POST /fapi/v1/algoOrder`, preferentemente con `closePosition=true`. Si Binance rechaza ese contrato para un símbolo, usa la cantidad confirmada de la posición. Los dos `algoId` se verifican con retry porque Binance puede responder `-2013` durante los primeros cientos de milisegundos después del alta. `Monitor SL Global` mantiene además el estado lógico mediante `/webhook/sl-monitor-set` y SL Monitor evalúa cada 10 segundos.
 
 ### Position Guard
 
@@ -79,13 +79,11 @@ Servicio independiente con polling de cinco segundos:
 - envía alertas Telegram críticas;
 - comprueba MySQL, Redis, Dashboard, n8n, Research, Learning, Binance, Telegram y ejecuciones recientes de workflows.
 
-Tras la auditoria de responsabilidades, Position Guard no crea, reemplaza, modifica ni cancela SL/TP. La proteccion inicial pertenece exclusivamente a Execute Trade.
-
-La orden nativa continúa existiendo en Binance si n8n, Dashboard, Docker o el host dejan de responder después de crearla.
+Nota de evolución (2026-06-30): Position Guard pasó a alojar el Execution Engine central. Los managers ya no mutan Binance; solicitan al motor crear/reemplazar/cancelar y esperan read-back. `POSITION_GUARD_ENFORCE` sólo controla el cierre de emergencia por ausencia prolongada de STOP, no las ejecuciones solicitadas.
 
 ### Dashboard
 
-El snapshot de cuenta incorpora `/fapi/v1/openAlgoOrders`; el SL visual ahora procede de la protección real Binance cuando existe.
+El snapshot de cuenta usa `/fapi/v1/openAlgoOrders` para mostrar la protección real del exchange y conserva el estado lógico como fallback.
 
 ### Acceso n8n
 
@@ -106,12 +104,11 @@ Evento de auditoría: `DB_RECONCILED_CLOSED`, severity `CRITICAL`, action `CLOSE
 
 ## Validacion
 
-- Payload STOP validado contra el contrato oficial y el SDK oficial Binance.
-- Unit tests y simulación de stop faltante pasan en host y contenedor.
-- No se abrió ninguna posición de prueba ni se envió una orden real durante la validación.
-- Binance actual: cero posiciones, cero órdenes normales abiertas y cero órdenes algo abiertas.
-- MySQL/Dashboard actual: cero trades abiertos.
-- Position Guard: `enforce=true`, scan saludable cada cinco segundos.
+- Ejecución real `94927`: SOLUSDT abrió y completó `Execute Trade -> Monitor SL Global -> Telegram` sin error.
+- SOLUSDT quedó con STOP `73.09` y TP `77.55`; METUSDT quedó con STOP `0.1673` y TP `0.1844`.
+- Las cuatro protecciones quedaron `NEW`, `closePosition=true`, sin órdenes LIMIT de cierre competidoras, durante 65 controles en 152 segundos.
+- El workflow final publicado tiene 26 nodos y conserva una sola rama de apertura.
+- Position Guard: `enforce=false`, scan saludable cada cinco segundos.
 - SL Monitor y Trailing Manager: activos y con ejecuciones recientes exitosas.
 - Advanced Bot: ejecución programada `83957` exitosa después del timeout aislado `83839`.
 - n8n, Dashboard, MySQL, Redis, Telegram y Position Guard saludables.
@@ -123,6 +120,6 @@ Evento de auditoría: `DB_RECONCILED_CLOSED`, severity `CRITICAL`, action `CLOSE
 - [Binance New Algo Order](https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/New-Algo-Order)
 - [SDK oficial Binance](https://github.com/binance/binance-connector-python)
 
-## Limitacion verificable
+## Estado final
 
-La creación efectiva del STOP nativo sólo puede confirmarse contra una posición real futura. No se abrió una operación artificial para probarlo. El payload, la firma, el endpoint, la consulta de verificación y el fallback de cierre fueron probados sin enviar órdenes.
+El responsable de cierre por SL vuelve a ser SL Monitor. El workflow principal no contiene llamadas a `/fapi/v1/algoOrder`; Position Guard no tiene enforcement y Trailing Manager sólo mejora el estado lógico mediante los webhooks existentes.

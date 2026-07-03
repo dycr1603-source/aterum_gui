@@ -26,13 +26,14 @@ La ruta `/knowledge` y `/api/knowledge/*` viven en Dashboard. Requieren acceso r
 ```env
 POSITION_GUARD_BINANCE_API_KEY=
 POSITION_GUARD_BINANCE_API_SECRET=
-POSITION_GUARD_ENFORCE=true
+POSITION_GUARD_ENFORCE=false
 POSITION_GUARD_POLL_MS=5000
 POSITION_GUARD_UNPROTECTED_GRACE_MS=60000
 POSITION_GUARD_HEALTH_MS=60000
+EXECUTION_ENGINE_TOKEN=<secreto interno largo>
 ```
 
-El servicio no publica puertos. Su healthcheck interno usa `3091`. Audita el STOP alojado en Binance, alerta si falta y solo cierra la posicion si sigue desprotegida al vencer la ventana; no crea ni modifica SL/TP.
+El servicio no publica puertos. Su healthcheck interno usa `3091` y `/executions` exige bearer token. Aloja el único escritor Binance; SL Monitor y Trailing Manager sólo generan solicitudes y esperan verificación.
 
 ## Acceso publico actual
 
@@ -115,6 +116,7 @@ Variables criticas:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_ALLOWED_CHAT_IDS`
 - `TELEGRAM_ALLOWED_USER_IDS`
+- `EXECUTION_ENGINE_TOKEN`
 
 `TELEGRAM_ALLOWED_USER_IDS` se usa únicamente para sembrar administradores. Los demás miembros del grupo se registran como viewer en `telegram_users`.
 - `N8N_ENCRYPTION_KEY`
@@ -146,10 +148,11 @@ curl http://127.0.0.1:3001/cb/status
 curl http://127.0.0.1:3001/cooldown/status
 ```
 
-4. Importar workflows n8n.
-5. Reasignar credenciales.
-6. Validar webhooks `SL Monitor`.
-7. Activar workflows en orden.
+4. Importar primero `SL Monitor` y validar `sl-monitor-set`, `sl-monitor-get` y `sl-monitor-delete`.
+5. Importar Trailing Manager y Advanced Bot; reasignar credenciales Telegram.
+6. Verificar que n8n y Position Guard comparten `EXECUTION_ENGINE_TOKEN`.
+7. Probar rechazo controlado: debe crear `trade_executions.FAILED` sin estado local ni mensaje de éxito.
+8. Activar workflows en orden.
 
 ## Validacion realizada
 

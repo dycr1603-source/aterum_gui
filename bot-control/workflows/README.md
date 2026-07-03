@@ -1,6 +1,8 @@
 # Workflows n8n
 
-Las dos ramas `Execute Trade` colocan y verifican un `STOP_MARKET` nativo antes del TP. SL Monitor conserva el cierre lógico y el registro, Trailing Manager conserva el SL lógico en ganancia y Position Guard solo audita/reconcilia; no administra SL/TP.
+La ruta única `Execute Trade` genera `OPEN_POSITION` para el Execution Engine. El motor abre, crea SL/TP y relee Binance; sólo una respuesta `VERIFIED` continúa hacia estado local, persistencia y Telegram. SL Monitor y Trailing Manager generan solicitudes verificadas y no llaman endpoints de mutación Binance directamente.
+
+El pipeline V2 usa `Opportunity Discovery` y `Deterministic Entry Gate`. El scoring generativo/visual y la rama duplicada de ejecución fueron retirados del entry. Daily y Weekly Research continúan fuera de la decisión operativa.
 
 ## Snapshot actual
 
@@ -26,6 +28,7 @@ Los snapshots historicos operativos se conservan fuera del repositorio en `/home
 - [`main-before-claude-ssh-fix.json`](/home/docs/main-before-claude-ssh-fix.json)
 - [`recommendation-review.before-research-learning.json`](/home/docs/recommendation-review.before-research-learning.json)
 - [`sl-active.before-trading-logic.json`](/home/docs/sl-active.before-trading-logic.json)
+- [`main-active.before-decision-pipeline-v2-20260630.json`](/home/docs/main-active.before-decision-pipeline-v2-20260630.json)
 - [`trailing-manager-telegram-row-backup.json`](../../docs/archive/trailing-manager-telegram-row-backup.json)
 
 Algunos snapshots historicos pueden contener configuracion sensible heredada. No deben redistribuirse sin ejecutar primero el sanitizador.

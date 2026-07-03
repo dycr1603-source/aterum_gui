@@ -19,7 +19,7 @@ flowchart LR
   GUARD --> TELEGRAM
   GUARD -->|health + SQLite RO| N8N
 
-  N8N --> BINANCE[Binance Futures]
+  N8N -->|execution request| GUARD
   N8N --> ANTHROPIC[Anthropic]
   N8N --> TELEGRAM[Telegram]
   N8N --> GUI
@@ -38,18 +38,18 @@ Telegram Control incorpora un router local-first: comandos sobre APIs existentes
 ```mermaid
 flowchart TD
   S[Schedule n8n] --> RG[Risk Guard]
-  RG --> MC[Agente de mercado]
-  MC --> SCAN[Market Scanner]
-  SCAN --> SCORE[Indicadores y scoring 1H/4H]
-  SCORE --> VIS{Requiere imagen?}
-  VIS -->|Si| IMG[Chart + analisis visual]
-  VIS -->|No| AI[AI Market Context]
-  IMG --> AII[AI Market Context Image]
-  AI --> LEARN[Research Learning Gate]
-  AII --> LEARN
+  RG --> MC[Contexto determinista]
+  MC --> SCAN[Opportunity Discovery]
+  SCAN --> SCORE[Score aditivo + Learning acotado]
+  SCORE --> RANK[Portfolio Ranking]
+  RANK --> LEARN[Deterministic Entry Gate]
   LEARN -->|Aprobado| SIZE[Position Sizer]
-  LEARN -->|Rechazado| TELEMETRY[trade_rejections + scan_events]
-  SIZE --> ORDER[Execute Trade]
+  LEARN -->|Rechazado| TELEMETRY[market_opportunities + rechazo]
+  SIZE --> REQUEST[Execution Request]
+  REQUEST --> ENGINE[Binance Execution Engine]
+  ENGINE --> VERIFY[Read-back position + protection]
+  VERIFY -->|verified| ORDER[Persist local state]
+  VERIFY -->|failed| FAILURE[Error event + failure notification]
   ORDER --> SL[SL Monitor]
   ORDER --> TRAIL[Trailing Manager]
   SL --> CLOSE[trade_closes]
@@ -62,9 +62,9 @@ flowchart TD
 
 | Componente | Responsabilidad | Persistencia |
 |---|---|---|
-| n8n | Orquestacion, señales, ordenes, SL, trailing y reportes | SQLite n8n + MySQL via API |
+| n8n | Orquestación, cálculo de riesgo/trailing y solicitudes de ejecución; no muta órdenes Binance | SQLite n8n + MySQL via API |
 | Dashboard API | Contratos `/api`, `/db`, learning, research y estado live | MariaDB + Redis |
-| Position Guard | Auditoria de STOP, reconciliacion, alertas y cierre tras grace | MariaDB + Binance read-only; MARKET de emergencia |
+| Position Guard / Execution Engine | Único escritor Binance, verificación read-back y sincronización Binance → local | MariaDB + Binance |
 | GUI | Trading, Analytics, Simulator, Intelligence y Research | Sin estado autoritativo |
 | MariaDB | Trades, cierres, telemetria, research y learning | Volumen `mysql_data` |
 | Redis | Estado/cache efimero | Volumen `redis_data` |

@@ -1,5 +1,21 @@
 # Bot Control Changelog
 
+## 2026-06-30
+
+- Centralizadas todas las mutaciones Binance en un Execution Engine autenticado e idempotente.
+- Telegram de éxito queda bloqueado hasta verificar por read-back posición y órdenes protectoras.
+- Añadido ledger `trade_executions` con execution ID, exchange order ID, respuesta, verificación, timestamps y estado final.
+- Trailing, ajuste temporal, SL, TP parcial y cierres usan create/execute/read-back/persist antes de notificar.
+- Position Guard sincroniza qty, entry, leverage, SL y TP desde Binance y adopta posiciones sin estado local.
+- Incorporado Decision Pipeline V2 con exploración del universo completo y scheduler por frescura.
+- Sustituido scoring multiplicativo/opaco por contribuciones aditivas y threshold fijo.
+- Learning queda acotado a +/-8 y elimina dimensiones estructurales solapadas.
+- Añadido portfolio ranking con blockers explícitos y correlación máxima 0.80.
+- Retiradas las ramas generativas/visuales y la ejecución duplicada del entry.
+- Corregidas la doble persistencia de rechazos y los cooldowns creados por un rechazo normal.
+- Añadidos STOP y TP iniciales nativos mediante Algo API, con verificación eventual y fallback lógico en SL Monitor.
+- Añadido fallback de cantidad confirmada cuando Binance rechaza `closePosition` para un contrato.
+
 ## 2026-06-27
 
 - Creado el centro de control del bot.

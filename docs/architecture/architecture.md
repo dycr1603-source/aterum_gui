@@ -106,7 +106,7 @@ flowchart LR
   DASH --> BINANCE
 ```
 
-La matriz autoritativa de creación, modificación y cancelación de órdenes está en [order-responsibility-audit.md](./order-responsibility-audit.md). Position Guard no crea ni modifica SL/TP.
+La matriz autoritativa de creación, modificación y cancelación está en [order-responsibility-audit.md](./order-responsibility-audit.md). Position Guard aloja el único Execution Engine escritor; n8n sólo genera solicitudes.
 
 ## Decision Knowledge Graph
 
@@ -127,17 +127,17 @@ Esta capa reconstruye decisiones sin participar en el flujo de trading. La espec
 sequenceDiagram
   participant N8N as Advanced AI Trading Bot
   participant DASH as Dashboard API :3001
-  participant CHART as Chart API :3000
   participant DB as MySQL
   participant BIN as Binance Futures
   participant TG as Telegram
 
   N8N->>DASH: GET /cb/status
-  N8N->>DASH: GET /cooldown/status
-  N8N->>BIN: ticker/klines/funding/openInterest
-  N8N->>CHART: GET /chart?symbol=...
+  N8N->>BIN: balance/positions/income para Risk Guard
   N8N->>DASH: GET /intelligence/signal
-  N8N->>DASH: GET /api/simulator/policy
+  N8N->>DASH: POST /api/opportunities/scan
+  DASH->>BIN: universo + ticker + klines + funding + OI
+  DASH->>DB: persistir coverage/ranking/contribuciones
+  N8N->>DASH: POST /api/learning/decision
   N8N->>BIN: orden futures si pasa scoring/riesgo
   N8N->>DASH: POST /db/trade/open
   DASH->>DB: INSERT trades

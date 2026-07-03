@@ -16,6 +16,16 @@
 
 No se crearon endpoints de negocio nuevos. El servicio compone los contratos existentes.
 
+## Opportunity Engine
+
+| Método | Ruta | Resultado |
+| --- | --- | --- |
+| POST | `/api/opportunities/scan` | Universo completo, batch por frescura, score, Learning bias y rank 1. |
+| GET | `/api/opportunities/latest` | Ciclos y ranking persistido. |
+| GET | `/api/opportunities/coverage` | Cobertura profunda y símbolos pendientes. |
+
+`/scan` sólo consulta mercado público y MySQL. No coloca, modifica ni cancela órdenes.
+
 El Copiloto conserva este principio: selecciona y compacta un subconjunto de estos contratos según la pregunta. No mantiene una API paralela ni envía secretos, imágenes o respuestas completas a Claude.
 
 | Información | Endpoint reutilizado |

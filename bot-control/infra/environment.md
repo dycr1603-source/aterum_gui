@@ -6,10 +6,11 @@
 | --- | --- | --- |
 | `POSITION_GUARD_BINANCE_API_KEY` | obligatorio | Clave Futures aislada para verificación y protección. |
 | `POSITION_GUARD_BINANCE_API_SECRET` | obligatorio | Firma HMAC del guardia. |
-| `POSITION_GUARD_ENFORCE` | `true` | Permite cierre de emergencia tras la ventana; nunca crea/modifica SL/TP. |
+| `POSITION_GUARD_ENFORCE` | `false` | Controla sólo el cierre de emergencia por ausencia prolongada de STOP. |
 | `POSITION_GUARD_POLL_MS` | `5000` | Frecuencia de auditoria de protección. |
 | `POSITION_GUARD_UNPROTECTED_GRACE_MS` | `60000` | Espera antes de cerrar una posición que continúa sin STOP. |
 | `POSITION_GUARD_HEALTH_MS` | `60000` | Frecuencia de health completo. |
+| `EXECUTION_ENGINE_TOKEN` | obligatorio | Bearer compartido con n8n para autorizar mutaciones. |
 
 Las claves no se documentan ni se exponen en puertos públicos.
 
@@ -58,9 +59,13 @@ N8N_SECURE_COOKIE=true
 ```env
 INTERNAL_DASHBOARD_BASE=http://127.0.0.1:3001
 INTERNAL_N8N_BASE=http://127.0.0.1:5678
+EXECUTION_ENGINE_URL=http://position_guard:3091/executions
+EXECUTION_ENGINE_TOKEN=<secreto interno largo>
 ```
 
 Las URLs internas no deben convertirse a HTTPS ni al dominio publico: n8n, Dashboard y Chart API comparten namespace de red para preservar los workflows historicos.
+
+`EXECUTION_ENGINE_TOKEN` debe ser idéntico en n8n y `position_guard`. El endpoint no se publica por nginx; el token sigue siendo obligatorio para impedir mutaciones accidentales desde otros contenedores.
 
 No versionar `/home/.env`. Usar `.env.example` sin secretos.
 

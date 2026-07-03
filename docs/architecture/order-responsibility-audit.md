@@ -1,112 +1,37 @@
-# Auditoria de responsabilidades de ordenes
+# Auditoría de responsabilidades de órdenes
 
-Fecha: 2026-06-29 UTC
+Fecha: 2026-06-30 UTC
 
 ## Resultado
 
-La arquitectura conserva las responsabilidades historicas. La proteccion nativa inicial se incorporo a las dos ramas de `Execute Trade` como parte atomica de la apertura. `SL Monitor` conserva el cierre y registro, `Trailing Manager` conserva el calculo del SL logico y `Position Guard` queda limitado a observacion, alerta, reconciliacion y cierre de emergencia despues de una ventana sin proteccion.
+Binance es la única fuente de verdad y Position Guard contiene el único motor autorizado a mutar órdenes. n8n decide y solicita; no interpreta una aceptación HTTP como ejecución. El contrato completo está en [Pipeline de ejecución verificada](../trading/verified-execution-pipeline.md).
 
-Ningun componente distinto de `Execute Trade` crea o reemplaza SL/TP. Ningun componente modifica una orden STOP nativa despues de creada.
+## Responsabilidades actuales
 
-## Execute Trade
+| Componente | Decide niveles/acción | Escribe Binance | Verifica read-back | Persiste trade | Notifica éxito |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| Risk Guard / Position Sizer | Sí | No | No | No | No |
+| Trailing Manager | Sí | No | No | No | No |
+| SL Monitor | Decide trigger lógico | No | No | Cierre verificado | Después de VERIFIED |
+| Execution Engine | No | Sí, único escritor | Sí | Execution ledger y estado confirmado | Fallos |
+| Position Synchronization | No | Sólo emergencia vía Execution Engine | Sí | Binance → local | Deriva/fallos |
 
-### Responsabilidad original
+## Flujos auditados
 
-- validar configuracion de cuenta, margen y posicion;
-- cancelar ordenes antiguas del simbolo antes de una nueva apertura;
-- abrir la posicion MARKET y verificar su existencia;
-- crear el TP inicial;
-- registrar la apertura y entregar el estado a SL Monitor.
+- Apertura OPEN_POSITION crea MARKET, SL y TP; relee posición y ambas protecciones. Si falla protección, cierra y verifica rollback.
+- Movimiento SL y trailing: crea la nueva protección, la verifica, cancela la anterior, vuelve a verificar y sólo entonces actualiza n8n/MySQL/Dashboard.
+- Movimiento TP usa el mismo reemplazo protegido.
+- TP parcial verifica reducción de cantidad Binance antes de persistir qty.
+- Cierre SL/TIME_EXIT/manual verifica posición ausente y protección residual cancelada antes del cierre local.
+- Cierre nativo externo exige posición ausente más fills reales; no asume que todo cierre externo fue TP.
 
-### Responsabilidad actual
+## Invariantes operativos
 
-Mantiene lo anterior y crea un `STOP_MARKET` nativo inicial antes del TP. La misma proteccion existe en `Execute Trade` y `Execute Trade1`. Si Binance no confirma el STOP, cierra inmediatamente la posicion recien abierta y aborta la apertura.
-
-### Binance
-
-- Lee: `positionRisk`, `exchangeInfo`, ticker, balance y modo de posicion.
-- Crea: MARKET de entrada, STOP_MARKET inicial, TAKE_PROFIT_MARKET o LIMIT de TP; MARKET de rollback si falla el STOP inicial.
-- Modifica: margen/leverage de cuenta; no modifica ordenes SL/TP existentes.
-- Cancela: `allOpenOrders` del simbolo antes de abrir, comportamiento historico.
-
-## SL Monitor
-
-### Responsabilidad original y actual
-
-- observar precio y posicion;
-- ejecutar cierre MARKET cuando alcanza el SL logico;
-- detectar cierres externos;
-- cancelar ordenes restantes despues del cierre;
-- registrar cierre, circuit breaker, cooldown y post-trade;
-- aplicar exclusivamente ajuste temporal defensivo a posiciones `INITIAL` en perdida.
-
-El ajuste temporal no es trailing: solo opera en perdida y en stage `INITIAL`. Trailing Manager opera en ganancia con BE/LOCK/TRAILING, por lo que los dominios son excluyentes.
-
-### Binance
-
-- Lee: `positionRisk` y ticker.
-- Crea: MARKET de cierre por SL o TIME_EXIT.
-- Modifica: ninguna orden Binance; puede actualizar el SL logico en n8n/MySQL.
-- Cancela: `allOpenOrders` del simbolo solo despues de cerrar.
-
-## Trailing Manager
-
-### Responsabilidad original y actual
-
-- calcular BE, TIME_LOCK, LOCK y TRAILING cuando la posicion esta en beneficio;
-- aceptar un SL nuevo solo si mejora el anterior;
-- actualizar el estado logico del SL Monitor, Dashboard y MySQL;
-- notificar el cambio.
-
-### Binance
-
-- Lee: `exchangeInfo`, ticker y klines.
-- Crea: ninguna orden.
-- Modifica: ninguna orden Binance; modifica unicamente el SL logico.
-- Cancela: ninguna orden.
-
-## Position Guard
-
-### Responsabilidad implementada inicialmente
-
-Verificaba consistencia, pero tambien recreaba/reemplazaba STOP, cancelaba STOP obsoletos y recreaba TP. Esto se solapaba con la gestion de apertura y trailing.
-
-### Responsabilidad corregida
-
-- verificar posiciones y STOP nativos cada cinco segundos;
-- alertar inmediatamente ante una posicion sin STOP;
-- esperar `POSITION_GUARD_UNPROTECTED_GRACE_MS`;
-- cerrar por MARKET solo si la posicion sigue desprotegida al terminar la ventana;
-- reconciliar MySQL/Dashboard cuando Binance ya cerro;
-- auditar eventos y salud de servicios/workflows.
-
-No crea, reemplaza, modifica ni cancela SL/TP. No calcula ATR, trailing, score, Learning o Research.
-
-### Binance
-
-- Lee: posiciones, ordenes algo, historial de ordenes y fills.
-- Crea: MARKET de emergencia, exclusivamente despues de la ventana sin STOP.
-- Modifica: ninguna orden.
-- Cancela: ninguna orden.
-
-## Matriz final
-
-| Capacidad | Execute Trade | SL Monitor | Trailing Manager | Position Guard |
-| --- | :---: | :---: | :---: | :---: |
-| Abrir posicion | Si | No | No | No |
-| Verificar apertura | Si | No | No | No |
-| Crear STOP inicial | Si | No | No | No |
-| Crear TP inicial | Si | No | No | No |
-| Calcular trailing | No | No | Si | No |
-| Actualizar SL logico en ganancia | No | No | Si | No |
-| Ajuste temporal en perdida INITIAL | No | Si | No | No |
-| Modificar STOP nativo | No | No | No | No |
-| Detectar SL/cierre externo | No | Si | No | Si, solo reconciliacion |
-| Cerrar por SL logico | No | Si | No | No |
-| Cierre por falta de proteccion | Rollback inmediato de apertura | No | No | Si, tras grace |
-| Registrar cierre operativo | No | Si | No | Solo reconciliacion faltante |
-| Cancelar ordenes | Antes de abrir | Despues de cerrar | No | No |
-| Recalcular indicadores/score | No | No | No | No |
+- trade_executions conserva execution ID, exchange order ID, request/response, verificación, timestamps, intentos, error y estado final.
+- Los reintentos usan client IDs deterministas; un timeout se consulta antes de volver a enviar.
+- Un rechazo no cambia estado local y no emite Telegram de éxito.
+- Position Guard compara entry, qty, leverage, SL y TP cada cinco segundos y corrige sólo Binance → local.
+- Position Guard no calcula ATR, riesgo, score ni nuevos niveles.
 
 ## Chart API
 

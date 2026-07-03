@@ -2,7 +2,7 @@
 
 La entrada publica canonica es `https://aterum.duckdns.org`. nginx termina TLS y conserva los contratos internos historicos de n8n en `127.0.0.1`.
 
-`position_guard` es un sidecar sin puerto público que verifica protección Binance cada cinco segundos, conserva auditoría en MySQL y no administra órdenes SL/TP.
+`position_guard` no tiene puerto público. Aloja el único Execution Engine autorizado a administrar órdenes Binance y el sincronizador Binance → local cada cinco segundos. Conserva auditoría y exige bearer token interno.
 
 ## Documentos
 

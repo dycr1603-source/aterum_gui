@@ -51,4 +51,4 @@ Las noticias históricas no fueron persistidas. Se muestran como evidencia ausen
 
 ## Invariantes
 
-Knowledge Graph no escribe decisiones, no modifica workflows y no llama modelos generativos. Trading Logic, Position Sizer, Execute Trade, SL Monitor, Trailing Manager, Learning, Research, Recommendation Review, Simulator y scoring permanecen sin cambios.
+Knowledge Graph no escribe decisiones, no modifica workflows y no llama modelos generativos. Decision Pipeline V2 cambió el discovery, scoring y Entry Gate de forma independiente; Position Sizer, Execute Trade, SL Monitor, Trailing Manager, Research, Recommendation Review y Simulator conservan sus responsabilidades.

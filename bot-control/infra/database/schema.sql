@@ -14,10 +14,12 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS trades (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  execution_id CHAR(36) NULL,
   symbol VARCHAR(24) NOT NULL,
   direction ENUM('LONG','SHORT','NEUTRAL') NULL,
   status ENUM('OPEN','CLOSED') NOT NULL DEFAULT 'OPEN',
   entry_price DECIMAL(24,10) NULL,
+  initial_sl_price DECIMAL(24,10) NULL,
   sl_price DECIMAL(24,10) NULL,
   tp_price DECIMAL(24,10) NULL,
   qty DECIMAL(24,10) NULL,
@@ -40,8 +42,10 @@ CREATE TABLE IF NOT EXISTS trades (
   used_fallback TINYINT(1) DEFAULT 0,
   original_symbol VARCHAR(24) NULL,
   market_order_id VARCHAR(64) NULL,
+  sl_order_id VARCHAR(64) NULL,
   tp_order_id VARCHAR(64) NULL,
   sl_monitor TINYINT(1) DEFAULT 0,
+  trailing_stage ENUM('INITIAL','BREAKEVEN','TIME_LOCK','LOCK','TRAILING') NOT NULL DEFAULT 'INITIAL',
   tf4h_trend VARCHAR(10) NULL,
   tf4h_status VARCHAR(15) NULL,
   tf4h_rsi DECIMAL(6,2) NULL,
@@ -64,7 +68,40 @@ CREATE TABLE IF NOT EXISTS trades (
   updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_trades_symbol_status (symbol, status),
   INDEX idx_trades_opened_at (opened_at),
-  INDEX idx_trades_status_opened (status, opened_at)
+  INDEX idx_trades_status_opened (status, opened_at),
+  UNIQUE KEY uq_trades_execution_id (execution_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS trade_executions (
+  execution_id CHAR(36) PRIMARY KEY,
+  request_type VARCHAR(40) NOT NULL,
+  symbol VARCHAR(24) NOT NULL,
+  position_side VARCHAR(12) NOT NULL,
+  request_payload JSON NOT NULL,
+  exchange_order_id VARCHAR(64) NULL,
+  exchange_response JSON NULL,
+  verification_result JSON NULL,
+  requested_at DATETIME(3) NOT NULL,
+  executed_at DATETIME(3) NULL,
+  verified_at DATETIME(3) NULL,
+  completed_at DATETIME(3) NULL,
+  final_status VARCHAR(24) NOT NULL,
+  attempt_count INT NOT NULL DEFAULT 0,
+  error TEXT NULL,
+  INDEX idx_trade_execution_symbol_time (symbol,requested_at),
+  INDEX idx_trade_execution_status_time (final_status,requested_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS trade_execution_events (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  execution_id CHAR(36) NOT NULL,
+  event_type VARCHAR(48) NOT NULL,
+  event_payload JSON NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  INDEX idx_trade_execution_event (execution_id,created_at),
+  CONSTRAINT fk_trade_execution_event
+    FOREIGN KEY (execution_id) REFERENCES trade_executions(execution_id)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS trade_closes (
@@ -264,6 +301,8 @@ INSERT IGNORE INTO learning_config (config_key,config_value,description) VALUES
   ('max_weight','1.12','Peso máximo por dimensión'),
   ('min_final_factor','0.70','Multiplicador compuesto mínimo'),
   ('max_final_factor','1.30','Multiplicador compuesto máximo'),
+  ('learning_component_delta_cap','3','Máximo ajuste aditivo por dimensión'),
+  ('learning_delta_cap','8','Máximo ajuste aditivo total de Learning'),
   ('block_expectancy_max','-0.75','Expectancy máxima para bloqueo fuerte'),
   ('block_profit_factor_max','0.75','Profit factor máximo para bloqueo fuerte'),
   ('block_win_rate_max','40','Win rate máximo para bloqueo fuerte'),
@@ -494,7 +533,7 @@ CREATE TABLE IF NOT EXISTS telegram_ai_cache (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-+CREATE TABLE IF NOT EXISTS position_guard_events (
+CREATE TABLE IF NOT EXISTS position_guard_events (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   event_type VARCHAR(64) NOT NULL,
   severity ENUM('INFO','WARNING','CRITICAL') NOT NULL DEFAULT 'INFO',
@@ -509,6 +548,58 @@ CREATE TABLE IF NOT EXISTS telegram_ai_cache (
   INDEX idx_position_guard_created (created_at),
   INDEX idx_position_guard_symbol_created (symbol,created_at),
   INDEX idx_position_guard_severity_created (severity,created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS market_scan_cycles (
+  id CHAR(36) PRIMARY KEY,
+  universe_size INT NOT NULL,
+  eligible_size INT NOT NULL,
+  refreshed_size INT NOT NULL DEFAULT 0,
+  candidate_size INT NOT NULL DEFAULT 0,
+  selected_symbol VARCHAR(24) NULL,
+  duration_ms INT NULL,
+  config JSON NULL,
+  started_at DATETIME(3) NOT NULL,
+  completed_at DATETIME(3) NULL,
+  INDEX idx_market_scan_cycles_started (started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS market_symbol_state (
+  symbol VARCHAR(24) PRIMARY KEY,
+  first_seen_at DATETIME NOT NULL,
+  last_seen_at DATETIME NOT NULL,
+  last_deep_scan_at DATETIME NULL,
+  next_scan_at DATETIME NULL,
+  last_score DECIMAL(8,3) NULL,
+  last_direction VARCHAR(12) NULL,
+  last_rank INT NULL,
+  heat_score DECIMAL(8,3) NULL,
+  consecutive_skips INT NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_market_symbol_next_scan (next_scan_at),
+  INDEX idx_market_symbol_last_scan (last_deep_scan_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS market_opportunities (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  cycle_id CHAR(36) NOT NULL,
+  symbol VARCHAR(24) NOT NULL,
+  direction VARCHAR(12) NOT NULL,
+  coarse_score DECIMAL(8,3) NULL,
+  technical_score DECIMAL(8,3) NULL,
+  learning_delta DECIMAL(8,3) NULL,
+  final_score DECIMAL(8,3) NULL,
+  threshold DECIMAL(8,3) NULL,
+  rank_position INT NULL,
+  selected TINYINT(1) NOT NULL DEFAULT 0,
+  primary_reason VARCHAR(255) NULL,
+  contributions JSON NULL,
+  blockers JSON NULL,
+  metrics JSON NULL,
+  evaluated_at DATETIME(3) NOT NULL,
+  INDEX idx_market_opportunity_cycle (cycle_id,rank_position),
+  INDEX idx_market_opportunity_symbol (symbol,evaluated_at),
+  INDEX idx_market_opportunity_selected (selected,evaluated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE OR REPLACE VIEW daily_pnl AS
