@@ -42,7 +42,24 @@ function limitsFrom(config = {}) {
   };
 }
 
-function calculateCapacity({ balanceRows = [], positionRows = [], protectiveOrders = [], candidate = null, limits = {} }) {
+function initialRiskFor(tradeRows, position) {
+  const row = tradeRows.find(item => item.symbol === position.symbol
+    && String(item.direction || '').toUpperCase() === position.side);
+  if (!row) return null;
+  const entry = finite(row.entry_price, position.entryPrice);
+  const initialSl = finite(row.initial_sl_price ?? row.sl_price, NaN);
+  if (!Number.isFinite(initialSl) || initialSl <= 0) return null;
+  const distance = position.side === 'LONG'
+    ? Math.max(0, entry - initialSl)
+    : Math.max(0, initialSl - entry);
+  return distance * position.qty;
+}
+
+// tradeRows es opcional: filas de `trades` (symbol,direction,entry_price,
+// initial_sl_price,trailing_stage) para posiciones OPEN. Sin este dato el
+// calculo de riesgo/capacidad es identico al de antes (Real Open Risk queda
+// como metadato adicional, no reemplaza openRiskAmount en ningun clamp).
+function calculateCapacity({ balanceRows = [], positionRows = [], protectiveOrders = [], candidate = null, limits = {}, tradeRows = [] }) {
   const policy = limitsFrom(limits);
   const usdt = balanceRows.find(row => row.asset === 'USDT') || {};
   const positions = positionRows.map(normalizePosition).filter(Boolean);
@@ -62,12 +79,25 @@ function calculateCapacity({ balanceRows = [], positionRows = [], protectiveOrde
     const risk = positionRisk(position, stop);
     if (risk == null) blockers.push({ code: 'UNPROTECTED_POSITION', symbol: position.symbol,
       reason: 'Open Binance position has no verifiable protective STOP' });
+    const tradeRow = tradeRows.find(item => item.symbol === position.symbol
+      && String(item.direction || '').toUpperCase() === position.side) || null;
+    const initialRisk = initialRiskFor(tradeRows, position);
+    const currentRisk = risk;
+    const releasedRisk = (initialRisk != null && currentRisk != null) ? Math.max(0, initialRisk - currentRisk) : null;
     return { symbol: position.symbol, direction: position.side, quantity: position.qty,
       entryPrice: position.entryPrice, markPrice, leverage: position.leverage, stopPrice: stop,
-      riskAmount: risk, margin, notional };
+      riskAmount: risk, margin, notional,
+      trailingStage: tradeRow?.trailing_stage || null,
+      initialRisk: initialRisk == null ? null : round(initialRisk),
+      currentRisk: currentRisk == null ? null : round(currentRisk),
+      releasedRisk: releasedRisk == null ? null : round(releasedRisk) };
   });
 
   const openRiskAmount = positionDetails.reduce((sum, row) => sum + finite(row.riskAmount), 0);
+  const initialRiskAmount = positionDetails.every(row => row.initialRisk != null)
+    ? positionDetails.reduce((sum, row) => sum + finite(row.initialRisk), 0) : null;
+  const releasedRiskAmount = positionDetails.every(row => row.releasedRisk != null)
+    ? positionDetails.reduce((sum, row) => sum + finite(row.releasedRisk), 0) : null;
   const marginUsed = positionDetails.reduce((sum, row) => sum + row.margin, 0);
   const exposure = positionDetails.reduce((sum, row) => sum + row.notional, 0);
   const directionExposure = { LONG: 0, SHORT: 0 };
@@ -148,7 +178,14 @@ function calculateCapacity({ balanceRows = [], positionRows = [], protectiveOrde
       marginUsed: round(marginUsed), marginUsagePct: round(pct(marginUsed, equity)) },
     risk: { openRiskAmount: round(openRiskAmount), openRiskPct: round(pct(openRiskAmount, equity)),
       maximumRiskAmount: round(maxRiskAmount), maximumRiskPct: policy.maxPortfolioRiskPct,
-      remainingRiskAmount: round(remainingRiskAmount), remainingRiskPct: round(pct(remainingRiskAmount, equity)) },
+      remainingRiskAmount: round(remainingRiskAmount), remainingRiskPct: round(pct(remainingRiskAmount, equity)),
+      // Real Open Risk (auditable): initial/released solo se completan cuando
+      // tradeRows cubre todas las posiciones abiertas (ver initialRiskFor). No
+      // afectan remainingRiskAmount ni ningun clamp; son metadato de trazabilidad.
+      initialRiskAmount: initialRiskAmount == null ? null : round(initialRiskAmount),
+      initialRiskPct: initialRiskAmount == null ? null : round(pct(initialRiskAmount, equity)),
+      releasedRiskAmount: releasedRiskAmount == null ? null : round(releasedRiskAmount),
+      releasedRiskPct: releasedRiskAmount == null ? null : round(pct(releasedRiskAmount, equity)) },
     exposure: { total: round(exposure), totalPct: round(pct(exposure, equity)),
       direction: Object.fromEntries(Object.entries(directionExposure).map(([key, value]) => [key, round(value)])),
       bySymbol: Object.fromEntries(Object.entries(symbolExposure).map(([key, value]) => [key, round(value)])),
@@ -165,13 +202,24 @@ function calculateCapacity({ balanceRows = [], positionRows = [], protectiveOrde
 }
 
 class PortfolioAllocator {
-  constructor({ config, binance }) { this.config = config; this.binance = binance; }
+  constructor({ config, binance, db = null }) { this.config = config; this.binance = binance; this.db = db; }
   async capacity(candidate = null) {
-    const [balanceRows, positionRows, regularOrders, algoOrders] = await Promise.all([
-      this.binance.balance(), this.binance.positions(), this.binance.openOrders(), this.binance.openAlgoOrders()
+    const [balanceRows, positionRows, regularOrders, algoOrders, tradeRows] = await Promise.all([
+      this.binance.balance(), this.binance.positions(), this.binance.openOrders(), this.binance.openAlgoOrders(),
+      this.loadTradeRows()
     ]);
     return calculateCapacity({ balanceRows, positionRows, protectiveOrders: [...regularOrders, ...algoOrders],
-      candidate, limits: this.config });
+      candidate, limits: this.config, tradeRows });
+  }
+  async loadTradeRows() {
+    if (!this.db) return [];
+    try {
+      const [rows] = await this.db.query(
+        `SELECT symbol,direction,entry_price,initial_sl_price,sl_price,trailing_stage FROM trades WHERE status='OPEN'`);
+      return rows || [];
+    } catch (_) {
+      return [];
+    }
   }
 }
 

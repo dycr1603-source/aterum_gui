@@ -33,7 +33,7 @@ async function main() {
   if (!config.apiKey || !config.apiSecret) throw new Error('Position Guard Binance credentials are required');
   const db = mysql.createPool(config.db);
   const binance = new BinanceFutures(config);
-  const portfolioAllocator = new PortfolioAllocator({ config, binance });
+  const portfolioAllocator = new PortfolioAllocator({ config, binance, db });
   const executionEngine = new ExecutionEngine({ config, db, binance, portfolioAllocator });
   const guard = new PositionGuard({ config, db, binance, executionEngine });
   await executionEngine.initialize();
