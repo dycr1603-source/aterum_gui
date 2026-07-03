@@ -100,8 +100,18 @@ class PositionGuard {
   }
 
   async expectedTrades() {
-    const [rows] = await this.db.query(`SELECT id,symbol,direction,status,entry_price,initial_sl_price,sl_price,tp_price,qty,leverage,trailing_stage,
-      opened_at,updated_at FROM trades WHERE status='OPEN' ORDER BY opened_at`);
+    const [rows] = await this.db.query(`SELECT t.id,t.symbol,t.direction,t.status,t.entry_price,t.initial_sl_price,t.sl_price,t.tp_price,
+      t.qty,t.leverage,t.trailing_stage,t.opened_at,t.updated_at
+      FROM trades t
+      WHERE t.status='OPEN'
+        AND NOT EXISTS (
+          SELECT 1 FROM trades closed
+          JOIN trade_closes tc ON tc.trade_id=closed.id
+          WHERE closed.id<>t.id AND closed.status='CLOSED'
+            AND closed.symbol=t.symbol AND closed.direction=t.direction
+            AND ABS(TIMESTAMPDIFF(SECOND,closed.opened_at,t.opened_at))<=60
+        )
+      ORDER BY t.opened_at`);
     return rows || [];
   }
 

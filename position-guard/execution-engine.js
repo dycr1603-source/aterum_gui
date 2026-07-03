@@ -56,6 +56,26 @@ function serializeError(error) {
     stackTrace: error?.stack || null };
 }
 
+function failureNotificationPolicy(request, error, exchangeWasVerified, failureCategory) {
+  if (failureCategory === 'EXECUTION_REJECTED') return { notify: true, reason: 'EXPECTED_RISK_REJECTION' };
+  if (exchangeWasVerified || failureCategory === 'PERSISTENCE_FAILURE') {
+    return { notify: true, reason: 'VERIFIED_EXCHANGE_ACTION_NEEDS_ATTENTION' };
+  }
+  const message = String(error?.message || error || '');
+  const management = ['MOVE_STOP_LOSS', 'MOVE_TAKE_PROFIT', 'TRAILING_STOP', 'PARTIAL_TAKE_PROFIT', 'CLOSE_POSITION']
+    .includes(request.type);
+  if (management && /No .* position exists on Binance/i.test(message)) {
+    return { notify: false, reason: 'POSITION_ALREADY_CLOSED' };
+  }
+  if (management && /Order would immediately trigger/i.test(message)) {
+    return { notify: false, reason: 'PROTECTIVE_REPLACEMENT_NOT_APPLIED' };
+  }
+  if (retryable(error) && !error?.exchangeOrderId && !error?.exchangeResponse) {
+    return { notify: false, reason: 'TRANSIENT_NO_EXCHANGE_CHANGE' };
+  }
+  return { notify: true, reason: 'ACTIONABLE_EXECUTION_FAILURE' };
+}
+
 class ExecutionEngine {
   constructor({ config, db, binance, portfolioAllocator = null }) {
     this.config = config;
@@ -444,9 +464,12 @@ class ExecutionEngine {
       String(lastError?.message || lastError || 'Execution failed').slice(0, 10000), request.executionId
     ]);
     await this.event(request.executionId, portfolioRejected ? 'EXECUTION_REJECTED' : 'EXECUTION_FAILED', failureVerification);
+    const notificationPolicy = failureNotificationPolicy(request, lastError, exchangeWasVerified, failureCategory);
     let failureNotificationSent = false;
-    try { failureNotificationSent = await this.notifyFailure(request, lastError, exchangeWasVerified, failureCategory) === true; }
-    catch (_) { failureNotificationSent = false; }
+    if (notificationPolicy.notify) {
+      try { failureNotificationSent = await this.notifyFailure(request, lastError, exchangeWasVerified, failureCategory) === true; }
+      catch (_) { failureNotificationSent = false; }
+    }
     return { ok: false, executionId: request.executionId, type: request.type, symbol: request.symbol,
       positionSide: request.positionSide, exchangeOrderId: exchangeOrderId == null ? null : String(exchangeOrderId),
       exchangeResponse, verificationResult: failureVerification, timestamp: new Date().toISOString(),
@@ -454,6 +477,8 @@ class ExecutionEngine {
       rejectionReason: portfolioRejected ? lastError.body?.primaryReason || null : null,
       portfolioCapacity: portfolioRejected ? lastError.body || null : null,
       attemptCount: attempts, failureCategory, failureNotificationSent,
+      failureNotificationSuppressed: !notificationPolicy.notify,
+      notificationPolicyReason: notificationPolicy.reason,
       errorContext: { executionId: request.executionId, correlationId: request.correlationId || request.executionId,
         ...serializeError(lastError), verificationStatus: exchangeWasVerified ? 'VERIFIED'
           : failureCategory === 'VERIFICATION_FAILURE' ? 'FAILED' : 'NOT_STARTED',
@@ -919,7 +944,6 @@ class ExecutionEngine {
 
   async notifyFailure(request, error, exchangeWasVerified = false, failureCategory = null) {
     if (!this.config.telegramToken || !this.config.telegramChatId) return false;
-    const details = serializeError(error);
     if (failureCategory === 'EXECUTION_REJECTED') {
       const capacity = error?.body || {};
       const reason = capacity.primaryReason || {};
@@ -954,10 +978,6 @@ class ExecutionEngine {
       exchangeWasVerified ? 'Local persistence failed after verified Binance action.'
         : verificationFailure ? 'Unable to verify the requested change on Binance.'
           : 'Binance rejected or did not execute the requested change.',
-      `HTTP Method: ${details.httpMethod || 'N/A'}`, `URL: ${details.url || 'N/A'}`,
-      `Status Code: ${details.statusCode ?? 'N/A'}`,
-      `Response Body: ${JSON.stringify(details.responseBody).slice(0, 1000)}`,
-      `Stack Trace: ${String(details.stackTrace || 'unavailable').slice(0, 1500)}`,
       `Verification Status: ${exchangeWasVerified ? 'VERIFIED' : verificationFailure ? 'FAILED' : 'NOT_STARTED'}`,
       `Persistence Status: ${exchangeWasVerified ? 'FAILED' : 'NOT_STARTED'}`,
       `Error: ${String(error?.message || error || 'unknown').slice(0, 500)}`].join('\n');
@@ -970,4 +990,5 @@ class ExecutionEngine {
   }
 }
 
-module.exports = { ExecutionEngine, EXECUTION_TYPES, retryable, near, safeId, externalCloseExecutionId };
+module.exports = { ExecutionEngine, EXECUTION_TYPES, retryable, near, safeId, externalCloseExecutionId,
+  failureNotificationPolicy };

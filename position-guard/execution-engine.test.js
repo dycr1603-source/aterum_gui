@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const { ExecutionEngine } = require('./execution-engine');
+const { ExecutionEngine, failureNotificationPolicy } = require('./execution-engine');
 
 function algo({ id, client, type = 'STOP_MARKET', price = 95, side = 'SELL', positionSide = 'LONG' }) {
   return { algoId: id, clientAlgoId: client, symbol: 'BTCUSDT', side, positionSide,
@@ -253,6 +253,34 @@ async function testLocalFailureBlocksTerminalSuccess() {
   assert.equal(result.verificationResult.exchangeVerified, true);
 }
 
+function testTransientFailuresStayInInternalAudit() {
+  const rateLimit = Object.assign(new Error('Request failed with status code 429'), { code: 429 });
+  assert.deepEqual(
+    failureNotificationPolicy({ type: 'MOVE_STOP_LOSS' }, rateLimit, false, 'EXECUTION_FAILURE'),
+    { notify: false, reason: 'TRANSIENT_NO_EXCHANGE_CHANGE' }
+  );
+  assert.deepEqual(
+    failureNotificationPolicy({ type: 'TRAILING_STOP' }, new Error('No BTCUSDT LONG position exists on Binance'), false, 'EXECUTION_FAILURE'),
+    { notify: false, reason: 'POSITION_ALREADY_CLOSED' }
+  );
+  assert.deepEqual(
+    failureNotificationPolicy({ type: 'MOVE_STOP_LOSS' }, new Error('Order would immediately trigger.'), false, 'EXECUTION_FAILURE'),
+    { notify: false, reason: 'PROTECTIVE_REPLACEMENT_NOT_APPLIED' }
+  );
+}
+
+function testActionableFailuresStillNotify() {
+  assert.equal(failureNotificationPolicy(
+    { type: 'MOVE_STOP_LOSS' }, new Error('Binance rejected request'), false, 'EXECUTION_FAILURE'
+  ).notify, true);
+  assert.equal(failureNotificationPolicy(
+    { type: 'CLOSE_POSITION' }, new Error('database unavailable'), true, 'PERSISTENCE_FAILURE'
+  ).notify, true);
+  assert.equal(failureNotificationPolicy(
+    { type: 'OPEN_POSITION' }, new Error('portfolio full'), false, 'EXECUTION_REJECTED'
+  ).notify, true);
+}
+
 (async () => {
   await testReplaceStop();
   await testRejectedReplacementKeepsOldStop();
@@ -266,5 +294,7 @@ async function testLocalFailureBlocksTerminalSuccess() {
   await testFailureNeverUpdatesTradeState();
   await testTerminalSuccessRequiresPersistence();
   await testLocalFailureBlocksTerminalSuccess();
+  testTransientFailuresStayInInternalAudit();
+  testActionableFailuresStillNotify();
   console.log('execution engine tests: ok');
 })().catch(error => { console.error(error); process.exit(1); });

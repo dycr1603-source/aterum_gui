@@ -50,7 +50,7 @@ async function main() {
     runtime.lastHealth = await healthSnapshot({ config, db, binance });
     const failed = runtime.lastHealth.checks.filter(item => !item.ok);
     for (const item of failed) {
-      await guard.alert(`health:${item.name}`, `🚨 ATERUM HEALTH\n${item.name} failed: ${item.error || 'inactive'}`).catch(() => null);
+      console.warn(`[Position Guard] health ${item.name}: ${item.error || 'inactive'} (internal only)`);
     }
   };
   await scan();

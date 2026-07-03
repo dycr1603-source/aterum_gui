@@ -25,7 +25,7 @@ ${getSharedHeadAssets()}
 }
 *{box-sizing:border-box}
 body.research-v1{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:12px}
-.research-page{width:min(1600px,100%);margin:0 auto;padding:26px clamp(14px,2vw,28px) 70px}
+.research-page{width:min(1600px,100%);margin:0 auto;padding:22px clamp(14px,2vw,28px) 70px}
 .terminal-header{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);gap:16px;margin-bottom:18px}
 .surface{background:linear-gradient(180deg,rgba(17,26,39,.96),rgba(10,15,24,.96));border:1px solid var(--line);border-radius:8px;box-shadow:0 14px 36px rgba(0,0,0,.22)}
 .surface.pad{padding:18px}
@@ -40,7 +40,7 @@ body.research-v1{margin:0;background:var(--bg);color:var(--text);font-family:var
 .grid-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-bottom:16px}
 .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .metric-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:16px}
-.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-height:92px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;min-height:82px}
 .metric .value{font-size:24px}
 .section{margin-bottom:16px}
 .section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding:15px 16px;border-bottom:1px solid var(--line)}
@@ -53,7 +53,16 @@ body.research-v1{margin:0;background:var(--bg);color:var(--text);font-family:var
 .help-card{border-left:2px solid var(--blue);background:rgba(87,176,255,.045);padding:10px 12px;border-radius:0 6px 6px 0}
 .help-title{font:800 9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#c9d8eb;margin-bottom:6px}
 .help-copy{font-size:10px;line-height:1.55;color:var(--muted)}
-.table-wrap{overflow:auto}
+.table-wrap{overflow:auto;max-height:390px;scrollbar-color:rgba(87,176,255,.38) transparent;scrollbar-width:thin}
+.research-tabs{position:sticky;top:10px;z-index:30;display:flex;align-items:center;gap:6px;margin:0 0 16px;padding:7px;background:rgba(8,13,21,.92);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,.28);backdrop-filter:blur(16px)}
+.research-tab{appearance:none;border:1px solid transparent;background:transparent;color:var(--muted);border-radius:7px;padding:10px 16px;font:800 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:.18s ease}
+.research-tab:hover{color:var(--text);background:rgba(87,176,255,.06)}
+.research-tab.active{color:#07111d;background:var(--blue);border-color:rgba(255,255,255,.18);box-shadow:0 5px 16px rgba(87,176,255,.2)}
+.research-tab-note{margin-left:auto;padding:0 10px;color:var(--faint);font-size:10px}
+[data-panel]{display:none!important}
+[data-panel].panel-active{display:block!important}
+[data-panel].grid-2.panel-active,[data-panel].metric-grid.panel-active{display:grid!important}
+.section .body>.list{max-height:330px;overflow:auto;scrollbar-color:rgba(87,176,255,.38) transparent;scrollbar-width:thin}
 table{width:100%;border-collapse:collapse}
 .table-wrap .learning-table{min-width:1120px!important}
 .table-wrap .changes-table{min-width:1780px!important;table-layout:fixed}
@@ -93,7 +102,7 @@ tr:hover td{background:rgba(87,176,255,.035)}
 .fade-in{animation:fadeIn .22s ease both}
 @keyframes fadeIn{from{opacity:.55}to{opacity:1}}
 @media(max-width:1100px){.terminal-header,.grid-2,.report-layout{grid-template-columns:1fr}.metric-grid{grid-template-columns:repeat(3,1fr)}.flow{grid-template-columns:repeat(2,1fr)}.help-grid,.grid-3{grid-template-columns:1fr}}
-@media(max-width:680px){.metric-grid,.status-grid{grid-template-columns:1fr}.title{font-size:24px}.research-page{padding-inline:14px}}
+@media(max-width:680px){.metric-grid,.status-grid{grid-template-columns:1fr}.title{font-size:24px}.research-page{padding-inline:14px}.research-tabs{top:6px;overflow:auto}.research-tab{padding:9px 12px}.research-tab-note{display:none}}
 @media(max-width:680px){.timeline-item{grid-template-columns:1fr}.timeline-date{margin-bottom:-4px}}
 ${getSharedStyles()}
 </style>
@@ -114,10 +123,18 @@ ${getSharedNav('research', user, 'blue')}
     </section>
   </header>
 
-  <section class="surface section">
+  <nav class="research-tabs" aria-label="Secciones de Research">
+    <button class="research-tab active" type="button" data-target="overview" onclick="setResearchPanel('overview')">Resumen</button>
+    <button class="research-tab" type="button" data-target="engine" onclick="setResearchPanel('engine')">Motor y reglas</button>
+    <button class="research-tab" type="button" data-target="reports" onclick="setResearchPanel('reports')">Informes</button>
+    <button class="research-tab" type="button" data-target="changes" onclick="setResearchPanel('changes')">Cambios y auditoría</button>
+    <span class="research-tab-note">Cada sección conserva su propio scroll</span>
+  </nav>
+
+  <section class="surface section panel-active" data-panel="overview">
     <div class="section-head">
       <div>
-        <div class="section-title">Overview</div>
+        <div class="section-title">Resumen operativo</div>
         <div class="section-sub">Qué hace, qué no hace y cómo debe interpretarse.</div>
       </div>
       <span class="chip info" id="learningMode">Cargando modo</span>
@@ -136,10 +153,10 @@ ${getSharedNav('research', user, 'blue')}
     </div>
   </section>
 
-  <section class="surface section">
+  <section class="surface section panel-active" data-panel="overview">
     <div class="section-head">
       <div>
-        <div class="section-title">How it works</div>
+        <div class="section-title">Flujo de aprendizaje</div>
         <div class="section-sub">Pipeline de datos e interpretación visible para el operador.</div>
       </div>
     </div>
@@ -158,12 +175,12 @@ ${getSharedNav('research', user, 'blue')}
     </div>
   </section>
 
-  <section class="metric-grid" id="recommendationMetrics">${getLoadingMarkup('Cargando KPIs')}</section>
+  <section class="metric-grid panel-active" data-panel="overview" id="recommendationMetrics">${getLoadingMarkup('Cargando KPIs')}</section>
 
-  <section class="surface section">
+  <section class="surface section" data-panel="engine">
     <div class="section-head">
       <div>
-        <div class="section-title">Learning Engine</div>
+        <div class="section-title">Motor de aprendizaje</div>
         <div class="section-sub">Reglas que realmente intervienen antes de abrir una operación.</div>
       </div>
       <span class="chip info" id="learningUpdated">Sin reconstrucción</span>
@@ -174,12 +191,12 @@ ${getSharedNav('research', user, 'blue')}
     </div>
   </section>
 
-  <section class="metric-grid" id="learningChangeMetrics">${getLoadingMarkup('Cargando cambios')}</section>
+  <section class="metric-grid" data-panel="changes" id="learningChangeMetrics">${getLoadingMarkup('Cargando cambios')}</section>
 
-  <section class="surface section">
+  <section class="surface section" data-panel="changes">
     <div class="section-head">
       <div>
-        <div class="section-title">Learning Changes</div>
+        <div class="section-title">Cambios del motor</div>
         <div class="section-sub">Registro permanente de qué cambió, cuánto cambió, por qué se aplicó y quién lo modificó.</div>
       </div>
       <span class="chip info" id="changeAuditStatus">Auditando</span>
@@ -190,7 +207,7 @@ ${getSharedNav('research', user, 'blue')}
     </div>
   </section>
 
-  <section class="surface section">
+  <section class="surface section" data-panel="changes">
     <div class="section-head">
       <div>
         <div class="section-title">Impacto Real</div>
@@ -202,28 +219,28 @@ ${getSharedNav('research', user, 'blue')}
     </div>
   </section>
 
-  <section class="surface section">
+  <section class="surface section" data-panel="changes">
     <div class="section-head">
       <div>
-        <div class="section-title">Learning Timeline</div>
+        <div class="section-title">Línea temporal</div>
         <div class="section-sub">Versiones completas, implementaciones, validaciones y reversiones en orden cronológico.</div>
       </div>
     </div>
     <div class="body"><div class="list" id="learningTimeline">${getLoadingMarkup('Cargando evolución')}</div></div>
   </section>
 
-  <div class="grid-2">
+  <div class="grid-2 panel-active" data-panel="overview">
     <section class="surface section">
-      <div class="section-head"><div><div class="section-title">Capital Protection</div><div class="section-sub">Circuit breakers calculados con resultados reales y balance actual.</div></div></div>
+      <div class="section-head"><div><div class="section-title">Protección de capital</div><div class="section-sub">Circuit breakers calculados con resultados reales y balance actual.</div></div></div>
       <div class="body"><div class="list" id="capitalStatus">${getLoadingMarkup('Cargando protección')}</div></div>
     </section>
     <section class="surface section">
-      <div class="section-head"><div><div class="section-title">Recent Decisions</div><div class="section-sub">Últimas evaluaciones del Entry Gate, incluidas pruebas controladas.</div></div></div>
+      <div class="section-head"><div><div class="section-title">Decisiones recientes</div><div class="section-sub">Últimas evaluaciones del Entry Gate, incluidas pruebas controladas.</div></div></div>
       <div class="body"><div class="list" id="learningDecisions">${getLoadingMarkup('Cargando decisiones')}</div></div>
     </section>
   </div>
 
-  <section class="surface section">
+  <section class="surface section" data-panel="reports">
     <div class="section-head">
       <div>
         <div class="section-title">Último informe Anthropic</div>
@@ -251,10 +268,10 @@ ${getSharedNav('research', user, 'blue')}
     </div>
   </section>
 
-  <section class="surface section">
+  <section class="surface section" data-panel="reports">
     <div class="section-head">
       <div>
-        <div class="section-title">Recommendations</div>
+        <div class="section-title">Recomendaciones</div>
         <div class="section-sub">Hipótesis de Anthropic y su estado real: implementada, en prueba o descartada.</div>
       </div>
       <span class="chip warn" id="recReviewStatus">Cargando</span>
@@ -264,24 +281,24 @@ ${getSharedNav('research', user, 'blue')}
     </div>
   </section>
 
-  <div class="grid-2">
+  <div class="grid-2" data-panel="reports">
     <section class="surface section">
-      <div class="section-head"><div><div class="section-title">Risks</div><div class="section-sub">Riesgos detectados e hipótesis que requieren cautela.</div></div></div>
+      <div class="section-head"><div><div class="section-title">Riesgos</div><div class="section-sub">Riesgos detectados e hipótesis que requieren cautela.</div></div></div>
       <div class="body"><div class="list" id="riskList">${getLoadingMarkup('Cargando riesgos')}</div></div>
     </section>
     <section class="surface section">
-      <div class="section-head"><div><div class="section-title">Opportunities</div><div class="section-sub">Oportunidades detectadas para revisión operativa.</div></div></div>
+      <div class="section-head"><div><div class="section-title">Oportunidades</div><div class="section-sub">Oportunidades detectadas para revisión operativa.</div></div></div>
       <div class="body"><div class="list" id="opportunityList">${getLoadingMarkup('Cargando oportunidades')}</div></div>
     </section>
   </div>
 
-  <div class="grid-2">
+  <div class="grid-2" data-panel="reports">
     <section class="surface section">
-      <div class="section-head"><div><div class="section-title">Operator Actions</div><div class="section-sub">Qué revisar manualmente, sin ejecución automática.</div></div></div>
+      <div class="section-head"><div><div class="section-title">Acciones del operador</div><div class="section-sub">Qué revisar manualmente, sin ejecución automática.</div></div></div>
       <div class="body"><div class="list" id="operatorActions">${getLoadingMarkup('Cargando acciones')}</div></div>
     </section>
     <section class="surface section">
-      <div class="section-head"><div><div class="section-title">Strategy Evolution</div><div class="section-sub">Timeline de aprendizaje y resultado histórico.</div></div></div>
+      <div class="section-head"><div><div class="section-title">Evolución de estrategia</div><div class="section-sub">Timeline de aprendizaje y resultado histórico.</div></div></div>
       <div class="body"><div class="list" id="strategyEvolution">${getLoadingMarkup('Cargando evolución')}</div></div>
     </section>
   </div>
@@ -307,6 +324,19 @@ function statusLabel(value){return ({pending:'pendiente',reviewing:'en revisión
 function chipClass(value){return ({validated:'good',positive:'good',improved:'good',implementada:'good',active:'good',prioritize:'good',ALLOW:'good',reverted:'bad',revert_required:'bad',worsened:'bad',volume_only:'bad',rejected:'bad',negative:'bad',descartada:'bad',block:'bad',halt:'bad',REJECT:'bad',HALT:'bad',pending:'warn',pendiente:'warn',monitoring:'warn',insufficient:'warn',reduce:'warn',reviewing:'info',neutral:'info',no_effect:'info',no_evidence:'info',superseded:'info',suspended:'info',en_prueba:'info',baja:'warn',low:'warn',media:'info',medium:'info',alta:'good',high:'good',enforce:'good'})[value]||'info'}
 function metric(label,value,sub){return '<div class="metric fade-in"><div class="label">'+escapeHtml(label)+'</div><div class="value">'+escapeHtml(value)+'</div><div class="sub">'+escapeHtml(sub)+'</div></div>'}
 function signed(value,decimals=2){const n=Number(value||0);return (n>0?'+':'')+n.toFixed(decimals)}
+
+function setResearchPanel(panel){
+  const allowed=['overview','engine','reports','changes'];
+  const selected=allowed.includes(panel)?panel:'overview';
+  document.querySelectorAll('[data-panel]').forEach(element=>element.classList.toggle('panel-active',element.dataset.panel===selected));
+  document.querySelectorAll('.research-tab').forEach(button=>{
+    const active=button.dataset.target===selected;
+    button.classList.toggle('active',active);
+    button.setAttribute('aria-selected',active?'true':'false');
+  });
+  try{localStorage.setItem('aterum-research-panel',selected)}catch(_){ }
+  history.replaceState(null,'','#'+selected);
+}
 
 function renderHeader(){
   const latest=researchReports[0]||null;
@@ -535,6 +565,11 @@ async function refreshResearch(){
 window.aterumAssistantConfig={page:'research',kicker:'AI Research',subtitle:'Explica recomendaciones, riesgos, oportunidades e impacto medido.',placeholder:'¿Qué debería revisar manualmente hoy?'};
 window.aterumAssistantContext=()=>({pagina:'research',recomendaciones:researchRecommendations.slice(0,8),ultimoInforme:researchReports[0]||null,performance:recommendationPerformance?.summary||null,learning:learningSummary,reglas:learningRules.filter(r=>r.status==='active').slice(0,12),cambios:learningChanges.slice(0,12),impactoCambios:learningChangeSummary});
 
+let initialPanel=location.hash.replace('#','');
+if(!['overview','engine','reports','changes'].includes(initialPanel)){
+  try{initialPanel=localStorage.getItem('aterum-research-panel')||'overview'}catch(_){initialPanel='overview'}
+}
+setResearchPanel(initialPanel);
 refreshResearch();
 setInterval(refreshResearch,60000);
 </script>
