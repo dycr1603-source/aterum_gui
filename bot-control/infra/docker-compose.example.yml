@@ -152,6 +152,8 @@ services:
       NODES_EXCLUDE: ${NODES_EXCLUDE:-[]}
       N8N_BLOCK_ENV_ACCESS_IN_NODE: ${N8N_BLOCK_ENV_ACCESS_IN_NODE:-false}
       N8N_RUNNERS_INSECURE_MODE: ${N8N_RUNNERS_INSECURE_MODE:-true}
+      N8N_RUNNERS_TASK_REQUEST_TIMEOUT: ${N8N_RUNNERS_TASK_REQUEST_TIMEOUT:-180}
+      EXECUTIONS_CONCURRENCY_PRODUCTION_LIMIT: ${EXECUTIONS_CONCURRENCY_PRODUCTION_LIMIT:-10}
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
@@ -191,7 +193,7 @@ services:
       position_guard:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5678/n8n/ >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5678/healthz >/dev/null || { kill -TERM 1; exit 1; }"]
       interval: 30s
       timeout: 10s
       retries: 5
