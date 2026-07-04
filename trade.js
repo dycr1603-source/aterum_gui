@@ -31,6 +31,8 @@ const accountRoutes         = require('./routes/account');
 const cooldownRoutes        = require('./routes/cooldown');
 
 app.get('/dashboard', requireAuth, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   const sym = (req.query.symbol || Object.keys(shared.activeTrades)[0] || Object.keys(shared.closedTrades)[0] || 'BTCUSDT').toUpperCase();
   res.send(getDashboardHTML(sym, req.session.user));
 });
