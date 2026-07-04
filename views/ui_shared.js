@@ -1510,6 +1510,44 @@ body.assistant-open .assistant-panel{
   --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.92),rgba(255,255,255,.38));
   --line-soft:rgba(31,41,55,.09);
 }
+/* ---------- Aterum design tokens (--at-*) ----------
+   Canonical alias layer over --color-*/--glass-*. Read-only aliases:
+   new views should consume --at-*, existing selectors are untouched. */
+:root,
+[data-theme='dark']{
+  --at-bg:var(--color-bg);
+  --at-bg-elev:var(--color-bg-elev);
+  --at-surface:var(--color-surface);
+  --at-surface-2:var(--color-surface-2);
+  --at-text:var(--color-text);
+  --at-text-muted:var(--color-text-muted);
+  --at-border:var(--color-border);
+  --at-border-strong:var(--color-border-strong);
+  --at-primary:var(--color-primary);
+  --at-primary-soft:var(--color-primary-soft);
+  --at-success:var(--color-success);
+  --at-danger:var(--color-danger);
+  --at-warning:var(--color-warning);
+  --at-brand-violet:#a855f7;
+  --at-brand-rim:linear-gradient(90deg,#a855f7,#57b0ff,#2ee6a6);
+  --at-glass-bg:var(--glass-bg);
+  --at-glass-bg-strong:var(--glass-bg-strong);
+  --at-glass-border:var(--glass-border);
+  --at-glass-border-strong:var(--glass-border-strong);
+  --at-shadow-sm:var(--shadow-sm);
+  --at-shadow-md:var(--shadow-md);
+  --at-shadow-lg:var(--shadow-lg);
+  --at-radius-sm:var(--radius-sm);
+  --at-radius-md:var(--radius-md);
+  --at-radius-lg:var(--radius-lg);
+  --at-ease:var(--ease-standard);
+  --at-dur-fast:var(--motion-fast);
+  --at-dur-base:var(--motion-base);
+}
+[data-theme='light']{
+  --at-brand-violet:#6f67d8;
+  --at-brand-rim:linear-gradient(90deg,#6f67d8,#007aff,#1f9e74);
+}
 html,
 body{
   letter-spacing:0;
