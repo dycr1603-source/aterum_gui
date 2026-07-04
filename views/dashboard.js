@@ -1224,6 +1224,29 @@ body::after{
 .score-gauge{width:30px;height:30px;flex:none;transform:rotate(-90deg)}
 .score-gauge-track{fill:none;stroke:rgba(148,163,184,.18);stroke-width:4}
 .score-gauge-fill{fill:none;stroke:var(--blue,#3d9eff);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1)}
+.metric-card-brand{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+  overflow:hidden;
+  background:radial-gradient(circle at 50% 40%,rgba(168,85,247,.16),transparent 68%),radial-gradient(circle at 70% 70%,rgba(61,158,255,.12),transparent 60%) !important;
+}
+.brand-prism{width:56%;max-width:72px;filter:drop-shadow(0 0 18px rgba(87,176,255,.32)) drop-shadow(0 0 26px rgba(168,85,247,.18));animation:brandPrismFloat 5s ease-in-out infinite}
+.brand-prism svg{width:100%;height:100%;display:block}
+@keyframes brandPrismFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-4px) scale(1.03)}}
+.sentiment-card{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px}
+.sentiment-gauge{width:64px;height:64px;transform:rotate(-90deg)}
+.sentiment-gauge-track{fill:none;stroke:rgba(148,163,184,.16);stroke-width:6}
+.sentiment-gauge-fill{fill:none;stroke:var(--green,#00e5a0);stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1)}
+.sentiment-value{margin-top:-42px;font-family:var(--display);font-size:22px;font-weight:800;letter-spacing:-.02em}
+.sentiment-label-sub{font-size:10px;color:#8fa6c7;letter-spacing:.08em;text-transform:uppercase;margin-top:20px}
+.wave-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+.wave-card{background:var(--color-surface,#101722);border:1px solid var(--color-border,rgba(148,163,184,.16));border-radius:16px;padding:16px 18px;position:relative;overflow:hidden}
+.wave-label{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#7f95b5;margin-bottom:8px}
+.wave-value{font-family:var(--display);font-size:20px;font-weight:800;letter-spacing:-.02em}
+.wave-sub{font-size:10px;color:#8fa6c7;margin-top:2px}
+.wave-spark{width:100%;height:34px;margin-top:8px;display:block}
 .workspace-card{
   padding:24px 24px 20px;
 }
@@ -2453,6 +2476,18 @@ ${getSharedNav('dashboard', user, 'blue',
         <div class="metric-value" id="metricUnrealized">—</div>
         <div class="metric-sub">Variación viva de cuenta</div>
       </div>
+      <div class="metric-card metric-card-brand" aria-hidden="true">
+        <div class="brand-prism">
+          <svg viewBox="0 0 64 64" fill="none">
+            <path d="M32 8 L54 52 H10 Z" stroke="url(#dashPrismRim)" stroke-width="3.5" stroke-linejoin="round"/>
+            <path d="M32 30 L41 48 H23 Z" fill="url(#dashPrismCore)"/>
+            <defs>
+              <linearGradient id="dashPrismRim" x1="10" y1="52" x2="54" y2="8"><stop stop-color="#eef2ff"/><stop offset="1" stop-color="#c7d6ff"/></linearGradient>
+              <linearGradient id="dashPrismCore" x1="23" y1="48" x2="41" y2="30"><stop stop-color="#a855f7"/><stop offset="1" stop-color="#57b0ff"/></linearGradient>
+            </defs>
+          </svg>
+        </div>
+      </div>
     </div>
     <div class="chart-shell">
       <div class="chart-head">
@@ -2502,6 +2537,35 @@ ${getSharedNav('dashboard', user, 'blue',
         <div class="market-card"><div class="market-label">Máximo 24H</div><div class="market-value" id="marketHigh">—</div><div class="market-sub">zona de resistencia</div><svg class="market-spark" id="sparkMarketHigh" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
         <div class="market-card"><div class="market-label">Mínimo 24H</div><div class="market-value" id="marketLow">—</div><div class="market-sub">zona de soporte</div><svg class="market-spark" id="sparkMarketLow" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
         <div class="market-card"><div class="market-label">Volumen 24H</div><div class="market-value" id="marketVolume">—</div><div class="market-sub">futuros perpetuos</div><svg class="market-spark" id="sparkMarketVolume" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+        <div class="market-card sentiment-card">
+          <div class="market-label">Sentimiento</div>
+          <svg class="sentiment-gauge" viewBox="0 0 64 64" aria-hidden="true">
+            <circle class="sentiment-gauge-track" cx="32" cy="32" r="26"></circle>
+            <circle class="sentiment-gauge-fill" id="sentimentGaugeFill" cx="32" cy="32" r="26" stroke-dasharray="163" stroke-dashoffset="163"></circle>
+          </svg>
+          <div class="sentiment-value" id="sentimentValue">—</div>
+          <div class="sentiment-label-sub" id="sentimentLabel">calculando</div>
+        </div>
+      </div>
+      <div class="wave-row">
+        <div class="wave-card">
+          <div class="wave-label">Flujo de capital 24h</div>
+          <div class="wave-value" id="waveFlowValue">—</div>
+          <div class="wave-sub">entrada neta</div>
+          <svg class="wave-spark" id="waveFlowSpark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
+        <div class="wave-card">
+          <div class="wave-label">Distribución de operaciones</div>
+          <div class="wave-value" id="waveDistValue">—</div>
+          <div class="wave-sub" id="waveDistSub">largos vs cortos</div>
+          <svg class="wave-spark" id="waveDistSpark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
+        <div class="wave-card">
+          <div class="wave-label">Volatilidad actual</div>
+          <div class="wave-value" id="waveVolValue">—</div>
+          <div class="wave-sub">rango ATR / precio</div>
+          <svg class="wave-spark" id="waveVolSpark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
       </div>
       <div class="no-trade-overlay" id="noTrade" style="display:none">
         <div class="no-sym">${symbol}</div>
@@ -3285,6 +3349,50 @@ function updateScoreGauge(score){
   const pct=Math.max(0,Math.min(100,+score||0))/100;
   fill.style.strokeDashoffset=String(circumference*(1-pct));
 }
+function updateSentimentGauge(){
+  const fill=document.getElementById('sentimentGaugeFill');
+  const valEl=document.getElementById('sentimentValue');
+  const lblEl=document.getElementById('sentimentLabel');
+  if(!fill||!fullKlines.length)return;
+  const adxSeries=calcADX(fullKlines).filter(v=>v!=null);
+  const adx=adxSeries.length?adxSeries[adxSeries.length-1]:0;
+  const change24=cachedMarketStats.prior?((lastPrice-cachedMarketStats.prior)/cachedMarketStats.prior*100):0;
+  const bias=change24>=0?1:-1;
+  const score=Math.max(0,Math.min(100,50+bias*Math.min(Math.abs(change24)*6,35)+Math.min(adx,15)));
+  const circumference=163;
+  fill.style.strokeDashoffset=String(circumference*(1-score/100));
+  fill.style.stroke=score>=55?'var(--green,#00e5a0)':score<=45?'var(--red,#ff3d5a)':'var(--gold,#f5a623)';
+  if(valEl)valEl.textContent=Math.round(score);
+  if(lblEl)lblEl.textContent=score>=60?'alcista':score<=40?'bajista':'neutral';
+}
+function updateWaveCards(){
+  if(!fullKlines.length)return;
+  const closedTrades=Object.values(tradeMap.closed||{});
+  const activeTrades=Object.values(tradeMap.active||{});
+  const recentClosed=closedTrades.slice(-24);
+  const flowSeries=recentClosed.map(t=>+t.finalPnL||0);
+  let running=0;
+  const flowCumulative=flowSeries.map(v=>(running+=v));
+  const flowTotal=flowCumulative.length?flowCumulative[flowCumulative.length-1]:0;
+  setText('waveFlowValue',(flowTotal>=0?'+':'')+fmtUSD(flowTotal,2));
+  const wf=document.getElementById('waveFlowValue');
+  if(wf)wf.style.color=flowTotal>=0?'var(--green)':'var(--red)';
+  paintSparkline('waveFlowSpark',flowCumulative.length>1?flowCumulative:[0,0],200,34,flowTotal>=0?'#00e5a0':'#ff3d5a');
+
+  const longs=activeTrades.filter(t=>(t.direction||t.side||'').toUpperCase()==='LONG').length;
+  const shorts=activeTrades.filter(t=>(t.direction||t.side||'').toUpperCase()==='SHORT').length;
+  const totalPos=longs+shorts;
+  const longPct=totalPos?Math.round((longs/totalPos)*100):0;
+  setText('waveDistValue',totalPos?longPct+'% / '+(100-longPct)+'%':'—');
+  setText('waveDistSub',totalPos?longs+' largos · '+shorts+' cortos':'sin posiciones activas');
+  const distSeries=fullKlines.slice(-24).map(k=>+k.close-(+k.open));
+  paintSparkline('waveDistSpark',distSeries.length>1?distSeries:[0,0],200,34,'#a855f7');
+
+  const atrPct=cachedMarketStats.atr&&lastPrice?(cachedMarketStats.atr/lastPrice)*100:0;
+  setText('waveVolValue',atrPct?fmtPct(atrPct):'—');
+  const volSeries=calcATR(fullKlines).filter(v=>v!=null).slice(-24);
+  paintSparkline('waveVolSpark',volSeries.length>1?volSeries:[0,0],200,34,'#f5a623');
+}
 function updateMarketDashboard(){
   if(!fullKlines.length)return;
   const last=+(lastPrice||fullKlines[fullKlines.length-1]?.close||0);
@@ -3304,6 +3412,8 @@ function updateMarketDashboard(){
   const tv=document.getElementById('telemetryAtr');
   if(tv)tv.style.color='var(--text)';
   renderSparklines();
+  updateSentimentGauge();
+  updateWaveCards();
 }
 function updateTradeTelemetry(){
   const closed=Object.values(tradeMap.closed||{});
