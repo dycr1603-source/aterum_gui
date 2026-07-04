@@ -31,23 +31,9 @@ ${getSharedHeadAssets()}
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
 html{scroll-behavior:smooth}
-body{background:linear-gradient(180deg,#f8f9fb 0%,#f2f5fa 46%,#edf2f8 100%);color:var(--text);font-family:var(--sans);font-size:12px;min-height:100vh}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:12px;min-height:100vh}
 
-/* ── NAV ── */
-.nav{height:56px;background:rgba(9,11,9,.9);border-bottom:1px solid var(--border2);
-  display:flex;align-items:center;padding:0 28px;position:sticky;top:0;z-index:200;
-  backdrop-filter:blur(20px);gap:0}
-.nav-logo{font-family:var(--display);font-size:14px;font-weight:900;letter-spacing:.12em;
-  display:flex;align-items:center;gap:8px;margin-right:32px;color:var(--text)}
-.nav-dot{width:6px;height:6px;border-radius:50%;background:var(--green);
-  box-shadow:0 0 12px var(--green),0 0 24px rgba(0,229,160,.3);animation:glow 2s ease-in-out infinite}
-@keyframes glow{0%,100%{box-shadow:0 0 8px var(--green)}50%{box-shadow:0 0 20px var(--green),0 0 40px rgba(0,229,160,.2)}}
-.nav-links{display:flex;gap:2px}
-.nav-link{font-size:10px;color:var(--text2);text-decoration:none;letter-spacing:.08em;text-transform:uppercase;
-  padding:7px 14px;border-radius:5px;transition:all .15s;border:1px solid transparent;font-weight:500}
-.nav-link:hover{color:var(--text);background:var(--bg3);border-color:var(--border2)}
-.nav-link.active{color:var(--blue);background:var(--blue3);border-color:rgba(61,158,255,.2)}
-.nav-spacer{flex:1}
+/* ── NAV (live-status chip rendered inside getSharedNav's extraRight slot) ── */
 .nav-badge{font-size:9px;letter-spacing:.06em;padding:4px 10px;border-radius:3px;
   background:var(--bg4);border:1px solid var(--border2);color:var(--text2)}
 .live-dot{width:5px;height:5px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:4px}
@@ -63,6 +49,20 @@ body{background:linear-gradient(180deg,#f8f9fb 0%,#f2f5fa 46%,#edf2f8 100%);colo
 .section-title{font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
   color:var(--text2);margin-bottom:14px;display:flex;align-items:center;gap:8px}
 .section-title::after{content:'';flex:1;height:1px;background:var(--border2)}
+
+/* ── TABS ── */
+.analytics-tabs{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:6px;margin:0 0 20px;
+  padding:7px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;
+  box-shadow:0 12px 28px rgba(0,0,0,.12);backdrop-filter:blur(16px);overflow:auto}
+.analytics-tab{appearance:none;border:1px solid transparent;background:transparent;color:var(--text2);
+  border-radius:7px;padding:10px 16px;font:800 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;transition:.18s ease;white-space:nowrap}
+.analytics-tab:hover{color:var(--text);background:var(--blue3)}
+.analytics-tab.active{color:#fff;background:var(--blue);border-color:rgba(255,255,255,.18);box-shadow:0 5px 16px rgba(61,158,255,.28)}
+[data-panel]{display:none}
+[data-panel].panel-active{display:block}
+.cards-row[data-panel].panel-active,.acct-grid[data-panel].panel-active,.kpi-grid[data-panel].panel-active,.research-grid[data-panel].panel-active{display:grid}
+@media(max-width:680px){.analytics-tabs{top:0}.analytics-tab{padding:9px 12px}}
 
 /* ── ACCOUNT PANEL ── */
 .acct-panel{background:linear-gradient(135deg,rgba(61,158,255,.04) 0%,rgba(0,229,160,.03) 50%,transparent 100%);
@@ -516,6 +516,14 @@ ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="l
     </div>
   </div>
 
+  <nav class="analytics-tabs" aria-label="Secciones de Análisis">
+    <button class="analytics-tab active" type="button" data-target="resumen" onclick="setAnalyticsPanel('resumen')">Resumen</button>
+    <button class="analytics-tab" type="button" data-target="research" onclick="setAnalyticsPanel('research')">Research</button>
+    <button class="analytics-tab" type="button" data-target="patrones" onclick="setAnalyticsPanel('patrones')">Patrones</button>
+    <button class="analytics-tab" type="button" data-target="historial" onclick="setAnalyticsPanel('historial')">Historial</button>
+  </nav>
+
+  <div data-panel="resumen" class="panel-active">
   <!-- ACCOUNT PANEL -->
   <div class="acct-panel">
     <div class="acct-header">
@@ -644,7 +652,9 @@ ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="l
 
   <!-- KPIs -->
   <div class="kpi-grid" id="kpiGrid">${getLoadingMarkup('Cargando métricas')}</div>
+  </div>
 
+  <div data-panel="research">
   <!-- RESEARCH DASHBOARD -->
   <div class="section-title">Research</div>
   <div class="research-grid" id="researchKpis">${getLoadingMarkup('Cargando research')}</div>
@@ -675,7 +685,9 @@ ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="l
       <div id="researchSetups" class="loading-shell-wrap">${getLoadingMarkup('Cargando setups')}</div>
     </div>
   </div>
+  </div>
 
+  <div data-panel="patrones">
   <div class="cards-row cards-equal" style="margin-bottom:16px">
     <div class="card">
       <div class="card-hdr"><span class="card-title">Post Trade Analysis</span><span class="card-badge" id="postTradeBadge">—</span></div>
@@ -686,7 +698,9 @@ ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="l
       <div id="recurrentTerms" class="term-cloud">${getLoadingMarkup('Cargando patrones')}</div>
     </div>
   </div>
+  </div>
 
+  <div data-panel="historial">
   <!-- CHARTS ROW 1 -->
   <div class="cards-row cards-2" style="margin-bottom:16px">
     <div class="card">
@@ -729,6 +743,7 @@ ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="l
         <th>R</th><th>Score</th><th>Cierre</th><th>Duración</th><th>Estado</th>
       </tr></thead><tbody id="tradesTbl"></tbody></table>
     </div>
+  </div>
   </div>
 </div>
 </div>
@@ -1032,6 +1047,26 @@ document.addEventListener('click',(event)=>{
   const symbol=btn.getAttribute('data-symbol');
   clearCooldown(symbol);
 });
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function setAnalyticsPanel(panel){
+  const allowed=['resumen','research','patrones','historial'];
+  const selected=allowed.includes(panel)?panel:'resumen';
+  document.querySelectorAll('[data-panel]').forEach(element=>element.classList.toggle('panel-active',element.dataset.panel===selected));
+  document.querySelectorAll('.analytics-tab').forEach(button=>{
+    const active=button.dataset.target===selected;
+    button.classList.toggle('active',active);
+    button.setAttribute('aria-selected',active?'true':'false');
+  });
+  try{localStorage.setItem('aterum-analytics-panel',selected)}catch(_){ }
+  history.replaceState(null,'','#'+selected);
+}
+(function initAnalyticsPanel(){
+  const fromHash=(window.location.hash||'').replace('#','');
+  let stored='';
+  try{stored=localStorage.getItem('aterum-analytics-panel')||''}catch(_){ }
+  setAnalyticsPanel(fromHash||stored||'resumen');
+})();
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 function setPeriod(d,btn){
