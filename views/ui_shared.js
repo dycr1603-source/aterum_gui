@@ -327,7 +327,21 @@ body.has-shared-nav .content{
   font:700 10px/1 'JetBrains Mono',monospace;
   letter-spacing:.06em;
   text-transform:uppercase;
-  transition:all var(--motion-fast) var(--ease-standard);
+  position:relative;
+  transition:color var(--motion-fast) var(--ease-standard),background var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard);
+}
+.nav-link::after{
+  content:'';
+  position:absolute;
+  left:12px;
+  right:12px;
+  bottom:-1px;
+  height:2px;
+  border-radius:2px 2px 0 0;
+  background:var(--color-primary);
+  opacity:0;
+  transform:scaleX(.5);
+  transition:opacity var(--motion-fast) var(--ease-standard),transform var(--motion-fast) var(--ease-standard);
 }
 .nav-link:hover{
   border-color:var(--color-border);
@@ -338,6 +352,10 @@ body.has-shared-nav .content{
   border-color:color-mix(in srgb,var(--color-primary) 38%,var(--color-border) 62%);
   background:var(--color-primary-soft);
   color:var(--color-text);
+}
+.nav-link.active::after{
+  opacity:1;
+  transform:scaleX(1);
 }
 .nav-utility{
   display:flex;
@@ -869,10 +887,24 @@ body.dashboard-v3 .lv,
 body.dashboard-v3 .result-row,
 body.dashboard-v3 .wl-item{
   background:var(--color-surface) !important;
-  background-image:none !important;
+  background-image:linear-gradient(180deg,rgba(255,255,255,.035),transparent 60%) !important;
   border:1px solid var(--color-border) !important;
-  border-radius:14px !important;
+  border-radius:16px !important;
   box-shadow:var(--shadow-sm) !important;
+  transition:border-color var(--motion-fast) var(--ease-standard),box-shadow var(--motion-fast) var(--ease-standard),transform var(--motion-fast) var(--ease-standard);
+}
+body.dashboard-v3 .metric-card,
+body.dashboard-v3 .market-card,
+body.dashboard-v3 .side-card,
+body.dashboard-v3 .terminal-card{
+  border-radius:18px !important;
+}
+body.dashboard-v3 .metric-card:hover,
+body.dashboard-v3 .market-card:hover,
+body.dashboard-v3 .side-card:hover,
+body.dashboard-v3 .terminal-card:hover{
+  border-color:var(--color-border-strong) !important;
+  box-shadow:var(--shadow-md) !important;
 }
 body.dashboard-v3 .metric-card::before,
 body.dashboard-v3 .metric-card::after,
@@ -893,6 +925,8 @@ body.dashboard-v3 .telemetry-row span:first-child,
 body.dashboard-v3 .chart-eyebrow,
 body.dashboard-v3 .chart-sub{
   color:var(--color-text-muted) !important;
+  font-weight:600 !important;
+  letter-spacing:.09em !important;
 }
 body.dashboard-v3 .metric-value,
 body.dashboard-v3 .market-value,
@@ -904,10 +938,12 @@ body.dashboard-v3 .stat-val{
   color:var(--color-text) !important;
   overflow-wrap:anywhere;
   word-break:break-word;
+  font-variant-numeric:tabular-nums;
+  transition:filter .5s var(--ease-standard);
 }
-body.dashboard-v3 .metric-value{font-size:clamp(22px,3.3vw,36px) !important}
-body.dashboard-v3 .workspace-balance{font-size:clamp(36px,4vw,52px) !important}
-body.dashboard-v3 .market-value{font-size:clamp(20px,2.6vw,30px) !important}
+body.dashboard-v3 .metric-value{font-size:clamp(22px,3.3vw,36px) !important;font-weight:700 !important;letter-spacing:-.02em !important}
+body.dashboard-v3 .workspace-balance{font-size:clamp(36px,4vw,52px) !important;font-weight:700 !important;letter-spacing:-.03em !important}
+body.dashboard-v3 .market-value{font-size:clamp(20px,2.6vw,30px) !important;font-weight:700 !important;letter-spacing:-.02em !important}
 body.dashboard-v3 .chart-title{font-size:clamp(30px,3.1vw,40px)}
 body.dashboard-v3 .exec-symbol{font-size:clamp(30px,3vw,42px) !important}
 body.dashboard-v3 .pnl-val{font-size:clamp(28px,3.2vw,42px) !important}
@@ -989,27 +1025,38 @@ body.dashboard-v3 .exec-mode-btn{
   border-radius:10px !important;
   background:var(--color-surface) !important;
   color:var(--color-text-muted) !important;
+  font-weight:700 !important;
+  transition:background var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard),color var(--motion-fast) var(--ease-standard),transform var(--motion-fast) var(--ease-standard);
+}
+body.dashboard-v3 .exec-btn:hover{
+  transform:translateY(-1px);
 }
 body.dashboard-v3 .exec-btn.active{
-  background:rgba(31,158,116,.12) !important;
-  border-color:rgba(31,158,116,.28) !important;
-  color:var(--color-success) !important;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--color-success) 88%,white 0%),var(--color-success)) !important;
+  border-color:var(--color-success) !important;
+  color:#052e1f !important;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--color-success) 30%,transparent) !important;
 }
 body.dashboard-v3 .exec-btn.sell-active{
-  background:rgba(217,79,99,.12) !important;
-  border-color:rgba(217,79,99,.28) !important;
-  color:var(--color-danger) !important;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--color-danger) 88%,white 0%),var(--color-danger)) !important;
+  border-color:var(--color-danger) !important;
+  color:#330a11 !important;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--color-danger) 30%,transparent) !important;
 }
 body.dashboard-v3 .exec-slider,
 body.dashboard-v3 .workspace-bar,
 body.dashboard-v3 .r-track{
   background:var(--color-bg-elev) !important;
+  border-radius:999px !important;
+  overflow:hidden;
 }
 body.dashboard-v3 .exec-slider-fill,
 body.dashboard-v3 .workspace-bar-fill,
 body.dashboard-v3 #stageBar,
 body.dashboard-v3 #acctMarginBar{
-  background:var(--color-primary) !important;
+  background:linear-gradient(90deg,var(--color-primary),color-mix(in srgb,var(--color-primary) 70%,var(--color-success))) !important;
+  border-radius:999px !important;
+  transition:width .5s var(--ease-standard) !important;
 }
 body.dashboard-v3 .exec-pill,
 body.dashboard-v3 .exec-side,
