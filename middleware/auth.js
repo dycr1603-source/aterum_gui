@@ -119,8 +119,8 @@ body.is-submitting::after{animation:loginWarp .72s cubic-bezier(.22,1,.36,1) for
 .split::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--at-brand-rim);opacity:.85;z-index:2}
 .brand-pane{background:linear-gradient(160deg,rgba(87,176,255,.12),rgba(168,85,247,.08) 55%,rgba(10,14,22,.4));border:1px solid rgba(166,183,208,.14);border-right:none;padding:48px 44px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden;backdrop-filter:blur(22px) saturate(1.18)}
 .brand-pane::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.06),transparent 50%)}
-.brand-mark{width:64px;height:64px;margin-bottom:20px;filter:drop-shadow(0 0 22px rgba(87,176,255,.35));animation:glow 3.2s ease-in-out infinite}
-@keyframes glow{0%,100%{filter:drop-shadow(0 0 14px rgba(87,176,255,.28))}50%{filter:drop-shadow(0 0 26px rgba(87,176,255,.4)) drop-shadow(0 0 14px rgba(168,85,247,.22))}}
+.brand-mark{width:64px;height:64px;margin-bottom:20px;filter:drop-shadow(0 0 16px rgba(255,255,255,.4)) drop-shadow(0 0 30px rgba(61,92,232,.35));animation:glow 3.2s ease-in-out infinite}
+@keyframes glow{0%,100%{filter:drop-shadow(0 0 12px rgba(255,255,255,.32)) drop-shadow(0 0 22px rgba(61,92,232,.28))}50%{filter:drop-shadow(0 0 20px rgba(255,255,255,.46)) drop-shadow(0 0 34px rgba(61,92,232,.4))}}
 .brand-welcome{font:600 13px/1 'Inter',sans-serif;color:#a9b8cc;margin-bottom:4px}
 .brand-title{font-family:'Inter Tight','Inter',sans-serif;font-size:32px;font-weight:800;letter-spacing:-.01em;color:#f4f8ff;margin-bottom:14px}
 .brand-desc{font:500 13px/1.6 'Inter',sans-serif;color:#8d9aab;max-width:32ch;margin-bottom:32px}
@@ -166,16 +166,8 @@ body.is-submitting .submit-btn::after{opacity:1;transform:scale(1)}
   <div class="split">
     <div class="brand-pane">
       <svg class="brand-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-        <path d="M32 8 L54 52 H10 Z" stroke="url(#markRim)" stroke-width="4.5" stroke-linejoin="round"/>
-        <path d="M32 29 L42 49 H22 Z" fill="url(#markCore)"/>
-        <defs>
-          <linearGradient id="markRim" x1="10" y1="52" x2="54" y2="8">
-            <stop stop-color="#eef2ff"/><stop offset="1" stop-color="#c7d6ff"/>
-          </linearGradient>
-          <linearGradient id="markCore" x1="22" y1="49" x2="42" y2="29">
-            <stop stop-color="#a855f7"/><stop offset="1" stop-color="#57b0ff"/>
-          </linearGradient>
-        </defs>
+        <path d="M32 6 L57 54 H7 Z" fill="none" stroke="#f3f6ff" stroke-width="6" stroke-linejoin="round"/>
+        <path d="M32 26 L44 50 H20 Z" fill="#3d5ce8"/>
       </svg>
       <div class="brand-welcome">Bienvenido a</div>
       <div class="brand-title">ATERUM</div>

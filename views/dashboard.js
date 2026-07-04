@@ -1232,7 +1232,7 @@ body::after{
   overflow:hidden;
   background:radial-gradient(circle at 50% 40%,rgba(168,85,247,.16),transparent 68%),radial-gradient(circle at 70% 70%,rgba(61,158,255,.12),transparent 60%) !important;
 }
-.brand-prism{width:56%;max-width:72px;filter:drop-shadow(0 0 18px rgba(87,176,255,.32)) drop-shadow(0 0 26px rgba(168,85,247,.18));animation:brandPrismFloat 5s ease-in-out infinite}
+.brand-prism{width:56%;max-width:72px;filter:drop-shadow(0 0 16px rgba(255,255,255,.4)) drop-shadow(0 0 30px rgba(61,92,232,.35));animation:brandPrismFloat 5s ease-in-out infinite}
 .brand-prism svg{width:100%;height:100%;display:block}
 @keyframes brandPrismFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-4px) scale(1.03)}}
 .sentiment-card{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px}
@@ -2479,12 +2479,8 @@ ${getSharedNav('dashboard', user, 'blue',
       <div class="metric-card metric-card-brand" aria-hidden="true">
         <div class="brand-prism">
           <svg viewBox="0 0 64 64" fill="none">
-            <path d="M32 8 L54 52 H10 Z" stroke="url(#dashPrismRim)" stroke-width="3.5" stroke-linejoin="round"/>
-            <path d="M32 30 L41 48 H23 Z" fill="url(#dashPrismCore)"/>
-            <defs>
-              <linearGradient id="dashPrismRim" x1="10" y1="52" x2="54" y2="8"><stop stop-color="#eef2ff"/><stop offset="1" stop-color="#c7d6ff"/></linearGradient>
-              <linearGradient id="dashPrismCore" x1="23" y1="48" x2="41" y2="30"><stop stop-color="#a855f7"/><stop offset="1" stop-color="#57b0ff"/></linearGradient>
-            </defs>
+            <path d="M32 6 L57 54 H7 Z" fill="none" stroke="#f3f6ff" stroke-width="6" stroke-linejoin="round"/>
+            <path d="M32 26 L44 50 H20 Z" fill="#3d5ce8"/>
           </svg>
         </div>
       </div>
