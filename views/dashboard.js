@@ -1158,8 +1158,8 @@ body::after{
   gap:14px;
 }
 .metric-card{
-  min-height:136px;
-  padding:20px 22px 18px;
+  min-height:148px;
+  padding:26px 26px 22px;
   border-radius:26px;
   position:relative;
 }
@@ -1185,18 +1185,47 @@ body::after{
   letter-spacing:.18em;
 }
 .metric-value{
-  margin-top:18px;
-  font-size:48px;
-  line-height:.92;
-  letter-spacing:-.05em;
+  margin-top:22px;
+  font-size:56px;
+  line-height:.9;
+  letter-spacing:-.06em;
 }
 .metric-sub{
-  margin-top:12px;
+  margin-top:14px;
   font-size:11px;
   color:#8fa6c7;
 }
+.metric-card-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:4px;
+}
+.metric-icon{
+  width:32px;
+  height:32px;
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:none;
+}
+.metric-icon svg{width:16px;height:16px}
+.metric-icon-green{background:rgba(0,229,160,.14);color:var(--green,#00e5a0)}
+.metric-icon-blue{background:rgba(61,158,255,.14);color:var(--blue,#3d9eff)}
+.metric-icon-gold{background:rgba(245,166,35,.14);color:var(--gold,#f5a623)}
+.metric-icon-red{background:rgba(255,61,90,.14);color:var(--red,#ff3d5a)}
+.metric-spark{width:64px;height:26px;flex:none;overflow:visible}
+.market-card{position:relative;overflow:hidden}
+.market-spark{position:absolute;right:0;bottom:0;width:70%;height:32px;opacity:.5;pointer-events:none}
+.stat-c-gauge{display:flex;flex-direction:column}
+.gauge-row{display:flex;align-items:center;gap:8px;margin-top:2px}
+.score-gauge{width:30px;height:30px;flex:none;transform:rotate(-90deg)}
+.score-gauge-track{fill:none;stroke:rgba(148,163,184,.18);stroke-width:4}
+.score-gauge-fill{fill:none;stroke:var(--blue,#3d9eff);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1)}
 .workspace-card{
-  padding:18px 18px 16px;
+  padding:24px 24px 20px;
 }
 .workspace-user{
   margin-top:14px;
@@ -1238,8 +1267,8 @@ body::after{
   border:1px solid rgba(122,154,209,.08);
 }
 .wl-item{
-  margin:0 0 10px;
-  padding:14px 16px;
+  margin:0 0 12px;
+  padding:16px 18px;
   border-radius:20px;
   border-left-width:1px;
   background:linear-gradient(180deg,rgba(13,20,32,.84),rgba(10,16,26,.78));
@@ -1537,11 +1566,11 @@ body::after{
   letter-spacing:.06em;
 }
 .stats-grid{
-  gap:10px;
+  gap:12px;
 }
 .stat-c{
-  min-height:82px;
-  padding:14px 16px;
+  min-height:88px;
+  padding:16px 18px;
   border-radius:18px;
 }
 .stat-val{
@@ -2391,21 +2420,35 @@ ${getSharedNav('dashboard', user, 'blue',
   <div id="chart-wrap">
     <div class="terminal-kpis">
       <div class="metric-card">
+        <div class="metric-card-top">
+          <div class="metric-icon metric-icon-green" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 6"></polyline><polyline points="15 6 21 6 21 12"></polyline></svg></div>
+          <svg class="metric-spark" id="spark24hChange" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
         <div class="metric-label">Cambio 24H</div>
         <div class="metric-value" id="metric24hChange">—</div>
         <div class="metric-sub">Pulso de tendencia</div>
       </div>
       <div class="metric-card">
+        <div class="metric-card-top">
+          <div class="metric-icon metric-icon-blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 11 14 10 22 21 9 13 9 13 2"></polygon></svg></div>
+          <svg class="metric-spark" id="sparkCandleDelta" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
         <div class="metric-label">Delta de vela</div>
         <div class="metric-value" id="metricCandleDelta">—</div>
         <div class="metric-sub">Movimiento actual 1h</div>
       </div>
       <div class="metric-card">
+        <div class="metric-card-top">
+          <div class="metric-icon metric-icon-gold" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V8a5 5 0 0 1 10 0v3"></path></svg></div>
+        </div>
         <div class="metric-label">Margen en uso</div>
         <div class="metric-value" id="metricMarginInUse">—</div>
         <div class="metric-sub">Capital asignado</div>
       </div>
       <div class="metric-card">
+        <div class="metric-card-top">
+          <div class="metric-icon metric-icon-red" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="13"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div>
+        </div>
         <div class="metric-label">No realizado</div>
         <div class="metric-value" id="metricUnrealized">—</div>
         <div class="metric-sub">Variación viva de cuenta</div>
@@ -2455,10 +2498,10 @@ ${getSharedNav('dashboard', user, 'blue',
       <div id="rsi-panel" class="sub-panel"><div class="panel-resize" onmousedown="startResize(event,'rsi-panel')" ontouchstart="startResize(event,'rsi-panel')"></div><div class="panel-label">RSI 14</div></div>
       <div id="sqz-panel" class="sub-panel"><div class="panel-resize" onmousedown="startResize(event,'sqz-panel')" ontouchstart="startResize(event,'sqz-panel')"></div><div class="panel-label">SQUEEZE</div></div>
       <div class="market-grid">
-        <div class="market-card"><div class="market-label">Último</div><div class="market-value" id="marketLast">—</div><div class="market-sub">precio en tiempo real</div></div>
-        <div class="market-card"><div class="market-label">Máximo 24H</div><div class="market-value" id="marketHigh">—</div><div class="market-sub">zona de resistencia</div></div>
-        <div class="market-card"><div class="market-label">Mínimo 24H</div><div class="market-value" id="marketLow">—</div><div class="market-sub">zona de soporte</div></div>
-        <div class="market-card"><div class="market-label">Volumen 24H</div><div class="market-value" id="marketVolume">—</div><div class="market-sub">futuros perpetuos</div></div>
+        <div class="market-card"><div class="market-label">Último</div><div class="market-value" id="marketLast">—</div><div class="market-sub">precio en tiempo real</div><svg class="market-spark" id="sparkMarketLast" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+        <div class="market-card"><div class="market-label">Máximo 24H</div><div class="market-value" id="marketHigh">—</div><div class="market-sub">zona de resistencia</div><svg class="market-spark" id="sparkMarketHigh" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+        <div class="market-card"><div class="market-label">Mínimo 24H</div><div class="market-value" id="marketLow">—</div><div class="market-sub">zona de soporte</div><svg class="market-spark" id="sparkMarketLow" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
+        <div class="market-card"><div class="market-label">Volumen 24H</div><div class="market-value" id="marketVolume">—</div><div class="market-sub">futuros perpetuos</div><svg class="market-spark" id="sparkMarketVolume" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
       </div>
       <div class="no-trade-overlay" id="noTrade" style="display:none">
         <div class="no-sym">${symbol}</div>
@@ -2548,7 +2591,16 @@ ${getSharedNav('dashboard', user, 'blue',
         <div class="stats-grid">
           <div class="stat-c"><div class="stat-lbl">Cantidad</div><div class="stat-val" id="sQty">—</div></div>
           <div class="stat-c"><div class="stat-lbl">Apalancamiento</div><div class="stat-val c-gold" id="sLev">—</div></div>
-          <div class="stat-c"><div class="stat-lbl">Score AI</div><div class="stat-val c-blue" id="sScore">—</div></div>
+          <div class="stat-c stat-c-gauge">
+            <div class="stat-lbl">Score AI</div>
+            <div class="gauge-row">
+              <svg class="score-gauge" id="scoreGauge" viewBox="0 0 44 44" aria-hidden="true">
+                <circle class="score-gauge-track" cx="22" cy="22" r="18"></circle>
+                <circle class="score-gauge-fill" id="scoreGaugeFill" cx="22" cy="22" r="18" stroke-dasharray="113" stroke-dashoffset="113"></circle>
+              </svg>
+              <div class="stat-val c-blue" id="sScore">—</div>
+            </div>
+          </div>
           <div class="stat-c"><div class="stat-lbl">Régimen</div><div class="stat-val c-purple" id="sRegime">—</div></div>
         </div>
         <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">
@@ -3193,6 +3245,46 @@ function recomputeMarketStats(){
   cachedMarketStats.structure=change24>1?'Sesgo alcista':change24<-1?'Sesgo bajista':'Balanceado';
 }
 
+function buildSparkPath(values,width,height){
+  if(!values||values.length<2)return '';
+  const min=Math.min(...values),max=Math.max(...values);
+  const span=(max-min)||1;
+  const stepX=width/(values.length-1);
+  return values.map((v,i)=>{
+    const x=(i*stepX).toFixed(2);
+    const y=(height-((v-min)/span)*height).toFixed(2);
+    return (i===0?'M':'L')+x+' '+y;
+  }).join(' ');
+}
+function paintSparkline(id,values,width,height,tone){
+  const el=document.getElementById(id);
+  if(!el||!values||values.length<2)return;
+  const d=buildSparkPath(values,width,height);
+  if(!d)return;
+  el.innerHTML='<path d="'+d+'" fill="none" stroke="'+tone+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>';
+}
+function renderSparklines(){
+  if(!fullKlines.length)return;
+  const closes=fullKlines.slice(-24).map(k=>+k.close||0);
+  const highs=fullKlines.slice(-24).map(k=>+k.high||0);
+  const lows=fullKlines.slice(-24).map(k=>+k.low||0);
+  const vols=fullKlines.slice(-24).map(k=>+k.volume||0);
+  const up=closes.length>1&&closes[closes.length-1]>=closes[0];
+  const tone=up?'#00e5a0':'#ff3d5a';
+  paintSparkline('spark24hChange',closes,64,26,tone);
+  paintSparkline('sparkCandleDelta',closes.slice(-8),64,26,'#3d9eff');
+  paintSparkline('sparkMarketLast',closes,100,28,tone);
+  paintSparkline('sparkMarketHigh',highs,100,28,'#00e5a0');
+  paintSparkline('sparkMarketLow',lows,100,28,'#ff3d5a');
+  paintSparkline('sparkMarketVolume',vols,100,28,'#f5a623');
+}
+function updateScoreGauge(score){
+  const fill=document.getElementById('scoreGaugeFill');
+  if(!fill)return;
+  const circumference=113;
+  const pct=Math.max(0,Math.min(100,+score||0))/100;
+  fill.style.strokeDashoffset=String(circumference*(1-pct));
+}
 function updateMarketDashboard(){
   if(!fullKlines.length)return;
   const last=+(lastPrice||fullKlines[fullKlines.length-1]?.close||0);
@@ -3211,6 +3303,7 @@ function updateMarketDashboard(){
   setText('telemetryAtr',cachedMarketStats.atr?fmtPct((cachedMarketStats.atr/Math.max(last,1))*100):'—');
   const tv=document.getElementById('telemetryAtr');
   if(tv)tv.style.color='var(--text)';
+  renderSparklines();
 }
 function updateTradeTelemetry(){
   const closed=Object.values(tradeMap.closed||{});
@@ -3611,6 +3704,7 @@ function drawLevels(t,closed){
   document.getElementById('sQty').textContent=t.qty;
   document.getElementById('sLev').textContent=(t.leverage||'—')+'x';
   document.getElementById('sScore').textContent=(t.finalScore||'—')+'/100';
+  updateScoreGauge(t.finalScore);
   document.getElementById('sRegime').textContent=t.aiRegime||'—';
   const dist=(a,b)=>((Math.abs(a-b)/a)*100).toFixed(2)+'%';
   document.getElementById('dSL').textContent=hasSL?dist(e,s)+' del entry':'—';
