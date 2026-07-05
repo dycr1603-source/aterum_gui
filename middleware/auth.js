@@ -1,6 +1,7 @@
 'use strict';
 const bcrypt  = require('bcrypt');
 const session = require('express-session');
+const { BRAND_LOGO_PATH } = require('../views/brand');
 require('../services/load_env');
 
 const SESSION_SECRET  = process.env.SESSION_SECRET || 'aterum-session-secret-xK9mP2024';
@@ -93,7 +94,8 @@ function getLoginHTML(error) {
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>αтεгυм — Login</title>
+<title>ATERUM — Login</title>
+<link rel="icon" type="image/png" href="${BRAND_LOGO_PATH}">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -119,13 +121,14 @@ body.is-submitting::after{animation:loginWarp .72s cubic-bezier(.22,1,.36,1) for
 .split::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--at-brand-rim);opacity:.85;z-index:2}
 .brand-pane{background:linear-gradient(160deg,rgba(87,176,255,.12),rgba(168,85,247,.08) 55%,rgba(10,14,22,.4));border:1px solid rgba(166,183,208,.14);border-right:none;padding:48px 44px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden;backdrop-filter:blur(22px) saturate(1.18)}
 .brand-pane::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.06),transparent 50%)}
-.brand-mark{width:64px;height:64px;margin-bottom:20px;filter:drop-shadow(0 0 16px rgba(255,255,255,.4)) drop-shadow(0 0 30px rgba(61,92,232,.35));animation:glow 3.2s ease-in-out infinite}
-@keyframes glow{0%,100%{filter:drop-shadow(0 0 12px rgba(255,255,255,.32)) drop-shadow(0 0 22px rgba(61,92,232,.28))}50%{filter:drop-shadow(0 0 20px rgba(255,255,255,.46)) drop-shadow(0 0 34px rgba(61,92,232,.4))}}
+.brand-mark{display:block;width:min(100%,280px);height:auto;aspect-ratio:1;margin:-24px auto -6px;object-fit:contain;animation:brandImageFloat 4.8s ease-in-out infinite}
+@keyframes brandImageFloat{0%,100%{transform:translate3d(0,2px,0) scale(.985);opacity:.9}50%{transform:translate3d(0,-4px,0) scale(1.015);opacity:1}}
 .brand-welcome{font:600 13px/1 'Inter',sans-serif;color:#a9b8cc;margin-bottom:4px}
 .brand-title{font-family:'Inter Tight','Inter',sans-serif;font-size:32px;font-weight:800;letter-spacing:-.01em;color:#f4f8ff;margin-bottom:14px}
 .brand-desc{font:500 13px/1.6 'Inter',sans-serif;color:#8d9aab;max-width:32ch;margin-bottom:32px}
 .brand-foot{font:700 9px/1.6 'JetBrains Mono',monospace;color:#5c6a80;letter-spacing:.1em;text-transform:uppercase;position:relative}
 .card{background:linear-gradient(180deg,rgba(14,21,34,.92),rgba(12,18,29,.86));border:1px solid rgba(166,183,208,.16);padding:48px 44px;text-align:left;position:relative;overflow:hidden;backdrop-filter:blur(22px) saturate(1.18);transition:transform .34s cubic-bezier(.22,1,.36,1),opacity .34s,filter .34s;display:flex;flex-direction:column;justify-content:center}
+.card-brand-mark{display:none}
 .card::after{content:'';position:absolute;inset:0 0 auto;height:120px;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.015) 42%,rgba(255,255,255,0))}
 body.is-submitting .card{transform:translateY(-8px) scale(.99);opacity:.9;filter:brightness(1.1)}
 .form-title{font-family:'Inter Tight','Inter',sans-serif;font-size:22px;font-weight:800;color:#f4f8ff;margin-bottom:4px}
@@ -156,7 +159,7 @@ body.is-submitting .submit-btn::after{opacity:1;transform:scale(1)}
 @keyframes terminalEnter{0%{opacity:0;transform:translateY(18px) scale(.985)}100%{opacity:1;transform:none}}
 @keyframes loginWarp{0%{transform:translateX(-120%);opacity:0}32%{opacity:.8}100%{transform:translateX(120%);opacity:0}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
-@media(max-width:820px){.split{grid-template-columns:1fr}.brand-pane{display:none}.card{padding:40px 28px}}
+@media(max-width:820px){.split{grid-template-columns:1fr}.brand-pane{display:none}.card{padding:40px 28px}.card-brand-mark{display:block;width:132px;height:132px;margin:-36px auto -20px;object-fit:contain}}
 </style>
 </head>
 <body>
@@ -165,16 +168,12 @@ body.is-submitting .submit-btn::after{opacity:1;transform:scale(1)}
 <div class="container">
   <div class="split">
     <div class="brand-pane">
-      <svg class="brand-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-        <path d="M32 6 L57 54 H7 Z" fill="none" stroke="#f3f6ff" stroke-width="6" stroke-linejoin="round"/>
-        <path d="M32 26 L44 50 H20 Z" fill="#3d5ce8"/>
-      </svg>
-      <div class="brand-welcome">Bienvenido a</div>
-      <div class="brand-title">ATERUM</div>
+      <img class="brand-mark" src="${BRAND_LOGO_PATH}" alt="ATERUM">
       <div class="brand-desc">Sistema de Trading Algorítmico Inteligente. Precisión. Disciplina. Resultados.</div>
       <div class="brand-foot">El futuro del trading sistémico</div>
     </div>
     <div class="card">
+      <img class="card-brand-mark" src="${BRAND_LOGO_PATH}" alt="ATERUM">
       <div class="form-title">Iniciar Sesión</div>
       <div class="form-subtitle">Accede a tu cuenta</div>
       <form method="POST" action="/login">

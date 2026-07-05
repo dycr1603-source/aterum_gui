@@ -6,13 +6,14 @@ const {
   getSharedScript,
   getSharedNav
 } = require('./ui_shared');
+const { BRAND_LOGO_PATH } = require('./brand');
 
 function getDashboardHTML(symbol, user) { return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#f5f5f7">
-<title>αтεгυм — ${symbol}</title>
+<title>ATERUM — ${symbol}</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
@@ -3190,6 +3191,19 @@ body.dashboard-v3 .nav-logo{
   background:linear-gradient(135deg,rgba(72,118,255,.11),rgba(132,72,255,.055));
   border:1px solid rgba(116,153,225,.11);
   box-shadow:inset 0 1px rgba(255,255,255,.045),0 10px 24px rgba(0,2,10,.22);
+  min-width:154px;
+  padding:0 7px;
+  overflow:hidden;
+}
+body.dashboard-v3 .nav-brand-lockup{
+  display:flex !important;
+  opacity:.96;
+  transform:translate3d(0,0,0);
+  transition:transform var(--at-motion-base) ease-out,opacity var(--at-motion-fast) ease-out;
+}
+body.dashboard-v3 .nav-logo:hover .nav-brand-lockup{
+  opacity:1;
+  transform:translate3d(1px,0,0) scale(1.012);
 }
 body.dashboard-v3 .nav-link{
   opacity:.72;
@@ -3297,6 +3311,19 @@ body.dashboard-v3 .workspace-card::before{
   pointer-events:none;
 }
 body.dashboard-v3 .workspace-card > *{position:relative;z-index:1}
+body.dashboard-v3 .workspace-brand-image{
+  position:absolute !important;
+  z-index:0 !important;
+  top:-27px;
+  right:-25px;
+  width:142px;
+  height:142px;
+  object-fit:contain;
+  opacity:.11;
+  mix-blend-mode:screen;
+  transform:rotate(4deg) scale(1.04);
+  pointer-events:none;
+}
 body.dashboard-v3 .workspace-balance{
   color:#f8fbff !important;
   text-shadow:0 0 26px rgba(92,143,255,.18);
@@ -3442,7 +3469,18 @@ body.dashboard-v3 .metric-card-brand{
     linear-gradient(145deg,rgba(26,20,67,.94),rgba(6,12,30,.95)) !important;
   box-shadow:var(--at-glow-violet) !important;
 }
-body.dashboard-v3 .brand-prism{animation:premiumBrandFloat 4.8s ease-in-out infinite}
+body.dashboard-v3 .brand-prism{
+  width:100%;
+  max-width:110px;
+  overflow:hidden;
+  animation:premiumBrandFloat 4.8s ease-in-out infinite;
+}
+body.dashboard-v3 .brand-prism-image{
+  display:block;
+  width:100%;
+  height:auto;
+  object-fit:contain;
+}
 @keyframes premiumBrandFloat{
   0%,100%{transform:translate3d(0,1px,0) scale(.98);opacity:.82}
   50%{transform:translate3d(0,-4px,0) scale(1.035);opacity:1}
@@ -3719,6 +3757,15 @@ body.dashboard-v3 .loading-shell{
   box-shadow:var(--at-shadow-float);
   backdrop-filter:blur(24px);
 }
+body.dashboard-v3 .loading-brand-image{
+  display:block;
+  width:148px;
+  height:148px;
+  margin:-28px auto -30px;
+  object-fit:contain;
+  opacity:.96;
+  animation:premiumBrandFloat 4.8s ease-in-out infinite;
+}
 body.dashboard-v3 .loading-visual{
   display:block !important;
   position:relative;
@@ -3770,6 +3817,15 @@ body.dashboard-v3:not(.page-ready) :is(.metric-card,.market-card,.wave-card)::af
   transform:translate3d(0,0,0) skewX(-16deg);
   animation:premiumSkeletonPass 1.7s ease-in-out infinite;
 }
+body.dashboard-v3 .empty-brand-image{
+  display:block;
+  width:156px;
+  height:156px;
+  margin:0 auto -24px;
+  object-fit:contain;
+  opacity:.56;
+  animation:premiumBrandFloat 4.8s ease-in-out infinite;
+}
 @keyframes premiumSkeletonPass{
   0%{transform:translate3d(0,0,0) skewX(-16deg);opacity:0}
   20%{opacity:1}
@@ -3786,6 +3842,10 @@ body.dashboard-v3 :is(button,a,[tabindex]):focus-visible{
 @media (max-width:1480px){
   body.dashboard-v3 .layout{gap:10px;padding:14px 10px 12px !important}
   body.dashboard-v3 .wl,body.dashboard-v3 .sb{top:78px;height:calc(100dvh - 90px) !important;max-height:calc(100dvh - 90px) !important}
+}
+@media (max-width:1220px){
+  body.dashboard-v3 .nav-logo{min-width:48px;padding-inline:5px}
+  body.dashboard-v3 .nav-brand-word{display:none}
 }
 @media (max-width:1024px){
   body.dashboard-v3 .layout{padding:12px 10px 76px !important}
@@ -3941,6 +4001,7 @@ ${getSharedNav('dashboard', user, 'blue',
 <div class="layout">
   <div class="wl" id="watchlist">
     <div class="side-card workspace-card">
+      <img class="workspace-brand-image" src="${BRAND_LOGO_PATH}" alt="" aria-hidden="true">
       <div class="side-card-label">Espacio de trabajo</div>
       <div class="workspace-user">${user?.username || 'terminal'}</div>
       <div class="workspace-balance" id="workspaceBalance">—</div>
@@ -4011,10 +4072,7 @@ ${getSharedNav('dashboard', user, 'blue',
       </div>
       <div class="metric-card metric-card-brand" aria-hidden="true">
         <div class="brand-prism">
-          <svg viewBox="0 0 64 64" fill="none">
-            <path d="M32 6 L57 54 H7 Z" fill="none" stroke="#f3f6ff" stroke-width="6" stroke-linejoin="round"/>
-            <path d="M32 26 L44 50 H20 Z" fill="#3d5ce8"/>
-          </svg>
+          <img class="brand-prism-image" src="${BRAND_LOGO_PATH}" alt="">
         </div>
       </div>
     </div>
@@ -4097,6 +4155,7 @@ ${getSharedNav('dashboard', user, 'blue',
         </div>
       </div>
       <div class="no-trade-overlay" id="noTrade" style="display:none">
+        <img class="empty-brand-image" src="${BRAND_LOGO_PATH}" alt="" aria-hidden="true">
         <div class="no-sym">${symbol}</div>
         <div class="no-txt">Sin posición activa</div>
       </div>

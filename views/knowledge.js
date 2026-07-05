@@ -6,7 +6,7 @@ function getKnowledgeHTML(user) { return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>αтεгυм — Decision Knowledge</title>
+<title>ATERUM — Decision Knowledge</title>
 ${getSharedHeadAssets()}
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <script src="https://unpkg.com/cytoscape@3.30.3/dist/cytoscape.min.js"></script>

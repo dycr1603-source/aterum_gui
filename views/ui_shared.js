@@ -1,8 +1,10 @@
 'use strict';
 
+const { BRAND_LOGO_PATH } = require('./brand');
+
 function getSharedHeadAssets() {
   return `<meta name="mobile-web-app-capable" content="yes">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23070b12'/%3E%3Cpath d='M16 42 29 14h6l13 28h-7l-3-7H26l-3 7h-7Zm13-13h6l-3-8-3 8Z' fill='%2357b0ff'/%3E%3Ccircle cx='48' cy='16' r='5' fill='%232ee6a6'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="${BRAND_LOGO_PATH}">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script>
 (function(){
@@ -19,6 +21,7 @@ function getSharedHeadAssets() {
 
 function getLoadingMarkup(label = 'Cargando terminal') {
   return `<div class="loading loading-shell" aria-live="polite">
+  <img class="loading-brand-image" src="${BRAND_LOGO_PATH}" alt="" aria-hidden="true">
   <div class="loading-visual" aria-hidden="true">
     <div class="loading-bars"><span></span><span></span><span></span><span></span><span></span></div>
     <div class="loading-gridline"></div>
@@ -302,6 +305,35 @@ body.has-shared-nav .content{
   background:var(--color-surface);
   font:800 12px/1 'Inter Tight','Inter',sans-serif;
   letter-spacing:.08em;
+}
+.nav-brand-lockup{
+  height:40px;
+  display:flex;
+  align-items:center;
+  gap:2px;
+}
+.nav-brand-crop{
+  position:relative;
+  display:block;
+  flex:none;
+  overflow:hidden;
+}
+.nav-brand-crop img{
+  position:absolute;
+  display:block;
+  max-width:none;
+  border:0;
+}
+.nav-brand-mark{width:32px;height:30px}
+.nav-brand-mark img{width:74px;height:74px;left:-21px;top:-16px}
+.nav-brand-word{width:108px;height:18px}
+.nav-brand-word img{width:160px;height:160px;left:-26px;top:-97px}
+.loading-brand-image{
+  display:block;
+  width:112px;
+  height:112px;
+  margin:0 auto 12px;
+  object-fit:contain;
 }
 .nav-dot{
   width:7px;
@@ -1410,6 +1442,9 @@ body.assistant-open .assistant-panel{
     width:auto;
     height:auto;
   }
+}
+@media(max-width:560px){
+  .nav-brand-word{display:none}
 }
 @media(max-width:1024px){
   body.dashboard-v3 .layout{
@@ -3178,7 +3213,12 @@ function getSharedScript() {
 function getSharedNav(current, user, accent = 'blue', extraRight = '') {
   return `<div class="nav nav-shell">
   <div class="nav-main">
-    <a href="/dashboard" class="nav-logo" aria-label="Ir a trading"><div class="nav-dot"></div>αтεгυм</a>
+    <a href="/dashboard" class="nav-logo" aria-label="ATERUM — Ir a trading">
+      <span class="nav-brand-lockup" aria-hidden="true">
+        <span class="nav-brand-crop nav-brand-mark"><img src="${BRAND_LOGO_PATH}" alt=""></span>
+        <span class="nav-brand-crop nav-brand-word"><img src="${BRAND_LOGO_PATH}" alt=""></span>
+      </span>
+    </a>
     <nav class="nav-links nav-links-desktop" aria-label="Navegación principal">
       <a href="/dashboard" class="nav-link${current==='dashboard'?' active':''}">Trading</a>
       <a href="/analytics" class="nav-link${current==='analytics'?' active':''}">Analytics</a>
