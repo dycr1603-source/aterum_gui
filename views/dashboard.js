@@ -3383,6 +3383,8 @@ body.dashboard-v3 .telemetry-card{
 
 /* KPI cards with individual light fields */
 body.dashboard-v3 .terminal-kpis{gap:10px}
+body.dashboard-v3 .terminal-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+body.dashboard-v3 .metric-card-brand{display:none !important}
 body.dashboard-v3 .metric-card{
   --metric-accent:78,167,255;
   min-height:122px;
