@@ -9,7 +9,7 @@ const PORT = Number(process.env.DASHBOARD_PORT || process.env.PORT || 3001);
 const HOST = process.env.BIND_HOST || '0.0.0.0';
 
 app.use(express.json());
-app.use('/assets', express.static(path.join(__dirname, 'assets'), {
+app.use('/aterum-assets', express.static(path.join(__dirname, 'assets'), {
   etag: true,
   maxAge: '1h'
 }));
