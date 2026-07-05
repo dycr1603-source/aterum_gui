@@ -1619,6 +1619,17 @@ body.assistant-open .assistant-panel{
   --at-space-8:32px;
   --at-shadow-panel:0 16px 44px rgba(0,0,0,.28),0 0 30px rgba(78,167,255,.055),inset 0 1px rgba(255,255,255,.025);
   --at-shadow-hover:0 18px 48px rgba(0,0,0,.34),0 0 32px rgba(78,167,255,.09),inset 0 1px rgba(255,255,255,.04);
+  --at-shadow-z1:0 8px 24px rgba(0,3,12,.24),inset 0 1px rgba(255,255,255,.035);
+  --at-shadow-z2:0 18px 42px rgba(0,3,12,.34),0 0 0 1px rgba(95,139,220,.035),inset 0 1px rgba(255,255,255,.055);
+  --at-shadow-z3:0 28px 70px rgba(0,2,10,.46),0 0 46px rgba(53,109,255,.07),inset 0 1px rgba(255,255,255,.065);
+  --at-shadow-float:0 36px 90px rgba(0,2,12,.56),0 0 60px rgba(80,66,255,.1),inset 0 1px rgba(255,255,255,.08);
+  --at-glow-blue:0 0 0 1px rgba(78,167,255,.2),0 0 26px rgba(53,109,255,.16),0 14px 36px rgba(0,3,12,.34);
+  --at-glow-violet:0 0 0 1px rgba(155,77,255,.2),0 0 30px rgba(155,77,255,.14),0 14px 36px rgba(0,3,12,.34);
+  --at-glow-teal:0 0 0 1px rgba(32,227,178,.22),0 0 28px rgba(32,227,178,.13),0 14px 36px rgba(0,3,12,.34);
+  --at-highlight:linear-gradient(90deg,transparent,rgba(151,190,255,.52),rgba(183,130,255,.42),transparent);
+  --at-glass-sheen:linear-gradient(135deg,rgba(255,255,255,.085),rgba(255,255,255,.018) 38%,transparent 58%);
+  --at-blur-panel:18px;
+  --at-blur-float:28px;
   --at-ease:var(--ease-standard);
   --at-dur-fast:var(--motion-fast);
   --at-dur-base:var(--motion-base);
@@ -1645,6 +1656,11 @@ body.assistant-open .assistant-panel{
   --at-text-faint:#7c8ba0;
   --at-shadow-panel:0 16px 44px rgba(39,61,92,.12),inset 0 1px rgba(255,255,255,.8);
   --at-shadow-hover:0 18px 48px rgba(39,61,92,.18),inset 0 1px rgba(255,255,255,.9);
+  --at-shadow-z1:0 8px 22px rgba(39,61,92,.08),inset 0 1px rgba(255,255,255,.88);
+  --at-shadow-z2:0 18px 42px rgba(39,61,92,.13),0 0 0 1px rgba(53,109,255,.025),inset 0 1px rgba(255,255,255,.96);
+  --at-shadow-z3:0 28px 68px rgba(39,61,92,.17),0 0 36px rgba(53,109,255,.05),inset 0 1px #fff;
+  --at-shadow-float:0 34px 80px rgba(39,61,92,.2),0 0 44px rgba(80,66,255,.06),inset 0 1px #fff;
+  --at-glass-sheen:linear-gradient(135deg,rgba(255,255,255,.95),rgba(255,255,255,.26) 40%,transparent 62%);
 }
 html,
 body{
