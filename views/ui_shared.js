@@ -1558,7 +1558,7 @@ body.assistant-open .assistant-panel{
   --line-soft:rgba(31,41,55,.09);
 }
 /* ---------- Aterum design tokens (--at-*) ----------
-   Canonical alias layer over --color-*/--glass-*. Read-only aliases:
+   Canonical alias layer over the color and glass token families. Read-only aliases:
    new views should consume --at-*, existing selectors are untouched. */
 :root,
 [data-theme='dark']{
@@ -1577,6 +1577,25 @@ body.assistant-open .assistant-panel{
   --at-warning:var(--color-warning);
   --at-brand-violet:#a855f7;
   --at-brand-rim:linear-gradient(90deg,#a855f7,#57b0ff,#2ee6a6);
+  --at-canvas:#020711;
+  --at-canvas-elev:#050b16;
+  --at-panel:rgba(8,16,31,.86);
+  --at-panel-strong:rgba(10,20,38,.94);
+  --at-panel-soft:rgba(12,24,45,.68);
+  --at-line:rgba(113,151,214,.14);
+  --at-line-strong:rgba(113,151,214,.26);
+  --at-text-strong:#f5f8ff;
+  --at-text-soft:#8b9bb5;
+  --at-text-faint:#60708a;
+  --at-cyan:#4ea7ff;
+  --at-blue:#356dff;
+  --at-violet:#9b4dff;
+  --at-teal:#20e3b2;
+  --at-red:#ff4f6d;
+  --at-amber:#f5b94d;
+  --at-gradient-brand:linear-gradient(120deg,var(--at-cyan),var(--at-violet));
+  --at-gradient-profit:linear-gradient(120deg,#12c997,var(--at-teal));
+  --at-gradient-panel:linear-gradient(145deg,rgba(16,31,57,.82),rgba(5,12,25,.94));
   --at-glass-bg:var(--glass-bg);
   --at-glass-bg-strong:var(--glass-bg-strong);
   --at-glass-border:var(--glass-border);
@@ -1587,13 +1606,45 @@ body.assistant-open .assistant-panel{
   --at-radius-sm:var(--radius-sm);
   --at-radius-md:var(--radius-md);
   --at-radius-lg:var(--radius-lg);
+  --at-radius-control:8px;
+  --at-radius-card:12px;
+  --at-radius-shell:14px;
+  --at-radius-pill:999px;
+  --at-space-1:4px;
+  --at-space-2:8px;
+  --at-space-3:12px;
+  --at-space-4:16px;
+  --at-space-5:20px;
+  --at-space-6:24px;
+  --at-space-8:32px;
+  --at-shadow-panel:0 16px 44px rgba(0,0,0,.28),0 0 30px rgba(78,167,255,.055),inset 0 1px rgba(255,255,255,.025);
+  --at-shadow-hover:0 18px 48px rgba(0,0,0,.34),0 0 32px rgba(78,167,255,.09),inset 0 1px rgba(255,255,255,.04);
   --at-ease:var(--ease-standard);
   --at-dur-fast:var(--motion-fast);
   --at-dur-base:var(--motion-base);
+  --at-motion-fast:160ms;
+  --at-motion-base:200ms;
+  --at-motion-slow:240ms;
+  --at-font-display:'Inter Tight','Inter',system-ui,sans-serif;
+  --at-font-ui:'Inter',system-ui,sans-serif;
+  --at-font-mono:'JetBrains Mono','SFMono-Regular',Consolas,monospace;
 }
 [data-theme='light']{
   --at-brand-violet:#6f67d8;
   --at-brand-rim:linear-gradient(90deg,#6f67d8,#007aff,#1f9e74);
+  --at-canvas:#f3f7fc;
+  --at-canvas-elev:#ffffff;
+  --at-panel:rgba(255,255,255,.88);
+  --at-panel-strong:rgba(255,255,255,.96);
+  --at-panel-soft:rgba(241,246,253,.86);
+  --at-line:rgba(42,72,112,.12);
+  --at-line-strong:rgba(42,72,112,.22);
+  --at-gradient-panel:linear-gradient(145deg,rgba(255,255,255,.98),rgba(242,247,253,.94));
+  --at-text-strong:#111b2c;
+  --at-text-soft:#586a83;
+  --at-text-faint:#7c8ba0;
+  --at-shadow-panel:0 16px 44px rgba(39,61,92,.12),inset 0 1px rgba(255,255,255,.8);
+  --at-shadow-hover:0 18px 48px rgba(39,61,92,.18),inset 0 1px rgba(255,255,255,.9);
 }
 html,
 body{
