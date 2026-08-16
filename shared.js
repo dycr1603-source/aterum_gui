@@ -10,7 +10,7 @@ const db = mysql.createPool({
   user: process.env.DB_USER || 'tradingbot',
   // Backward-compatible fallback so existing deployments keep working
   // even when .env is missing/incomplete.
-  password: process.env.DB_PASSWORD || 'TradingBot2024!',
+    password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'trading_bot',
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
@@ -43,8 +43,8 @@ function envOrFallback(name, fallback) {
   return value;
 }
 
-const API_KEY_ACCT    = envOrFallback('BINANCE_API_KEY', 'yNJHYVILY5bFWIXHtQuF0fn5N7cqd52mh1pInyhBCwAjsZ1iHLae1ME57aOlkExr');
-const API_SECRET_ACCT = envOrFallback('BINANCE_API_SECRET', 'wALgotUinshwSL7h5r4F8d0PsfuW11h70uyMiidkV7r8gfezCeLGNgFmA8zvApfJ');
+const API_KEY_ACCT    = envOrFallback('BINANCE_API_KEY', '');
+const API_SECRET_ACCT = envOrFallback('BINANCE_API_SECRET', '');
 
 // Mutable state - exported as object properties so full reassignment works
 // via shared.accountState = {...} in route files

@@ -1,0 +1,316 @@
+name: aterum
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  mysql:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${DB_NAME:-trading_bot}
+      MYSQL_USER: ${DB_USER:-tradingbot}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      TZ: ${TZ:-Etc/UTC}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./bot-control/infra/database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "mariadb-admin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: [sh, -c, "redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD-SHELL, "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *default-logging
+
+  dashboard:
+    image: aterum-dashboard:local
+    build:
+      context: .
+    restart: unless-stopped
+    command: [npm, start]
+    ports:
+      - 127.0.0.1:${DASHBOARD_PORT:-3001}:3001
+      - 127.0.0.1:${CHART_API_PORT:-3000}:3000
+      - 127.0.0.1:${N8N_PORT:-5678}:5678
+    environment:
+      NODE_ENV: production
+      BIND_HOST: 0.0.0.0
+      DASHBOARD_PORT: 3001
+      CHART_API_PORT: 3000
+      INTERNAL_DASHBOARD_BASE: http://127.0.0.1:3001
+      INTERNAL_N8N_BASE: http://127.0.0.1:5678
+      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+      APP_URL: http://${APP_DOMAIN:-localhost}
+      API_URL: http://${APP_DOMAIN:-localhost}/api
+      GUI_URL: http://${APP_DOMAIN:-localhost}
+      N8N_URL: http://${APP_DOMAIN:-localhost}/n8n
+      DB_HOST: mysql
+      DB_USER: ${DB_USER:-tradingbot}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_NAME: ${DB_NAME:-trading_bot}
+      DB_CONNECTION_LIMIT: ${DB_CONNECTION_LIMIT:-10}
+      DB_TIMEZONE: ${DB_TIMEZONE:-+00:00}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      DEFAULT_ADMIN_USER: ${DEFAULT_ADMIN_USER:-admin}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?set DEFAULT_ADMIN_PASSWORD in .env}
+      BINANCE_API_KEY: ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_ASSISTANT_MODEL: ${OPENAI_ASSISTANT_MODEL:-gpt-5-mini}
+      N8N_SQLITE_DB: /n8n-data/database.sqlite
+      N8N_TRADING_WORKFLOW_ID: ${N8N_TRADING_WORKFLOW_ID:-Cz4TfvaVAygWGRJm}
+      KNOWLEDGE_CACHE_TTL_MS: ${KNOWLEDGE_CACHE_TTL_MS:-30000}
+      OPPORTUNITY_MIN_QUOTE_VOLUME: ${OPPORTUNITY_MIN_QUOTE_VOLUME:-5000000}
+      OPPORTUNITY_MIN_OPEN_INTEREST: ${OPPORTUNITY_MIN_OPEN_INTEREST:-1000000}
+      OPPORTUNITY_REFRESH_BATCH_SIZE: ${OPPORTUNITY_REFRESH_BATCH_SIZE:-32}
+      OPPORTUNITY_DEEP_CONCURRENCY: ${OPPORTUNITY_DEEP_CONCURRENCY:-8}
+      OPPORTUNITY_ENTRY_THRESHOLD: ${OPPORTUNITY_ENTRY_THRESHOLD:-65}
+      OPPORTUNITY_MAX_POSITIONS: ${OPPORTUNITY_MAX_POSITIONS:-3}
+      OPPORTUNITY_MAX_CORRELATION: ${OPPORTUNITY_MAX_CORRELATION:-0.80}
+      SIMULATOR_POLICY_KEY: ${SIMULATOR_POLICY_KEY:-aterum_policy_v1}
+      TRADES_FILE: /data/trades.json
+      TZ: ${TZ:-Etc/UTC}
+    volumes:
+      - dashboard_data:/data
+      - n8n_data:/n8n-data:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "Promise.all([fetch('http://127.0.0.1:3001/healthz'),fetch('http://127.0.0.1:3000/healthz')]).then(rs=>process.exit(rs.every(r=>r.ok)?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    logging: *default-logging
+
+  aterum_gui:
+    image: aterum-dashboard:local
+    restart: unless-stopped
+    command: [npm, run, chart-api]
+    network_mode: service:dashboard
+    environment:
+      NODE_ENV: production
+      BIND_HOST: 0.0.0.0
+      CHART_API_PORT: 3000
+      TMPDIR: /tmp/aterum
+      TMP: /tmp/aterum
+      TEMP: /tmp/aterum
+      TZ: ${TZ:-Etc/UTC}
+    depends_on:
+      dashboard:
+        condition: service_started
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging: *default-logging
+
+  n8n:
+    image: aterum-n8n-compat:local
+    build:
+      context: ./bot-control/infra/n8n-compat
+      dockerfile: Dockerfile
+      args:
+        N8N_BASE_IMAGE: n8nio/n8n:${N8N_VERSION:-latest}
+    restart: unless-stopped
+    network_mode: service:dashboard
+    environment:
+      N8N_HOST: ${APP_DOMAIN:-localhost}
+      N8N_LISTEN_ADDRESS: 0.0.0.0
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://${APP_DOMAIN:-localhost}/
+      N8N_EDITOR_BASE_URL: http://${APP_DOMAIN:-localhost}/n8n/
+      N8N_PROXY_HOPS: 1
+      N8N_SECURE_COOKIE: false
+      GENERIC_TIMEZONE: ${TZ:-Etc/UTC}
+      TZ: ${TZ:-Etc/UTC}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY in .env}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-false}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-}
+      NODES_EXCLUDE: ${NODES_EXCLUDE:-[]}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: false
+      N8N_RUNNERS_INSECURE_MODE: true
+      N8N_RUNNERS_TASK_REQUEST_TIMEOUT: 180
+      EXECUTIONS_CONCURRENCY_PRODUCTION_LIMIT: 10
+      N8N_DIAGNOSTICS_ENABLED: false
+      N8N_PERSONALIZATION_ENABLED: false
+      N8N_VERSION_NOTIFICATIONS_ENABLED: false
+      N8N_TEMPLATES_ENABLED: false
+      N8N_MCP_REGISTRY_ENABLED: false
+      N8N_LOG_LEVEL: warn
+      EXECUTIONS_DATA_PRUNE: true
+      EXECUTIONS_DATA_MAX_AGE: 168
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: 5000
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: true
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
+      INTERNAL_DASHBOARD_BASE: http://127.0.0.1:3001
+      INTERNAL_N8N_BASE: http://127.0.0.1:5678
+      EXECUTION_ENGINE_URL: http://position_guard:3091/executions
+      EXECUTION_ENGINE_TOKEN: ${EXECUTION_ENGINE_TOKEN:?set EXECUTION_ENGINE_TOKEN in .env}
+      BINANCE_API_KEY: ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RESEARCH_ANTHROPIC_API_KEY: ${RESEARCH_ANTHROPIC_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      N8N_TRADING_DISABLED: ${N8N_TRADING_DISABLED:-1}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /tmp:/imports:ro
+      - ./bot-control/workflows/current:/repo-workflows:ro
+    depends_on:
+      dashboard:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://127.0.0.1:5678/healthz >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    logging: *default-logging
+
+  position_guard:
+    profiles: [trading]
+    image: aterum-dashboard:local
+    restart: unless-stopped
+    command: [node, position-guard/index.js]
+    environment:
+      NODE_ENV: production
+      POSITION_GUARD_BINANCE_API_KEY: ${POSITION_GUARD_BINANCE_API_KEY:-${BINANCE_API_KEY:-}}
+      POSITION_GUARD_BINANCE_API_SECRET: ${POSITION_GUARD_BINANCE_API_SECRET:-${BINANCE_API_SECRET:-}}
+      POSITION_GUARD_ENFORCE: ${POSITION_GUARD_ENFORCE:-false}
+      POSITION_GUARD_POLL_MS: ${POSITION_GUARD_POLL_MS:-5000}
+      POSITION_GUARD_UNPROTECTED_GRACE_MS: ${POSITION_GUARD_UNPROTECTED_GRACE_MS:-60000}
+      POSITION_GUARD_HEALTH_MS: ${POSITION_GUARD_HEALTH_MS:-60000}
+      POSITION_GUARD_ALERT_COOLDOWN_MS: ${POSITION_GUARD_ALERT_COOLDOWN_MS:-300000}
+      POSITION_GUARD_PORT: 3091
+      EXECUTION_ENGINE_TOKEN: ${EXECUTION_ENGINE_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      INTERNAL_DASHBOARD_BASE: http://dashboard:3001
+      INTERNAL_N8N_BASE: http://dashboard:5678
+      DB_HOST: mysql
+      DB_USER: ${DB_USER:-tradingbot}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_NAME: ${DB_NAME:-trading_bot}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      N8N_SQLITE_DB: /n8n-data/database.sqlite
+    volumes:
+      - n8n_data:/n8n-data:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3091/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+
+  telegram_control:
+    profiles: [aux]
+    image: aterum-dashboard:local
+    restart: unless-stopped
+    command: [node, telegram-control/index.js]
+    environment:
+      NODE_ENV: production
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS:-}
+      TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS:-}
+      TELEGRAM_CONTROL_PORT: 3090
+      INTERNAL_DASHBOARD_BASE: http://dashboard:3001
+      INTERNAL_N8N_BASE: http://dashboard:5678
+      DB_HOST: mysql
+      DB_USER: ${DB_USER:-tradingbot}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_NAME: ${DB_NAME:-trading_bot}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      N8N_SQLITE_DB: /n8n-data/database.sqlite
+      N8N_TRADING_WORKFLOW_ID: ${N8N_TRADING_WORKFLOW_ID:-Cz4TfvaVAygWGRJm}
+      TELEGRAM_ANTHROPIC_API_KEY: ${TELEGRAM_ANTHROPIC_API_KEY:-}
+      TELEGRAM_CLAUDE_MODEL: ${TELEGRAM_CLAUDE_MODEL:-claude-haiku-4-5-20251001}
+      TELEGRAM_AI_CACHE_TTL_SECONDS: 300
+      TELEGRAM_AI_MAX_INPUT_CHARS: 3000
+      TELEGRAM_AI_MAX_TOKENS: 400
+      TELEGRAM_CHANGELOG_PATH: /app/bot-control/CHANGELOG.md
+    volumes:
+      - n8n_data:/n8n-data:ro
+      - ./telegram-control:/app/telegram-control:ro
+      - ./bot-control/CHANGELOG.md:/app/bot-control/CHANGELOG.md:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      dashboard:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3090/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - ${NGINX_PORT:-80}:80
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      dashboard:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "wget -q --spider http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging: *default-logging
+
+volumes:
+  mysql_data:
+  redis_data:
+  dashboard_data:
+  n8n_data:

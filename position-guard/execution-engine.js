@@ -608,8 +608,13 @@ class ExecutionEngine {
         throw error;
       }
     }
-    try { await this.binance.changePositionMode(true); }
-    catch (error) { if (Number(error.code) !== -4059) throw error; }
+    const positionMode = await this.binance.positionMode();
+    if (positionMode?.dualSidePosition !== true) {
+      const error = new Error('HEDGE_MODE_REQUIRED: Binance account is in One-way mode; switch to Hedge mode after cancelling open orders');
+      error.code = 'HEDGE_MODE_REQUIRED';
+      error.retryable = false;
+      throw error;
+    }
     try { await this.binance.changeMarginType(request.symbol, 'ISOLATED'); }
     catch (error) { if (Number(error.code) !== -4046) throw error; }
     await this.binance.changeLeverage(request.symbol, request.leverage);
@@ -972,15 +977,32 @@ class ExecutionEngine {
     }
     const verificationFailure = !exchangeWasVerified
       && (error?.verificationResult || /verif|read-back|visible on Binance/i.test(String(error?.message || '')));
-    const title = exchangeWasVerified ? 'PERSISTENCE FAILED' : verificationFailure ? 'VERIFICATION FAILED' : 'EXECUTION FAILED';
-    const message = [`🚨 ATERUM ${title}`, `${request.type} ${request.symbol} ${request.positionSide}`,
-      `Execution ID: ${request.executionId}`, `Correlation ID: ${request.correlationId || request.executionId}`,
-      exchangeWasVerified ? 'Local persistence failed after verified Binance action.'
-        : verificationFailure ? 'Unable to verify the requested change on Binance.'
-          : 'Binance rejected or did not execute the requested change.',
-      `Verification Status: ${exchangeWasVerified ? 'VERIFIED' : verificationFailure ? 'FAILED' : 'NOT_STARTED'}`,
-      `Persistence Status: ${exchangeWasVerified ? 'FAILED' : 'NOT_STARTED'}`,
-      `Error: ${String(error?.message || error || 'unknown').slice(0, 500)}`].join('\n');
+    const title = exchangeWasVerified ? '🚨 PERSISTENCIA PENDIENTE'
+      : verificationFailure ? '⚠ VERIFICACIÓN FALLIDA' : '🚨 EJECUCIÓN FALLIDA';
+    const bar = (filled, total = 10) => '█'.repeat(filled) + '░'.repeat(total - filled);
+    const state = exchangeWasVerified
+      ? 'Binance confirmó la operación; el estado local requiere atención.'
+      : verificationFailure ? 'Binance no confirmó la operación mediante read-back.'
+        : 'Binance rechazó o no confirmó la solicitud.';
+    const nextAction = exchangeWasVerified
+      ? 'Revisar Monitor SL y Dashboard; no modificar la posición hasta confirmar ambos.'
+      : 'No se avanzó el estado local. Revisar el error antes de reintentar.';
+    const message = [
+      '━━━━━━━━━━━━━━━━━━━━━━━', title, '━━━━━━━━━━━━━━━━━━━━━━━', '',
+      `${request.positionSide === 'SHORT' ? '🔴' : '🟢'} ${request.positionSide}  ·  ${request.symbol}`,
+      `Execution ID: ${request.executionId}`, `Correlation ID: ${request.correlationId || request.executionId}`, '',
+      '━━━ ESTADO DEL PIPELINE ━━━',
+      `Binance       [${bar(exchangeWasVerified ? 10 : verificationFailure ? 5 : 2)}] ${exchangeWasVerified ? '✅ VERIFIED' : verificationFailure ? '⚠ UNCONFIRMED' : '❌ FAILED'}`,
+      `Persistencia  [${bar(exchangeWasVerified ? 2 : 0)}] ${exchangeWasVerified ? '❌ FAILED' : '⏸ NOT STARTED'}`,
+      '', '━━━ SOLICITUD ━━━',
+      `Tipo          ${request.type}`, request.quantity ? `Cantidad      ${request.quantity}` : null,
+      request.leverage ? `Leverage      ${request.leverage}x` : null,
+      request.stopLoss ? `Stop Loss     ${request.stopLoss}` : null,
+      request.takeProfit ? `Take Profit   ${request.takeProfit}` : null,
+      '', '━━━ DETALLE ━━━', state,
+      `Error: ${String(error?.message || error || 'unknown').slice(0, 700)}`,
+      '', `Acción: ${nextAction}`, '━━━━━━━━━━━━━━━━━━━━━━━'
+    ].filter(Boolean).join('\n');
     const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message }), signal: AbortSignal.timeout(8000)

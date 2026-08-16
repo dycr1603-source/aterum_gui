@@ -37,28 +37,18 @@
       },
       {
         "parameters": {
-          "chatId": "=-1003222176229",
-          "text": "={{ $json.text }}",
-          "additionalFields": {
-            "appendAttribution": false,
-            "parse_mode": "Markdown"
-          }
+          "mode": "runOnceForAllItems",
+          "jsCode": "const payload = $input.first().json;\nconst text = String(payload.telegramText ?? payload.text ?? '').trim();\n\nif (!text) {\n  return [{ json: { ...payload, notificationStatus: 'SKIPPED_NO_TEXT' } }];\n}\n\nconst token = process.env.TELEGRAM_BOT_TOKEN;\nconst chatId = process.env.TELEGRAM_CHAT_ID;\nif (!token || !chatId) throw new Error('Telegram environment variables are not configured');\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${token}/sendMessage`,\n  json: true,\n  timeout: 10000,\n  body: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML',\n    disable_web_page_preview: true\n  }\n});\n\nif (response?.ok !== true) throw new Error(`Telegram rejected notification: ${JSON.stringify(response).slice(0, 500)}`);\nreturn [{ json: { ...payload, notificationStatus: 'SENT', telegramMessageId: response.result?.message_id ?? null } }];"
         },
         "id": "3bbb6f34-d546-4d82-a02a-a78a8bd551c7",
         "name": "Telegram: Daily Report",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.2,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           1504,
           240
         ],
-        "webhookId": "6bafc417-4ecf-48b8-b021-e3b0772db5cf",
-        "credentials": {
-          "telegramApi": {
-            "id": "LpeGVxkxQmffa8v2",
-            "name": "Telegram account 2"
-          }
-        }
+        "webhookId": "6bafc417-4ecf-48b8-b021-e3b0772db5cf"
       },
       {
         "parameters": {
@@ -83,7 +73,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const crypto = require('crypto');\nconst API_KEY = process.env.BINANCE_API_KEY;\nconst API_SECRET = process.env.BINANCE_API_SECRET;\nconst BASE = 'https://fapi.binance.com';\nconst DASHBOARD = process.env.INTERNAL_DASHBOARD_BASE || 'http://127.0.0.1:3001';\nconst EXECUTION_ENGINE = process.env.EXECUTION_ENGINE_URL || 'http://position_guard:3091/executions';\nconst PORTFOLIO_CAPACITY_URL = EXECUTION_ENGINE.replace(/\\/executions\\/?$/, '/portfolio-capacity');\nconst EXECUTION_TOKEN = process.env.EXECUTION_ENGINE_TOKEN;\n\nfunction sign(params = {}) {\n  const query = Object.entries({ ...params, timestamp: Date.now(), recvWindow: 60000 })\n    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&');\n  return query + '&signature=' + crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');\n}\n\nasync function bget(path, params = {}) {\n  return this.helpers.httpRequest({\n    method: 'GET',\n    url: `${BASE}${path}?${sign(params)}`,\n    headers: { 'X-MBX-APIKEY': API_KEY },\n    json: true\n  });\n}\n\nconst blockers = [];\nlet cbStatus = { active: false };\ntry {\n  cbStatus = await this.helpers.httpRequest({ method: 'GET', url: `${DASHBOARD}/cb/status`, json: true });\n  if (cbStatus.active) blockers.push({\n    code: 'CIRCUIT_BREAKER',\n    current: cbStatus.consecutiveSL || 0,\n    maximum: 2,\n    exceeded: Math.max(0, Number(cbStatus.consecutiveSL || 0) - 2),\n    direction: cbStatus.direction || null,\n    reason: `Circuit breaker activo por ${cbStatus.expiresIn || 0} minutos`\n  });\n} catch (error) {\n  blockers.push({ code: 'RISK_SERVICE_UNAVAILABLE', reason: error.message });\n}\n\nlet balance = 0;\nlet availableBalance = 0;\nlet dailyPnL = 0;\nlet dailyPnLPct = 0;\nlet openPositions = [];\ntry {\n  const startOfDay = new Date();\n  startOfDay.setUTCHours(0, 0, 0, 0);\n  const [balances, positions, income] = await Promise.all([\n    bget.call(this, '/fapi/v2/balance'),\n    bget.call(this, '/fapi/v2/positionRisk'),\n    bget.call(this, '/fapi/v1/income', { startTime: startOfDay.getTime(), endTime: Date.now(), limit: 1000 })\n  ]);\n  const usdt = balances.find(row => row.asset === 'USDT') || {};\n  balance = Number(usdt.balance || 0);\n  availableBalance = Number(usdt.availableBalance || 0);\n  openPositions = positions.filter(row => Math.abs(Number(row.positionAmt || 0)) > 0).map(row => ({\n    symbol: row.symbol,\n    direction: Number(row.positionAmt) > 0 ? 'LONG' : 'SHORT',\n    quantity: Math.abs(Number(row.positionAmt)),\n    entryPrice: Number(row.entryPrice || 0),\n    unrealizedPnl: Number(row.unRealizedProfit || 0)\n  }));\n  dailyPnL = income.filter(row => row.incomeType === 'REALIZED_PNL')\n    .reduce((sum, row) => sum + Number(row.income || 0), 0);\n  dailyPnLPct = balance > 0 ? dailyPnL / balance * 100 : 0;\n} catch (error) {\n  blockers.push({ code: 'EXCHANGE_UNAVAILABLE', reason: error.message });\n}\n\nlet portfolioCapacity = null;\nif (!blockers.some(blocker => blocker.code === 'EXCHANGE_UNAVAILABLE')) {\n  try {\n    if (!EXECUTION_TOKEN) throw new Error('EXECUTION_ENGINE_TOKEN is not configured');\n    portfolioCapacity = await this.helpers.httpRequest({ method: 'GET', url: PORTFOLIO_CAPACITY_URL,\n      headers: { Authorization: `Bearer ${EXECUTION_TOKEN}` }, json: true, timeout: 30000 });\n    if (!portfolioCapacity.allowed) blockers.push({\n      code: 'PORTFOLIO_CAPACITY_FULL',\n      reason: portfolioCapacity.primaryReason?.code || 'No capital/risk capacity remains',\n      current: { riskPct: portfolioCapacity.risk?.openRiskPct,\n        marginUsagePct: portfolioCapacity.account?.marginUsagePct,\n        exposurePct: portfolioCapacity.exposure?.totalPct },\n      maximum: { riskPct: portfolioCapacity.risk?.maximumRiskPct,\n        marginUsagePct: portfolioCapacity.limits?.maxMarginUsagePct,\n        exposurePct: portfolioCapacity.limits?.maxExposurePct }\n    });\n  } catch (error) {\n    blockers.push({ code: 'PORTFOLIO_CAPACITY_UNAVAILABLE', reason: error.message });\n  }\n}\n\nlet capitalStatus = { halted: false, reasons: [] };\nif (!blockers.some(blocker => blocker.code === 'EXCHANGE_UNAVAILABLE')) {\n  try {\n    capitalStatus = await this.helpers.httpRequest({\n      method: 'GET',\n      url: `${DASHBOARD}/api/learning/capital-status?balance=${encodeURIComponent(balance)}`,\n      json: true\n    });\n    if (capitalStatus.halted) blockers.push({\n      code: 'CAPITAL_PROTECTION',\n      reason: (capitalStatus.reasons || []).join('; '),\n      current: { dailyPct: capitalStatus.dailyPct, weeklyPct: capitalStatus.weeklyPct, drawdownPct: capitalStatus.drawdownPct },\n      maximum: { dailyPct: 15, weeklyPct: 20, drawdownPct: 25 }\n    });\n  } catch (error) {\n    blockers.push({ code: 'CAPITAL_GUARD_UNAVAILABLE', reason: error.message });\n  }\n}\n\nconst primary = blockers[0] || null;\nconst passRisk = blockers.length === 0;\nconsole.log(`[RiskV2] pass=${passRisk} balance=${balance.toFixed(2)} positions=${openPositions.length} risk=${portfolioCapacity?.risk?.openRiskPct ?? 'N/A'}% remaining=${portfolioCapacity?.risk?.remainingRiskPct ?? 'N/A'}% slots=${portfolioCapacity?.capacity?.dynamicAdditionalPositions ?? 0} primary=${primary?.code || 'NONE'}`);\n\nreturn [{ json: {\n  passRisk,\n  balance: +balance.toFixed(2),\n  availableBalance: +availableBalance.toFixed(2),\n  dailyPnL: +dailyPnL.toFixed(2),\n  dailyPnLPct: +dailyPnLPct.toFixed(2),\n  openCount: openPositions.length,\n  openSymbols: openPositions.map(position => position.symbol),\n  openPositions,\n  portfolioCapacity,\n  haltReason: primary ? `${primary.code}: ${primary.reason || JSON.stringify(primary.current)}` : null,\n  riskDecision: {\n    allowed: passRisk,\n    primaryReason: primary,\n    secondaryReasons: blockers.slice(1),\n    controlsEvaluated: ['exchange', 'circuit_breaker', 'capital_guard', 'portfolio_risk',\n      'margin_capacity', 'portfolio_exposure', 'symbol_exposure', 'direction_exposure']\n  },\n  learningCapital: capitalStatus,\n  cbActive: !!cbStatus.active\n} }];"
+          "jsCode": "const crypto = require('crypto');\nconst API_KEY = process.env.BINANCE_API_KEY;\nconst API_SECRET = process.env.BINANCE_API_SECRET;\nconst BASE = 'https://fapi.binance.com';\nconst DASHBOARD = process.env.INTERNAL_DASHBOARD_BASE || 'http://127.0.0.1:3001';\nconst EXECUTION_ENGINE = process.env.EXECUTION_ENGINE_URL || 'http://position_guard:3091/executions';\nconst PORTFOLIO_CAPACITY_URL = EXECUTION_ENGINE.replace(/\\/executions\\/?$/, '/portfolio-capacity');\nconst EXECUTION_TOKEN = process.env.EXECUTION_ENGINE_TOKEN;\nlet binanceTimeOffsetMs = 0;\n\nfunction sign(params = {}) {\n  const query = Object.entries({ ...params, timestamp: Date.now() + binanceTimeOffsetMs, recvWindow: 60000 })\n    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&');\n  return query + '&signature=' + crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');\n}\n\nasync function syncBinanceTime() {\n  const clock = await this.helpers.httpRequest({ method: 'GET', url: `${BASE}/fapi/v1/time`, json: true, timeout: 10000 });\n  if (!Number.isFinite(Number(clock?.serverTime))) throw new Error('Binance time endpoint returned no serverTime');\n  binanceTimeOffsetMs = Number(clock.serverTime) - Date.now();\n}\n\nasync function bget(path, params = {}) {\n  return this.helpers.httpRequest({\n    method: 'GET',\n    url: `${BASE}${path}?${sign(params)}`,\n    headers: { 'X-MBX-APIKEY': API_KEY },\n    json: true\n  });\n}\n\nconst blockers = [];\nlet cbStatus = { active: false };\ntry {\n  cbStatus = await this.helpers.httpRequest({ method: 'GET', url: `${DASHBOARD}/cb/status`, json: true });\n  if (cbStatus.active) blockers.push({\n    code: 'CIRCUIT_BREAKER',\n    current: cbStatus.consecutiveSL || 0,\n    maximum: 2,\n    exceeded: Math.max(0, Number(cbStatus.consecutiveSL || 0) - 2),\n    direction: cbStatus.direction || null,\n    reason: `Circuit breaker activo por ${cbStatus.expiresIn || 0} minutos`\n  });\n} catch (error) {\n  blockers.push({ code: 'RISK_SERVICE_UNAVAILABLE', reason: error.message });\n}\n\nlet balance = 0;\nlet availableBalance = 0;\nlet dailyPnL = 0;\nlet dailyPnLPct = 0;\nlet openPositions = [];\ntry {\n  await syncBinanceTime.call(this);\n  const startOfDay = new Date();\n  startOfDay.setUTCHours(0, 0, 0, 0);\n  const [balances, positions, income] = await Promise.all([\n    bget.call(this, '/fapi/v2/balance'),\n    bget.call(this, '/fapi/v2/positionRisk'),\n    bget.call(this, '/fapi/v1/income', { startTime: startOfDay.getTime(), endTime: Date.now(), limit: 1000 })\n  ]);\n  const usdt = balances.find(row => row.asset === 'USDT') || {};\n  balance = Number(usdt.balance || 0);\n  availableBalance = Number(usdt.availableBalance || 0);\n  openPositions = positions.filter(row => Math.abs(Number(row.positionAmt || 0)) > 0).map(row => ({\n    symbol: row.symbol,\n    direction: Number(row.positionAmt) > 0 ? 'LONG' : 'SHORT',\n    quantity: Math.abs(Number(row.positionAmt)),\n    entryPrice: Number(row.entryPrice || 0),\n    unrealizedPnl: Number(row.unRealizedProfit || 0)\n  }));\n  dailyPnL = income.filter(row => row.incomeType === 'REALIZED_PNL')\n    .reduce((sum, row) => sum + Number(row.income || 0), 0);\n  dailyPnLPct = balance > 0 ? dailyPnL / balance * 100 : 0;\n} catch (error) {\n  blockers.push({ code: 'EXCHANGE_UNAVAILABLE', reason: error.message });\n}\n\nlet portfolioCapacity = null;\nif (!blockers.some(blocker => blocker.code === 'EXCHANGE_UNAVAILABLE')) {\n  try {\n    if (!EXECUTION_TOKEN) throw new Error('EXECUTION_ENGINE_TOKEN is not configured');\n    portfolioCapacity = await this.helpers.httpRequest({ method: 'GET', url: PORTFOLIO_CAPACITY_URL,\n      headers: { Authorization: `Bearer ${EXECUTION_TOKEN}` }, json: true, timeout: 30000 });\n    if (!portfolioCapacity.allowed) blockers.push({\n      code: 'PORTFOLIO_CAPACITY_FULL',\n      reason: portfolioCapacity.primaryReason?.code || 'No capital/risk capacity remains',\n      current: { riskPct: portfolioCapacity.risk?.openRiskPct,\n        marginUsagePct: portfolioCapacity.account?.marginUsagePct,\n        exposurePct: portfolioCapacity.exposure?.totalPct },\n      maximum: { riskPct: portfolioCapacity.risk?.maximumRiskPct,\n        marginUsagePct: portfolioCapacity.limits?.maxMarginUsagePct,\n        exposurePct: portfolioCapacity.limits?.maxExposurePct }\n    });\n  } catch (error) {\n    blockers.push({ code: 'PORTFOLIO_CAPACITY_UNAVAILABLE', reason: error.message });\n  }\n}\n\nlet capitalStatus = { halted: false, reasons: [] };\nif (!blockers.some(blocker => blocker.code === 'EXCHANGE_UNAVAILABLE')) {\n  try {\n    capitalStatus = await this.helpers.httpRequest({\n      method: 'GET',\n      url: `${DASHBOARD}/api/learning/capital-status?balance=${encodeURIComponent(balance)}`,\n      json: true\n    });\n    if (capitalStatus.halted) blockers.push({\n      code: 'CAPITAL_PROTECTION',\n      reason: (capitalStatus.reasons || []).join('; '),\n      current: { dailyPct: capitalStatus.dailyPct, weeklyPct: capitalStatus.weeklyPct, drawdownPct: capitalStatus.drawdownPct },\n      maximum: { dailyPct: 15, weeklyPct: 20, drawdownPct: 25 }\n    });\n  } catch (error) {\n    blockers.push({ code: 'CAPITAL_GUARD_UNAVAILABLE', reason: error.message });\n  }\n}\n\nconst primary = blockers[0] || null;\nconst passRisk = blockers.length === 0;\nconsole.log(`[RiskV2] pass=${passRisk} balance=${balance.toFixed(2)} positions=${openPositions.length} risk=${portfolioCapacity?.risk?.openRiskPct ?? 'N/A'}% remaining=${portfolioCapacity?.risk?.remainingRiskPct ?? 'N/A'}% slots=${portfolioCapacity?.capacity?.dynamicAdditionalPositions ?? 0} primary=${primary?.code || 'NONE'}`);\n\nreturn [{ json: {\n  passRisk,\n  balance: +balance.toFixed(2),\n  availableBalance: +availableBalance.toFixed(2),\n  dailyPnL: +dailyPnL.toFixed(2),\n  dailyPnLPct: +dailyPnLPct.toFixed(2),\n  openCount: openPositions.length,\n  openSymbols: openPositions.map(position => position.symbol),\n  openPositions,\n  portfolioCapacity,\n  haltReason: primary ? `${primary.code}: ${primary.reason || JSON.stringify(primary.current)}` : null,\n  riskDecision: {\n    allowed: passRisk,\n    primaryReason: primary,\n    secondaryReasons: blockers.slice(1),\n    controlsEvaluated: ['exchange', 'circuit_breaker', 'capital_guard', 'portfolio_risk',\n      'margin_capacity', 'portfolio_exposure', 'symbol_exposure', 'direction_exposure']\n  },\n  learningCapital: capitalStatus,\n  cbActive: !!cbStatus.active\n} }];"
         },
         "id": "5bede9f4-4395-48c4-b9ca-fec6e27f907c",
         "name": "Risk Guard",
@@ -130,28 +120,18 @@
       },
       {
         "parameters": {
-          "chatId": "=-1003222176229",
-          "text": "={{ $json.sessionBlock ? '🕐 Apertura de Sesión\\n━━━━━━━━━━━━━━━━━━━\\n\\n' + $json.haltReason + '\\n\\n💡 Reanuda al cierre de apertura\\n⏰ ' + new Date().toISOString().slice(11,16) + ' UTC' : $json.cbActive ? '⚠️ Circuit Breaker\\n━━━━━━━━━━━━━━━━━━━\\n\\n' + $json.haltReason : '🛑 Trading Pausado\\n━━━━━━━━━━━━━━━━━━━\\n\\n' + $json.haltReason + '\\n\\nPnL día: ' + $json.dailyPnLPct + '%\\nPosiciones: ' + $json.openCount }}",
-          "additionalFields": {
-            "appendAttribution": false,
-            "parse_mode": "Markdown"
-          }
+          "mode": "runOnceForAllItems",
+          "jsCode": "const payload = $input.first().json;\nconst text = String(payload.telegramText ?? payload.text ?? '').trim();\n\nif (!text) {\n  return [{ json: { ...payload, notificationStatus: 'SKIPPED_NO_TEXT' } }];\n}\n\nconst token = process.env.TELEGRAM_BOT_TOKEN;\nconst chatId = process.env.TELEGRAM_CHAT_ID;\nif (!token || !chatId) throw new Error('Telegram environment variables are not configured');\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${token}/sendMessage`,\n  json: true,\n  timeout: 10000,\n  body: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML',\n    disable_web_page_preview: true\n  }\n});\n\nif (response?.ok !== true) throw new Error(`Telegram rejected notification: ${JSON.stringify(response).slice(0, 500)}`);\nreturn [{ json: { ...payload, notificationStatus: 'SENT', telegramMessageId: response.result?.message_id ?? null } }];"
         },
         "id": "aff535ca-7136-4ffa-a771-620311341c2e",
         "name": "Telegram: Risk Halt",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.2,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           1568,
           992
         ],
-        "webhookId": "fc1b5417-f2fb-4360-98e0-d703a2fc812b",
-        "credentials": {
-          "telegramApi": {
-            "id": "LTF24ID3cVOACeA1",
-            "name": "Telegram account"
-          }
-        }
+        "webhookId": "fc1b5417-f2fb-4360-98e0-d703a2fc812b"
       },
       {
         "parameters": {
@@ -202,28 +182,18 @@
       },
       {
         "parameters": {
-          "chatId": "=-1003222176229",
-          "text": "={{ '⚪ *No Trading Setup* — ' + new Date().toISOString().slice(0,16).replace('T',' ') + ' UTC\\n\\n' + $json.reason }}",
-          "additionalFields": {
-            "appendAttribution": false,
-            "parse_mode": "Markdown"
-          }
+          "mode": "runOnceForAllItems",
+          "jsCode": "const payload = $input.first().json;\nconst text = String(payload.telegramText ?? payload.text ?? '').trim();\n\nif (!text) {\n  return [{ json: { ...payload, notificationStatus: 'SKIPPED_NO_TEXT' } }];\n}\n\nconst token = process.env.TELEGRAM_BOT_TOKEN;\nconst chatId = process.env.TELEGRAM_CHAT_ID;\nif (!token || !chatId) throw new Error('Telegram environment variables are not configured');\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${token}/sendMessage`,\n  json: true,\n  timeout: 10000,\n  body: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML',\n    disable_web_page_preview: true\n  }\n});\n\nif (response?.ok !== true) throw new Error(`Telegram rejected notification: ${JSON.stringify(response).slice(0, 500)}`);\nreturn [{ json: { ...payload, notificationStatus: 'SENT', telegramMessageId: response.result?.message_id ?? null } }];"
         },
         "id": "202d9470-6b62-4e57-aad9-0012f360ca96",
         "name": "Telegram: No Setup",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.2,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           2304,
           1152
         ],
-        "webhookId": "e85c501a-e7db-4b3d-91d9-dfd5c61eadc1",
-        "credentials": {
-          "telegramApi": {
-            "id": "LTF24ID3cVOACeA1",
-            "name": "Telegram account"
-          }
-        }
+        "webhookId": "e85c501a-e7db-4b3d-91d9-dfd5c61eadc1"
       },
       {
         "parameters": {
@@ -300,28 +270,18 @@
       },
       {
         "parameters": {
-          "chatId": "=-1003222176229",
-          "text": "={{ $json.text }}",
-          "additionalFields": {
-            "appendAttribution": false,
-            "parse_mode": "HTML"
-          }
+          "mode": "runOnceForAllItems",
+          "jsCode": "const payload = $input.first().json;\nconst text = String(payload.telegramText ?? payload.text ?? '').trim();\n\nif (!text) {\n  return [{ json: { ...payload, notificationStatus: 'SKIPPED_NO_TEXT' } }];\n}\n\nconst token = process.env.TELEGRAM_BOT_TOKEN;\nconst chatId = process.env.TELEGRAM_CHAT_ID;\nif (!token || !chatId) throw new Error('Telegram environment variables are not configured');\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${token}/sendMessage`,\n  json: true,\n  timeout: 10000,\n  body: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML',\n    disable_web_page_preview: true\n  }\n});\n\nif (response?.ok !== true) throw new Error(`Telegram rejected notification: ${JSON.stringify(response).slice(0, 500)}`);\nreturn [{ json: { ...payload, notificationStatus: 'SENT', telegramMessageId: response.result?.message_id ?? null } }];"
         },
         "id": "eb3252d6-3e08-4918-9f9a-40862257db99",
         "name": "Telegram: Trade Opened",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.2,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           5040,
           1296
         ],
-        "webhookId": "44ee3c25-b366-4477-afeb-c33fa6ad798c",
-        "credentials": {
-          "telegramApi": {
-            "id": "LTF24ID3cVOACeA1",
-            "name": "Telegram account"
-          }
-        }
+        "webhookId": "44ee3c25-b366-4477-afeb-c33fa6ad798c"
       },
       {
         "parameters": {
@@ -351,28 +311,18 @@
       },
       {
         "parameters": {
-          "chatId": "=-1003222176229",
-          "text": "={{ $json.text }}",
-          "additionalFields": {
-            "appendAttribution": false,
-            "parse_mode": "HTML"
-          }
+          "mode": "runOnceForAllItems",
+          "jsCode": "const payload = $input.first().json;\nconst text = String(payload.telegramText ?? payload.text ?? '').trim();\n\nif (!text) {\n  return [{ json: { ...payload, notificationStatus: 'SKIPPED_NO_TEXT' } }];\n}\n\nconst token = process.env.TELEGRAM_BOT_TOKEN;\nconst chatId = process.env.TELEGRAM_CHAT_ID;\nif (!token || !chatId) throw new Error('Telegram environment variables are not configured');\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${token}/sendMessage`,\n  json: true,\n  timeout: 10000,\n  body: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML',\n    disable_web_page_preview: true\n  }\n});\n\nif (response?.ok !== true) throw new Error(`Telegram rejected notification: ${JSON.stringify(response).slice(0, 500)}`);\nreturn [{ json: { ...payload, notificationStatus: 'SENT', telegramMessageId: response.result?.message_id ?? null } }];"
         },
         "id": "8d29657e-32ae-40be-b909-df5303fc1245",
         "name": "Telegram: Entry Rejected",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.2,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           4368,
           1696
         ],
-        "webhookId": "a522bef0-8865-4558-acd6-9157b6426189",
-        "credentials": {
-          "telegramApi": {
-            "id": "LTF24ID3cVOACeA1",
-            "name": "Telegram account"
-          }
-        }
+        "webhookId": "a522bef0-8865-4558-acd6-9157b6426189"
       },
       {
         "parameters": {
@@ -422,55 +372,33 @@
       },
       {
         "parameters": {
-          "chatId": "=-1003222176229",
-          "text": "={{ $json.text }}",
-          "replyMarkup": "forceReply",
-          "forceReply": {},
-          "additionalFields": {
-            "appendAttribution": false,
-            "parse_mode": "HTML"
-          }
+          "mode": "runOnceForAllItems",
+          "jsCode": "const payload = $input.first().json;\nconst text = String(payload.telegramText ?? payload.text ?? '').trim();\n\nif (!text) {\n  return [{ json: { ...payload, notificationStatus: 'SKIPPED_NO_TEXT' } }];\n}\n\nconst token = process.env.TELEGRAM_BOT_TOKEN;\nconst chatId = process.env.TELEGRAM_CHAT_ID;\nif (!token || !chatId) throw new Error('Telegram environment variables are not configured');\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${token}/sendMessage`,\n  json: true,\n  timeout: 10000,\n  body: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML',\n    disable_web_page_preview: true\n  }\n});\n\nif (response?.ok !== true) throw new Error(`Telegram rejected notification: ${JSON.stringify(response).slice(0, 500)}`);\nreturn [{ json: { ...payload, notificationStatus: 'SENT', telegramMessageId: response.result?.message_id ?? null } }];"
         },
         "id": "206fbc78-baea-41f8-b4e1-f9dd7b3acaf0",
         "name": "Telegram: Daily Report AI",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.2,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           1504,
           400
         ],
-        "webhookId": "a522bef0-8865-4558-acd6-9157b6426189",
-        "credentials": {
-          "telegramApi": {
-            "id": "LTF24ID3cVOACeA1",
-            "name": "Telegram account"
-          }
-        }
+        "webhookId": "a522bef0-8865-4558-acd6-9157b6426189"
       },
       {
         "parameters": {
-          "chatId": "={{ process.env.TELEGRAM_CHAT_ID || '-1003222176229' }}",
-          "text": "={{ $json.text }}",
-          "additionalFields": {
-            "appendAttribution": false,
-            "parse_mode": "HTML"
-          }
+          "mode": "runOnceForAllItems",
+          "jsCode": "const payload = $input.first().json;\nconst text = String(payload.telegramText ?? payload.text ?? '').trim();\n\nif (!text) {\n  return [{ json: { ...payload, notificationStatus: 'SKIPPED_NO_TEXT' } }];\n}\n\nconst token = process.env.TELEGRAM_BOT_TOKEN;\nconst chatId = process.env.TELEGRAM_CHAT_ID;\nif (!token || !chatId) throw new Error('Telegram environment variables are not configured');\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${token}/sendMessage`,\n  json: true,\n  timeout: 10000,\n  body: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML',\n    disable_web_page_preview: true\n  }\n});\n\nif (response?.ok !== true) throw new Error(`Telegram rejected notification: ${JSON.stringify(response).slice(0, 500)}`);\nreturn [{ json: { ...payload, notificationStatus: 'SENT', telegramMessageId: response.result?.message_id ?? null } }];"
         },
         "id": "7ed64fa1-fdf2-472e-8c3c-e59bd59fadef",
         "name": "Telegram: Weekly Report AI",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.2,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           1504,
           64
         ],
-        "webhookId": "a522bef0-8865-4558-acd6-9157b6426189",
-        "credentials": {
-          "telegramApi": {
-            "id": "LTF24ID3cVOACeA1",
-            "name": "Telegram account"
-          }
-        }
+        "webhookId": "a522bef0-8865-4558-acd6-9157b6426189"
       },
       {
         "parameters": {
@@ -583,7 +511,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const d = $input.first().json;\nif (d.failureNotificationSent || d.failureNotificationSuppressed) return [{ json: { ...d, telegramText: null } }];\n\nconst capacity = d.portfolioCapacity || d.verificationResult?.error?.responseBody || {};\nconst rejection = d.rejectionReason || capacity.primaryReason || {};\nconst rejected = d.finalStatus === 'REJECTED' || d.status === 'PORTFOLIO_CAPACITY_REJECTED'\n  || d.failureCategory === 'EXECUTION_REJECTED';\nlet telegramText;\n\nif (rejected) {\n  const code = String(rejection.code || 'PORTFOLIO_CAPACITY_REJECTED');\n  const label = code.toLowerCase().split('_')\n    .map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');\n  const direction = String(rejection.direction || d.positionSide || d.side || '').toUpperCase();\n  const currentPct = Number(rejection.current || 0);\n  const maximumPct = Number(rejection.maximum || 0);\n  const equity = Number(capacity.account?.equity || 0);\n  const current = equity > 0 ? equity * currentPct / 100 : currentPct;\n  const maximum = equity > 0 ? equity * maximumPct / 100 : maximumPct;\n  telegramText = ['❌ TRADE REJECTED', d.symbol || 'UNKNOWN', '', `Reason: ${label}`,\n    direction ? `Current ${direction} Exposure: ${current.toFixed(2)} USDT (${currentPct.toFixed(2)}% equity)` : null,\n    maximum > 0 ? `Maximum Allowed: ${maximum.toFixed(2)} USDT (${maximumPct.toFixed(2)}% equity)` : null,\n    maximum > 0 ? `Remaining Capacity: ${Math.max(0, maximum - current).toFixed(2)} USDT` : null,\n    `Execution ID: ${d.executionId || 'not-created'}`, 'No Binance order was created.',\n    'Verification and persistence were not started.', 'This is an expected risk protection.']\n    .filter(Boolean).join('\\n');\n} else if (d.failureCategory === 'PERSISTENCE_FAILURE' || d.verificationResult?.exchangeVerified === true) {\n  telegramText = ['🚨 PERSISTENCE FAILED', `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,\n    `Execution ID: ${d.executionId || 'not-created'}`, 'Binance execution and verification succeeded.',\n    'Local persistence failed. No TRADE OPENED notification was sent.',\n    `Error: ${String(d.error || 'unknown').slice(0, 500)}`].join('\\n');\n} else if (d.failureCategory === 'VERIFICATION_FAILURE') {\n  telegramText = ['⚠ VERIFICATION FAILED', `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,\n    `Execution ID: ${d.executionId || 'not-created'}`, 'Execution may have occurred, but Binance read-back did not confirm it.',\n    'No persistence or TRADE OPENED notification occurred.',\n    `Error: ${String(d.error || 'unknown').slice(0, 500)}`].join('\\n');\n} else {\n  telegramText = ['🚨 EXECUTION FAILED', `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,\n    `Execution ID: ${d.executionId || 'not-created'}`, 'Binance did not execute the requested position.',\n    'Verification and persistence were not started. No TRADE OPENED notification was sent.',\n    `Error: ${String(d.error || 'unknown').slice(0, 500)}`].join('\\n');\n}\n\nreturn [{ json: { ...d, telegramText } }];\n"
+          "jsCode": "const d = $input.first().json;\nconst engineAlreadyNotified = d.failureNotificationSent === true;\nconst suppressed = d.failureNotificationSuppressed === true;\nconst verification = d.verificationResult || {};\nconst exchangeVerified = verification.exchangeVerified === true;\nconst persistenceFailed = d.failureCategory === 'PERSISTENCE_FAILURE' || exchangeVerified;\nconst verificationFailed = d.failureCategory === 'VERIFICATION_FAILURE'\n  || (!exchangeVerified && /verif|read-back|visible/i.test(String(d.error || '')));\nconst rejected = d.finalStatus === 'REJECTED' || d.status === 'PORTFOLIO_CAPACITY_REJECTED'\n  || d.failureCategory === 'EXECUTION_REJECTED';\nconst direction = String(d.positionSide || d.side || '').toUpperCase() || 'N/A';\nconst bar = (filled, total = 10) => '█'.repeat(filled) + '░'.repeat(total - filled);\n\nlet telegramText = null;\nif (!engineAlreadyNotified && !suppressed) {\n  const title = rejected ? '❌ TRADE RECHAZADO' : persistenceFailed ? '🚨 PERSISTENCIA PENDIENTE'\n    : verificationFailed ? '⚠ VERIFICACIÓN FALLIDA' : '🚨 EJECUCIÓN FALLIDA';\n  const exchangeState = exchangeVerified ? '✅ VERIFIED' : '❌ NOT VERIFIED';\n  const localState = persistenceFailed ? '❌ FAILED' : '⏸ NOT STARTED';\n  const capacity = d.portfolioCapacity || verification.error?.responseBody || {};\n  const reason = d.rejectionReason || capacity.primaryReason || {};\n  const nextAction = rejected\n    ? 'No se creó ninguna orden. Revisa los límites de riesgo/capacidad.'\n    : persistenceFailed\n      ? 'Binance confirmó la operación; revisar monitor local y dashboard antes de modificarla.'\n      : 'Binance no confirmó la operación. No se avanzó el estado local.';\n  telegramText = [\n    '━━━━━━━━━━━━━━━━━━━━━━━', title, '━━━━━━━━━━━━━━━━━━━━━━━', '',\n    `${direction === 'SHORT' || direction === 'SELL' ? '🔴' : '🟢'} ${direction}  ·  ${d.symbol || 'UNKNOWN'}`,\n    `Execution ID: ${d.executionId || 'not-created'}`, '',\n    '━━━ ESTADO DEL PIPELINE ━━━',\n    `Binance       [${bar(exchangeVerified ? 10 : 2)}] ${exchangeState}`,\n    `Persistencia  [${bar(persistenceFailed ? 2 : 0)}] ${localState}`,\n    `Final status  ${d.finalStatus || 'FAILED'}`,\n    '', '━━━ SOLICITUD ━━━',\n    `Tipo          ${d.type || 'OPEN_POSITION'}`,\n    d.qty ? `Cantidad      ${d.qty}` : null,\n    d.leverage ? `Leverage      ${d.leverage}x` : null,\n    d.sl ? `Stop Loss     ${d.sl}` : null,\n    d.tp ? `Take Profit   ${d.tp}` : null,\n    rejected && reason.code ? `Motivo riesgo  ${reason.code}` : null,\n    '', '━━━ DETALLE ━━━',\n    `Error: ${String(d.error || 'unknown').slice(0, 700)}`,\n    '', `Acción: ${nextAction}`, '━━━━━━━━━━━━━━━━━━━━━━━'\n  ].filter(Boolean).join('\\n');\n}\n\nreturn [{ json: { ...d, telegramText, notificationStatus: engineAlreadyNotified ? 'SENT_BY_ENGINE' : suppressed ? 'SUPPRESSED_TRANSIENT' : 'PENDING_SEND' } }];"
         },
         "id": "execution-failure-builder-v1",
         "name": "Build Execution Failure",
@@ -630,28 +558,18 @@
       },
       {
         "parameters": {
-          "chatId": "=-1003222176229",
-          "text": "={{ $json.telegramText }}",
-          "additionalFields": {
-            "appendAttribution": false,
-            "parse_mode": "HTML"
-          }
+          "mode": "runOnceForAllItems",
+          "jsCode": "const payload = $input.first().json;\nconst text = String(payload.telegramText ?? payload.text ?? '').trim();\n\nif (!text) {\n  return [{ json: { ...payload, notificationStatus: 'SKIPPED_NO_TEXT' } }];\n}\n\nconst token = process.env.TELEGRAM_BOT_TOKEN;\nconst chatId = process.env.TELEGRAM_CHAT_ID;\nif (!token || !chatId) throw new Error('Telegram environment variables are not configured');\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${token}/sendMessage`,\n  json: true,\n  timeout: 10000,\n  body: {\n    chat_id: chatId,\n    text,\n    parse_mode: 'HTML',\n    disable_web_page_preview: true\n  }\n});\n\nif (response?.ok !== true) throw new Error(`Telegram rejected notification: ${JSON.stringify(response).slice(0, 500)}`);\nreturn [{ json: { ...payload, notificationStatus: 'SENT', telegramMessageId: response.result?.message_id ?? null } }];"
         },
         "id": "execution-failure-telegram-v1",
         "name": "Telegram: Execution Failed",
-        "type": "n8n-nodes-base.telegram",
-        "typeVersion": 1.2,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
         "position": [
           2640,
           440
         ],
-        "webhookId": "44ee3c25-b366-4477-afeb-c33fa6ad798c",
-        "credentials": {
-          "telegramApi": {
-            "id": "LTF24ID3cVOACeA1",
-            "name": "Telegram account"
-          }
-        }
+        "webhookId": "44ee3c25-b366-4477-afeb-c33fa6ad798c"
       }
     ],
     "connections": {

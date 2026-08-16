@@ -20,6 +20,9 @@ async function run(nodeName, input) {
   assert.equal(branches[0][0].node, 'Build Trade Alert');
   assert.equal(branches[1][0].node, 'Build Execution Failure');
   assert(!branches[0].some(edge => edge.node === 'Monitor SL Global'));
+  const failureNotificationBranches = workflow.connections['If: Failure Notification Required'].main;
+  assert.deepStrictEqual(failureNotificationBranches[1], [],
+    'an unverified execution must never enter Monitor SL Global');
   const conditions = workflow.nodes.find(node => node.name === 'If: Execution Verified')
     .parameters.conditions.conditions.map(condition => condition.id);
   assert(conditions.includes('execution-pipeline-condition'));
@@ -96,21 +99,28 @@ async function run(nodeName, input) {
     rejectionReason: { code: 'DIRECTION_EXPOSURE_LIMIT', direction: 'SHORT', current: 400.3756, maximum: 400 },
     portfolioCapacity: { account: { equity: 203.7178 } }
   });
-  assert(rejected.telegramText.includes('❌ TRADE REJECTED'));
-  assert(rejected.telegramText.includes('Direction Exposure Limit'));
-  assert(rejected.telegramText.includes('No Binance order was created'));
-  assert(!rejected.telegramText.includes('TRADE OPENED'));
+  assert(rejected.telegramText.includes('❌ TRADE RECHAZADO'));
+  assert(rejected.telegramText.includes('DIRECTION_EXPOSURE_LIMIT'));
+  assert(rejected.telegramText.includes('Binance'));
+  assert.equal(rejected.notificationStatus, 'PENDING_SEND');
 
   const failed = await run('Build Execution Failure', {
     symbol: 'ATOMUSDT', executionId: 'failed-execution', finalStatus: 'FAILED',
     failureCategory: 'EXECUTION_FAILURE', error: 'Binance rejected'
   });
-  assert(failed.telegramText.includes('🚨 EXECUTION FAILED'));
+  assert(failed.telegramText.includes('🚨 EJECUCIÓN FALLIDA'));
 
   const unverified = await run('Build Execution Failure', {
     symbol: 'ATOMUSDT', executionId: 'verification-execution', finalStatus: 'FAILED',
     failureCategory: 'VERIFICATION_FAILURE', error: 'read-back timeout'
   });
-  assert(unverified.telegramText.includes('⚠ VERIFICATION FAILED'));
+  assert(unverified.telegramText.includes('⚠ VERIFICACIÓN FALLIDA'));
+
+  const engineNotified = await run('Build Execution Failure', {
+    symbol: 'DOTUSDT', executionId: 'engine-notified', finalStatus: 'FAILED',
+    failureNotificationSent: true, error: 'Local state publication failed'
+  });
+  assert.equal(engineNotified.telegramText, null);
+  assert.equal(engineNotified.notificationStatus, 'SENT_BY_ENGINE');
   console.log(`open notification lifecycle tests: ok (${opened.text.length} premium chars)`);
 })().catch(error => { console.error(error); process.exit(1); });

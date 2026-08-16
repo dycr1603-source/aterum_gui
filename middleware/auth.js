@@ -4,7 +4,7 @@ const session = require('express-session');
 const { BRAND_LOGO_PATH } = require('../views/brand');
 require('../services/load_env');
 
-const SESSION_SECRET  = process.env.SESSION_SECRET || 'aterum-session-secret-xK9mP2024';
+const SESSION_SECRET  = process.env.SESSION_SECRET || '';
 const SESSION_MAX_AGE = 8 * 60 * 60 * 1000;
 
 const loginAttempts = {};

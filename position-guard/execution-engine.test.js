@@ -49,6 +49,7 @@ class FakeBinance {
     ] }] });
   }
   tickerPrice() { return Promise.resolve({ price: '100' }); }
+  positionMode() { return Promise.resolve({ dualSidePosition: true }); }
   changePositionMode() { return Promise.resolve({ code: 200 }); }
   changeMarginType() { return Promise.resolve({ code: 200 }); }
   changeLeverage() { return Promise.resolve({ leverage: 5 }); }
@@ -150,6 +151,26 @@ async function testVerifiedOpen() {
   assert.equal(binance.algos.length, 2);
   assert(binance.algos.some(row => row.orderType === 'STOP_MARKET'));
   assert(binance.algos.some(row => row.orderType === 'TAKE_PROFIT_MARKET'));
+}
+
+async function testVerifiedOpenDoesNotChangeExistingHedgeMode() {
+  const binance = new FakeBinance();
+  binance.position = null;
+  binance.algos = [];
+  binance.changePositionMode = async () => { throw new Error('position mode must not be changed during an entry'); };
+  binance.createOrder = function(params) {
+    const row = { orderId: this.nextOrder++, clientOrderId: params.newClientOrderId, status: 'FILLED',
+      executedQty: String(params.quantity), origQty: String(params.quantity), avgPrice: '100', symbol: params.symbol };
+    this.orders.push(row);
+    this.position = { symbol: params.symbol, positionAmt: String(params.quantity), positionSide: params.positionSide,
+      entryPrice: '100', markPrice: '100', leverage: '5' };
+    return Promise.resolve(row);
+  };
+  const result = await engine(binance).openPosition({
+    executionId: '56565656-5656-4565-8565-565656565656', type: 'OPEN_POSITION', symbol: 'BTCUSDT',
+    positionSide: 'LONG', quantity: 2, leverage: 5, stopLoss: 95, takeProfit: 110
+  });
+  assert.equal(result.verificationResult.verified, true);
 }
 
 async function testPortfolioCapacityRejectsOpenBeforeBinance() {
@@ -289,6 +310,7 @@ function testActionableFailuresStillNotify() {
   await testVerifiedClose();
   await testVerifiedPartialTakeProfit();
   await testVerifiedOpen();
+  await testVerifiedOpenDoesNotChangeExistingHedgeMode();
   await testPortfolioCapacityRejectsOpenBeforeBinance();
   await testPortfolioRejectionIsTerminalOutcome();
   await testFailureNeverUpdatesTradeState();

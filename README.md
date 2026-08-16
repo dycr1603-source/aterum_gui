@@ -123,6 +123,40 @@ pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
+## Docker local en WSL
+
+La configuracion reproducible para WSL esta en `docker-compose.yml`. La plantilla
+segura de variables es `docker.env.example`; copiarla a `.env` y reemplazar los
+valores marcados antes de arrancar.
+
+```bash
+cp docker.env.example .env
+docker compose up -d --build
+curl -f http://127.0.0.1:8080/healthz
+curl -f http://127.0.0.1:8080/n8n/
+```
+
+El arranque por defecto mantiene `N8N_TRADING_DISABLED=1` y no habilita los
+perfiles que requieren credenciales externas. Despues de validar Binance,
+Telegram y el motor de ejecucion, levantar los auxiliares con:
+
+```bash
+docker compose --profile trading --profile aux up -d
+```
+
+Servicios locales: proxy `8080`, dashboard `3001`, Chart API `3000`, n8n `5678`.
+La base MariaDB y Redis no publican puertos al host; sus datos persisten en
+volumenes Docker. Detener con `docker compose down` y consultar logs con
+`docker compose logs -f --tail=200 <servicio>`.
+
+Dashboard, Chart API y n8n comparten namespace de red para conservar los
+contratos historicos `127.0.0.1`. Tras reiniciar o recrear Dashboard, recrear
+los tres servicios juntos:
+
+```bash
+docker compose up -d --force-recreate dashboard aterum_gui n8n nginx
+```
+
 ## Simulador
 
 La pantalla `/simulator` separa datos simulados y reales:

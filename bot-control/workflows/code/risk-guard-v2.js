@@ -6,11 +6,18 @@ const DASHBOARD = process.env.INTERNAL_DASHBOARD_BASE || 'http://127.0.0.1:3001'
 const EXECUTION_ENGINE = process.env.EXECUTION_ENGINE_URL || 'http://position_guard:3091/executions';
 const PORTFOLIO_CAPACITY_URL = EXECUTION_ENGINE.replace(/\/executions\/?$/, '/portfolio-capacity');
 const EXECUTION_TOKEN = process.env.EXECUTION_ENGINE_TOKEN;
+let binanceTimeOffsetMs = 0;
 
 function sign(params = {}) {
-  const query = Object.entries({ ...params, timestamp: Date.now(), recvWindow: 60000 })
+  const query = Object.entries({ ...params, timestamp: Date.now() + binanceTimeOffsetMs, recvWindow: 60000 })
     .map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&');
   return query + '&signature=' + crypto.createHmac('sha256', API_SECRET).update(query).digest('hex');
+}
+
+async function syncBinanceTime() {
+  const clock = await this.helpers.httpRequest({ method: 'GET', url: `${BASE}/fapi/v1/time`, json: true, timeout: 10000 });
+  if (!Number.isFinite(Number(clock?.serverTime))) throw new Error('Binance time endpoint returned no serverTime');
+  binanceTimeOffsetMs = Number(clock.serverTime) - Date.now();
 }
 
 async function bget(path, params = {}) {
@@ -44,6 +51,7 @@ let dailyPnL = 0;
 let dailyPnLPct = 0;
 let openPositions = [];
 try {
+  await syncBinanceTime.call(this);
   const startOfDay = new Date();
   startOfDay.setUTCHours(0, 0, 0, 0);
   const [balances, positions, income] = await Promise.all([

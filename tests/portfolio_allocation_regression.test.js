@@ -21,6 +21,7 @@ assert(code('Execute Trade').includes('PORTFOLIO_CAPACITY_REJECTED'));
 async function riskGuard(capacity) {
   const helpers = { httpRequest: async options => {
     if (options.url.includes('/cb/status')) return { active: false };
+    if (options.url.includes('/fapi/v1/time')) return { serverTime: Date.now() };
     if (options.url.includes('/portfolio-capacity')) return capacity;
     if (options.url.includes('/capital-status')) return { halted: false, reasons: [] };
     if (options.url.includes('/fapi/v2/balance')) return [{ asset: 'USDT', balance: '200', availableBalance: '60' }];
