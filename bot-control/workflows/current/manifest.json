@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-07-02T07:33:47.687Z",
-  "source": "Decision score and sizing trace 2026-07-02",
+  "generatedAt": "2026-09-25T05:39:58.307Z",
+  "source": "Jev integration, offline snapshots (activation unchanged)",
   "sanitized": true,
   "workflows": [
     {
       "id": "Cz4TfvaVAygWGRJm",
       "name": "Advanced AI Trading Bot v2 - Clean",
       "activeAtExport": false,
-      "nodeCount": 30,
+      "nodeCount": 31,
       "filename": "advanced-ai-trading-bot-v2-clean.workflow.json",
-      "sha256": "5116981111e3c4909fee42e23f556eda346826d6d7d314ea1afb4fd879a6efa1"
+      "sha256": "5b94b2585524ce6906c78143638ff37adfa620ea50520970dabe0d70d0b90063"
     },
     {
       "id": "RecommendationReviewEngine",
@@ -25,7 +25,7 @@
       "activeAtExport": true,
       "nodeCount": 14,
       "filename": "sl-monitor.workflow.json",
-      "sha256": "6671e2e1eaf2737361891d0c5d915cc8f24983d5c1ebd70f9d71d2f4a7a0d183"
+      "sha256": "c5a8f86dd43780215fcc15478cf3a53633126ed4fa6477ee4bfe5c67d1e76db0"
     },
     {
       "id": "telemetryPersistenceTest",
@@ -49,7 +49,7 @@
       "activeAtExport": true,
       "nodeCount": 4,
       "filename": "trailing-manager.workflow.json",
-      "sha256": "e2eab622c272902675c027469e665ea668f9fdf74a2ca0c0d07ca0f3dac1c8b2"
+      "sha256": "b0bb610e0c66ca51889aefb704a044478bc05dba61dfeb85b7160ff05ae49da6"
     }
   ]
 }

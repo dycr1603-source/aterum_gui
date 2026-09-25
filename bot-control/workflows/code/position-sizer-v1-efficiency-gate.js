@@ -60,7 +60,8 @@ function sizeCandidate(candidate, allocation) {
   const slMultiplier = d.slMultiplier || 1.5;
   const tpMultiplier = d.tpMultiplier || 2.0;
 
-  const slDistance = atrVal * slMultiplier;
+  const jevProposal = d.jev?.mode === 'enforce' ? d.jev.proposal : null;
+  const slDistance = jevProposal ? Math.abs(currentPrice - jevProposal.sl) : atrVal * slMultiplier;
   const requestedRiskAmount = balance * effectiveRisk;
   let   qty        = requestedRiskAmount / slDistance;
   const requestedMargin = (qty * currentPrice) / leverage;
@@ -101,8 +102,10 @@ function sizeCandidate(candidate, allocation) {
     tp   = +(currentPrice - slDistance * tpMultiplier).toFixed(pricePrecision);
   }
 
+  if (jevProposal) { sl = jevProposal.sl; tp = jevProposal.tp; }
+
   const maxLoss        = +(Math.abs(currentPrice - sl) * qty).toFixed(2);
-  const maxGain         = +(maxLoss * tpMultiplier).toFixed(2);
+  const maxGain         = +(Math.abs(tp - currentPrice) * qty).toFixed(2);
   const marginRequired  = +((qty * currentPrice) / leverage).toFixed(2);
 
   const actualRiskAmount = maxLoss;
@@ -151,7 +154,7 @@ const alternates = (d.opportunityRanking || [])
 
 const attempts = [];
 let winner = null;
-for (const candidate of [primary, ...alternates]) {
+for (const candidate of (d.jev?.mode === 'enforce' ? [primary] : [primary, ...alternates])) {
   if (!candidate.indicators?.currentPrice || !candidate.indicators?.atr) continue;
   const result = sizeCandidate(candidate, portfolioCapacity || {});
   attempts.push({ symbol: candidate.symbol, finalScore: candidate.finalScore,
@@ -224,6 +227,7 @@ const usedFallback = chosen.symbol !== symbol;
 
 return [{
   json: {
+    jev: d.jev || null, opportunityCycleId: d.opportunityCycleId, marketDataAt: d.marketDataAt,
     symbol: chosen.symbol, side: r.side, direction: chosen.direction || direction, qty: r.qty, leverage: r.leverage,
     entryPrice:      +r.currentPrice.toFixed(r.currentPrice >= 1000 ? 1 : r.currentPrice >= 10 ? 2 : r.currentPrice >= 1 ? 3 : 4),
     sl: r.sl, tp: r.tp,

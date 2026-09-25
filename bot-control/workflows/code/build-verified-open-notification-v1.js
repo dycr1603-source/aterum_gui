@@ -110,6 +110,7 @@ const tf4h = d.tf4h || {};
 const leverageCap = tf4h.status === 'CONTRADICTS' ? 4 : 15;
 const timestamp = new Date(d.timestamp || Date.now()).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 
+const jevOwnsStrategy = d.jev?.mode === 'enforce';
 const lines = [
   '━━━━━━━━━━━━━━━━━━━━━━━',
   '✅ TRADE ABIERTO',
@@ -119,7 +120,7 @@ const lines = [
   '',
   '━━━ ¿POR QUÉ SE APROBÓ? ━━━',
   `✔ Ranking #${rank} de ${evaluated} evaluados (${totalUniverse} universo)`,
-  `✔ Score final ${num(finalScore, 2)}/100 · umbral ${num(threshold, 0)}`,
+  jevOwnsStrategy ? `✔ Jev eligió ${side} · score técnico informativo ${num(finalScore, 2)}` : `✔ Score final ${num(finalScore, 2)}/100 · umbral ${num(threshold, 0)}`,
   `✔ 4H ${tf4h.status || 'N/A'} ${side}`,
   '✔ Portfolio, correlación y riesgo disponibles',
   '✔ Binance + persistencia verificados',
@@ -132,7 +133,7 @@ const lines = [
   '↓ Correlación  ✅ PASS  sin blocker',
   `↓ Macro        ${macroGate}`,
   `↓ Intelligence ${intelligenceState}`,
-  '↓ AI Score     ⚪ NOT USED',
+  jevOwnsStrategy ? `↓ Jev          ✅ ${side} · decisión de entrada` : '↓ AI Score     ⚪ NOT USED',
   `↓ Learning     ${learningApplied === 0 ? '⚪ NO ADJUSTMENT' : `✅ ${signed(learningApplied)}`}`,
   '↓ Ejecución    ✅ VERIFIED',
   '↓ Persistencia ✅ VERIFIED',
@@ -205,13 +206,13 @@ const lines = [
   `Funding        ${num(Number(indicators.fundingRate || 0) * 100, 4)}% · OI $${num(indicators.currentOI, 0)}`,
   '',
   '━━━ EXPLICACIÓN ━━━',
-  `Dirección      ${side} ganó por ${num(separation, 2)} puntos`,
+  jevOwnsStrategy ? `Dirección      ${side} elegida por Jev` : `Dirección      ${side} ganó por ${num(separation, 2)} puntos`,
   `Tamaño         riesgo ${sizing.actualRisk || num(verifiedRiskPct) + '%'} tras multiplicadores y límites`,
-  `Momento        score > umbral, 4H ${tf4h.status || 'N/A'}, macro ${market.market_bias || 'N/A'}`,
+  jevOwnsStrategy ? `Momento        Jev aprobó; 4H ${tf4h.status || 'N/A'} como contexto` : `Momento        score > umbral, 4H ${tf4h.status || 'N/A'}, macro ${market.market_bias || 'N/A'}`,
   `Selección      ${rank === 1 ? 'mayor candidato elegible' : `#${rank}; candidatos superiores bloqueados`}`,
   '━━━━━━━━━━━━━━━━━━━━━━━'
 ].filter(line => line !== null);
 
 const text = lines.join('\n');
 if (text.length > 4096) throw new Error(`Premium TRADE_OPENED notification exceeds Telegram limit (${text.length})`);
-return [{ json: { ...d, text, notificationState: 'TRADE_OPENED_VERIFIED_PREMIUM' } }];
+return [{ json: { ...d, notificationEventKey: `open:${d.executionId}`, text, notificationState: 'TRADE_OPENED_VERIFIED_PREMIUM' } }];

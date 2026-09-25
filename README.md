@@ -180,3 +180,7 @@ Este repo esta preparado para no versionar secretos:
 - Las claves de Binance, OpenAI, DB y session secret deben venir de variables de entorno.
 
 Si alguna clave real fue usada en un servidor, rota esas credenciales antes de publicar el repositorio.
+
+## Decisiones Jev
+
+Integración opcional, deshabilitada inicialmente. Contrato API, límites, Telegram, variables y pasos de observación/operación en [Jev en Aterum](docs/architecture/jev-integration.md).

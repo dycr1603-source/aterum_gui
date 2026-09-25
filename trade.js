@@ -8,7 +8,9 @@ const app  = express();
 const PORT = Number(process.env.DASHBOARD_PORT || process.env.PORT || 3001);
 const HOST = process.env.BIND_HOST || '0.0.0.0';
 
-app.use(express.json());
+// Jev receives a reproducible market context (candles, indicators and ranked
+// evidence). The Express default of 100kb can reject valid decision payloads.
+app.use(express.json({ limit: '1mb' }));
 app.use('/aterum-assets', express.static(path.join(__dirname, 'assets'), {
   etag: true,
   maxAge: '1h'
@@ -83,6 +85,7 @@ app.use(require('./routes/learning'));
 app.use(require('./routes/simulator'));
 app.use(require('./routes/knowledge'));
 app.use(require('./routes/opportunities'));
+app.use(require('./routes/jev'));
 app.use(require('./routes/cb'));
 app.use('/', cooldownRoutes);
 

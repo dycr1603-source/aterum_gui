@@ -1,4 +1,5 @@
 'use strict';
+const { deliver } = require('../services/telegram_delivery');
 
 const { normalizePosition, isStop, isTakeProfit, triggerPrice } = require('./binance');
 
@@ -89,14 +90,11 @@ class PositionGuard {
     if (!force && Date.now() - last < this.config.alertCooldownMs) return false;
     this.alerted.set(key, Date.now());
     if (!this.config.telegramToken || !this.config.telegramChatId) return false;
-    const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message, disable_notification: false }),
-      signal: AbortSignal.timeout(8000)
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok || !body.ok) throw new Error(body.description || `Telegram HTTP ${response.status}`);
-    return true;
+    const result = await deliver({ db: this.db,
+      eventKey: `guard:${key}:${Math.floor(Date.now() / Math.max(1000, this.config.alertCooldownMs || 300000))}`,
+      text: message, token: this.config.telegramToken, chatId: this.config.telegramChatId });
+    if (!result.sent && result.status !== 'DUPLICATE') throw new Error(`TELEGRAM_GUARD_${result.errorCode || result.status}`);
+    return result.sent;
   }
 
   async expectedTrades() {

@@ -61,12 +61,13 @@ class TelegramClient {
   }
 
   async call(method, payload = {}, timeoutMs = this.config.requestTimeoutMs) {
-    const response = await fetch(`${this.base}/${method}`, {
+    let response;
+    try { response = await fetch(`${this.base}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(timeoutMs)
-    });
+    }); } catch (_) { throw new Error('TELEGRAM_TRANSPORT_UNAVAILABLE'); }
     const body = await response.json().catch(() => ({}));
     if (!response.ok || !body.ok) throw new Error(body.description || `Telegram HTTP ${response.status}`);
     return body.result;

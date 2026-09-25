@@ -8,14 +8,20 @@ async function run() {
   const position = { symbol:'BTCUSDT', positionAmt:'-0.01', positionSide:'SHORT', entryPrice:'100', markPrice:'101', leverage:'3' };
   const binance = {
     positions: async () => [position],
+    openOrders: async () => [],
     openAlgoOrders: async () => [],
-    closeMarket: async () => { calls.push('market-close'); return { orderId:'9002' }; }
   };
   const guard = new PositionGuard({
     config:{ enforce:true, unprotectedGraceMs:60000, alertCooldownMs:300000, telegramToken:'', telegramChatId:'' },
-    db:{}, binance
+    db:{ execute: async () => [[]] }, binance,
+    executionEngine: { execute: async request => {
+      assert.equal(request.type, 'CLOSE_POSITION');
+      calls.push('market-close');
+      return { ok: true, finalStatus: 'VERIFIED', exchangeOrderId: '9002' };
+    } }
   });
   guard.expectedTrades = async () => [{ id:1,symbol:'BTCUSDT',direction:'SHORT',entry_price:100,sl_price:102,tp_price:95,qty:0.01,opened_at:'2026-06-29 00:00:00' }];
+  guard.publishPosition = async () => {};
   guard.event = async event => calls.push(`event:${event.eventType}`);
   guard.alert = async () => calls.push('alert');
   const first = await guard.scan();

@@ -1,4 +1,5 @@
 'use strict';
+const { eligibleForJev } = require('./jev_authority');
 
 const crypto = require('crypto');
 const shared = require('../shared');
@@ -268,6 +269,7 @@ function scoreSnapshot(snapshot, config = DEFAULTS) {
     : 'NEUTRAL';
   return {
     ...winner,
+    directionalEvidence: { LONG: long, SHORT: short },
     direction,
     longScore: long.score,
     shortScore: short.score,
@@ -544,6 +546,7 @@ async function fetchSnapshot(item, marketContext, config) {
       score: scored.score,
       technicalScore: scored.score,
       direction: scored.direction,
+      directionalEvidence: scored.directionalEvidence,
       longScore: scored.longScore,
       shortScore: scored.shortScore,
       contributions: scored.contributions,
@@ -617,7 +620,17 @@ async function scanAndSelect(input = {}) {
   ]);
   const universe = buildUniverse(exchangeInfo, tickers, states, Date.now(), config);
   const eligible = universe.filter(item => item.eligible);
-  const refreshBatch = selectRefreshBatch(universe, config);
+  let refreshBatch = selectRefreshBatch(universe, config);
+  // A fully covered scheduler must still inspect live market data on every
+  // decision cycle. Otherwise manual/live runs can repeatedly report no setup
+  // without giving Jev any current candidate to evaluate.
+  if (!refreshBatch.length) {
+    const batchSize = number(config.refreshBatchSize, DEFAULTS.refreshBatchSize);
+    refreshBatch = eligible
+      .filter(item => !openSymbols.has(item.symbol))
+      .sort((a, b) => b.coarseScore - a.coarseScore || a.symbol.localeCompare(b.symbol))
+      .slice(0, batchSize);
+  }
   await shared.db.execute(`INSERT INTO market_scan_cycles
     (id,universe_size,eligible_size,refreshed_size,candidate_size,config,started_at)
     VALUES (?,?,?,?,?,?,NOW(3))`, [cycleId, universe.length, eligible.length, refreshBatch.length, 0, JSON.stringify(config)]);
@@ -638,6 +651,7 @@ async function scanAndSelect(input = {}) {
   const openReturns = await fetchOpenPositionReturns([...openSymbols]);
   const candidates = enriched.map(candidate => {
     const blockers = [...candidate.hardBlockers];
+    const directionalRisk = { LONG: [], SHORT: [] };
     if (openSymbols.has(candidate.symbol)) blockers.push({ code: 'POSITION_ALREADY_OPEN', current: candidate.symbol });
     if (cooldowns.has(candidate.symbol)) {
       const cooldown = cooldowns.get(candidate.symbol);
@@ -647,6 +661,13 @@ async function scanAndSelect(input = {}) {
       if (!positionReturns) continue;
       const currentCorrelation = correlation(candidate.returns, positionReturns);
       const openDirection = openDirections.get(openSymbol);
+      for (const side of ['LONG', 'SHORT']) {
+        const exposure = exposureCorrelation(currentCorrelation, side, openDirection);
+        if (exposure != null && exposure > number(config.maxCorrelation, DEFAULTS.maxCorrelation)) {
+          directionalRisk[side].push({ code: 'PORTFOLIO_CORRELATION', symbol: openSymbol,
+            current: round(exposure, 3), maximum: number(config.maxCorrelation, DEFAULTS.maxCorrelation), candidateDirection: side });
+        }
+      }
       const currentExposureCorrelation = exposureCorrelation(currentCorrelation, candidate.direction, openDirection);
       if (currentExposureCorrelation != null && currentExposureCorrelation > number(config.maxCorrelation, DEFAULTS.maxCorrelation)) {
         blockers.push({
@@ -667,7 +688,7 @@ async function scanAndSelect(input = {}) {
       maximum: { riskPct: portfolioCapacity.risk?.maximumRiskPct,
         marginUsagePct: portfolioCapacity.limits?.maxMarginUsagePct },
       reason: portfolioCapacity.primaryReason?.code || 'No capital/risk capacity remains' });
-    return { ...candidate, hardBlockers: blockers };
+    return { ...candidate, directionalRisk, hardBlockers: blockers };
   });
 
   const ranked = [...candidates].sort((a, b) => b.finalScore - a.finalScore || b.scanScore - a.scanScore);
@@ -676,6 +697,17 @@ async function scanAndSelect(input = {}) {
   if (capacityAvailable) {
     selected = ranked.find(candidate => candidate.finalScore >= number(config.entryThreshold, DEFAULTS.entryThreshold)
       && candidate.direction !== 'NEUTRAL' && candidate.hardBlockers.length === 0) || null;
+  }
+
+  const baselineSelected = selected;
+  const jevOwnsStrategy = process.env.JEV_ENABLED === 'true' && process.env.JEV_OBSERVE_ONLY === 'false';
+  if (jevOwnsStrategy) {
+    // Do not repeatedly ask Jev about the same top-ranked symbol. Rotate
+    // reproducibly through a small pool of the strongest eligible setups.
+    const poolSize = Math.max(1, Math.min(10, Number(process.env.JEV_CANDIDATE_POOL_SIZE || 5)));
+    const pool = ranked.filter(eligibleForJev).slice(0, poolSize);
+    const rotation = pool.length ? parseInt(cycleId.slice(0, 8), 16) % pool.length : 0;
+    selected = pool[rotation] || null;
   }
 
   for (const candidate of ranked) {
@@ -707,6 +739,7 @@ async function scanAndSelect(input = {}) {
 
   const publicCandidate = candidate => candidate ? {
     ...candidate,
+    marketDataAt: started,
     threshold: config.entryThreshold,
     decisionMargin: round(candidate.finalScore - config.entryThreshold),
     contributionTable: [...candidate.contributions, ...candidate.learning.contributions],
@@ -723,6 +756,8 @@ async function scanAndSelect(input = {}) {
       ).length / eligible.length) * 100, 1) : 0
     },
     selected: publicCandidate(selected),
+    baselineSelected: publicCandidate(baselineSelected),
+    decisionAuthority: jevOwnsStrategy ? 'JEV' : 'BASELINE',
     ranking: ranked.slice(0, 10).map(publicCandidate),
     durationMs,
     portfolioCapacity: { allowed: capacityAvailable,

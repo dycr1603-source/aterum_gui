@@ -73,6 +73,19 @@ services:
       DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?set DEFAULT_ADMIN_PASSWORD in .env}
       BINANCE_API_KEY: ${POSITION_GUARD_BINANCE_API_KEY:?set POSITION_GUARD_BINANCE_API_KEY in .env}
       BINANCE_API_SECRET: ${POSITION_GUARD_BINANCE_API_SECRET:?set POSITION_GUARD_BINANCE_API_SECRET in .env}
+      EXECUTION_ENGINE_TOKEN: ${EXECUTION_ENGINE_TOKEN:?set EXECUTION_ENGINE_TOKEN in .env}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      JEV_ENABLED: ${JEV_ENABLED:-false}
+      JEV_OBSERVE_ONLY: ${JEV_OBSERVE_ONLY:-true}
+      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe}
+      JEV_MODEL: ${JEV_MODEL:-jev-latest}
+      JEV_ADAPTER_URL: ${JEV_ADAPTER_URL:-http://typesafe_adapter:8088}
+      JEV_ADAPTER_TOKEN: ${JEV_ADAPTER_TOKEN:-}
+      JEV_TIMEOUT_MS: ${JEV_TIMEOUT_MS:-5000}
+      JEV_MAX_DATA_AGE_MS: ${JEV_MAX_DATA_AGE_MS:-120000}
+      JEV_MAX_PRICE_DRIFT_PCT: ${JEV_MAX_PRICE_DRIFT_PCT:-0.5}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in .env}
       OPENAI_ASSISTANT_MODEL: ${OPENAI_ASSISTANT_MODEL:-gpt-5-mini}
       N8N_SQLITE_DB: /n8n-data/database.sqlite
@@ -268,6 +281,12 @@ services:
       NODE_ENV: production
       POSITION_GUARD_BINANCE_API_KEY: ${POSITION_GUARD_BINANCE_API_KEY:?set POSITION_GUARD_BINANCE_API_KEY in .env}
       POSITION_GUARD_BINANCE_API_SECRET: ${POSITION_GUARD_BINANCE_API_SECRET:?set POSITION_GUARD_BINANCE_API_SECRET in .env}
+      JEV_ENABLED: ${JEV_ENABLED:-false}
+      JEV_OBSERVE_ONLY: ${JEV_OBSERVE_ONLY:-true}
+      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe}
+      JEV_ADAPTER_TOKEN: ${JEV_ADAPTER_TOKEN:-}
+      JEV_MAX_DATA_AGE_MS: ${JEV_MAX_DATA_AGE_MS:-120000}
+      JEV_MAX_PRICE_DRIFT_PCT: ${JEV_MAX_PRICE_DRIFT_PCT:-0.5}
       POSITION_GUARD_ENFORCE: ${POSITION_GUARD_ENFORCE:-false}
       POSITION_GUARD_POLL_MS: ${POSITION_GUARD_POLL_MS:-5000}
       POSITION_GUARD_UNPROTECTED_GRACE_MS: ${POSITION_GUARD_UNPROTECTED_GRACE_MS:-60000}
@@ -312,6 +331,25 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    logging: *default-logging
+
+  typesafe_adapter:
+    profiles: [ai]
+    build:
+      context: ../../typesafe-adapter
+    image: aterum-typesafe-adapter:local
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${JEV_ADAPTER_ANTHROPIC_API_KEY:-${ANTHROPIC_API_KEY:-}}
+      JEV_ADAPTER_TOKEN: ${JEV_ADAPTER_TOKEN:-}
+      JEV_ADAPTER_MODEL: ${JEV_ADAPTER_MODEL:-claude-haiku-4-5-20251001}
+      JEV_ADAPTER_MAX_TOKENS: ${JEV_ADAPTER_MAX_TOKENS:-512}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     logging: *default-logging
 
   nginx:

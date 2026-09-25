@@ -45,4 +45,4 @@ if (!engineAlreadyNotified && !suppressed) {
   ].filter(Boolean).join('\n');
 }
 
-return [{ json: { ...d, telegramText, notificationStatus: engineAlreadyNotified ? 'SENT_BY_ENGINE' : suppressed ? 'SUPPRESSED_TRANSIENT' : 'PENDING_SEND' } }];
+return [{ json: { ...d, notificationEventKey: `execution-failure:${d.executionId}`, telegramText, notificationStatus: engineAlreadyNotified ? 'SENT_BY_ENGINE' : suppressed ? 'SUPPRESSED_TRANSIENT' : 'PENDING_SEND' } }];

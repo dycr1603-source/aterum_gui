@@ -79,4 +79,4 @@ const text = [
   'No cooldown was created by this rejection.'
 ].join('\n');
 
-return [{ json: { text } }];
+return [{ json: { ...d, notificationEventKey: `entry-rejection:${d.jev?.id || d.opportunityCycleId || d.symbol}`, text } }];

@@ -1,4 +1,6 @@
 'use strict';
+const { validateJevExecution } = require('../services/jev_execution');
+const { deliver } = require('../services/telegram_delivery');
 
 const { randomUUID, createHash } = require('crypto');
 const { normalizePosition, isStop, isTakeProfit, triggerPrice } = require('./binance');
@@ -154,7 +156,8 @@ class ExecutionEngine {
       if (request.callbackRate != null) request.callbackRate = number(request.callbackRate, 'callbackRate');
     }
     if (request.type === 'PARTIAL_TAKE_PROFIT') request.quantity = number(request.quantity, 'quantity');
-    request.maxAttempts = Math.min(4, Math.max(1, Number(request.maxAttempts || 3)));
+    request.maxAttempts = request.type === 'OPEN_POSITION' && request.tradeContext?.jev?.mode === 'enforce'
+      ? 1 : Math.min(4, Math.max(1, Number(request.maxAttempts || 3)));
     return request;
   }
 
@@ -292,14 +295,10 @@ class ExecutionEngine {
       `PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} USDT`,
       `Final R: ${rFinal >= 0 ? '+' : ''}${rFinal.toFixed(2)}R`,
       `Duration: ${close.durationMinutes} minutes`].join('\n');
-    const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message }),
-      signal: AbortSignal.timeout(8000)
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok || !body.ok) throw new Error(body.description || `Telegram HTTP ${response.status}`);
-    return { messageId: body.result?.message_id || null };
+    const delivered = await deliver({ db: this.db, eventKey: `close:${close.executionId}`, text: message,
+      token: this.config.telegramToken, chatId: this.config.telegramChatId });
+    if (!delivered.sent) throw new Error(`TELEGRAM_CLOSE_${delivered.errorCode || delivered.status}`);
+    return { messageId: delivered.messageId };
   }
 
   async finalizeExternalClose(input) {
@@ -468,7 +467,10 @@ class ExecutionEngine {
     let failureNotificationSent = false;
     if (notificationPolicy.notify) {
       try { failureNotificationSent = await this.notifyFailure(request, lastError, exchangeWasVerified, failureCategory) === true; }
-      catch (_) { failureNotificationSent = false; }
+      catch (_) {
+        failureNotificationSent = false;
+        await this.event(request.executionId, 'TELEGRAM_DELIVERY_FAILED', { code: 'DELIVERY_SERVICE_FAILED' });
+      }
     }
     return { ok: false, executionId: request.executionId, type: request.type, symbol: request.symbol,
       positionSide: request.positionSide, exchangeOrderId: exchangeOrderId == null ? null : String(exchangeOrderId),
@@ -536,7 +538,7 @@ class ExecutionEngine {
     const price = row.filters.find(filter => filter.filterType === 'PRICE_FILTER');
     const lot = row.filters.find(filter => filter.filterType === 'LOT_SIZE');
     const notional = row.filters.find(filter => ['MIN_NOTIONAL', 'NOTIONAL'].includes(filter.filterType));
-    return { tick: Number(price?.tickSize || 0), step: Number(lot?.stepSize || 0),
+    return { minPrice: Number(price?.minPrice || 0), maxPrice: Number(price?.maxPrice || 0), tick: Number(price?.tickSize || 0), step: Number(lot?.stepSize || 0),
       minQty: Number(lot?.minQty || 0), minNotional: Number(notional?.notional || notional?.minNotional || 0) };
   }
 
@@ -582,6 +584,8 @@ class ExecutionEngine {
     if (before.position && !marketOrder) throw new Error(`${request.symbol} ${request.positionSide} is already open on Binance`);
     const [rules, ticker] = await Promise.all([this.symbolRules(request.symbol), this.binance.tickerPrice(request.symbol)]);
     const livePrice = number(ticker.price, 'livePrice');
+    // A recovered filled order must still finish protection/persistence after a restart.
+    if (!marketOrder && !before.position) await validateJevExecution(request, { db: this.db, livePrice, quoteTime: Number(ticker.time), rules });
     const quantity = this.rounded(request.quantity, rules.step, 'floor');
     const stopLoss = this.rounded(request.stopLoss, rules.tick);
     const takeProfit = this.rounded(request.takeProfit, rules.tick);
@@ -968,12 +972,10 @@ class ExecutionEngine {
         `Execution ID: ${request.executionId}`, 'No Binance order was created.',
         'Verification and persistence were not started.', 'This is an expected risk protection.']
         .filter(Boolean).join('\n');
-      const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message }), signal: AbortSignal.timeout(8000)
-      });
-      if (!response.ok) throw new Error(`Telegram rejection notification HTTP ${response.status}`);
-      return true;
+      const delivered = await deliver({ db: this.db, eventKey: `execution-failure:${request.executionId}`, text: message,
+        token: this.config.telegramToken, chatId: this.config.telegramChatId });
+      await this.event(request.executionId, 'TELEGRAM_DELIVERY', delivered);
+      return delivered.sent;
     }
     const verificationFailure = !exchangeWasVerified
       && (error?.verificationResult || /verif|read-back|visible on Binance/i.test(String(error?.message || '')));
@@ -1003,12 +1005,10 @@ class ExecutionEngine {
       `Error: ${String(error?.message || error || 'unknown').slice(0, 700)}`,
       '', `Acción: ${nextAction}`, '━━━━━━━━━━━━━━━━━━━━━━━'
     ].filter(Boolean).join('\n');
-    const response = await fetch(`https://api.telegram.org/bot${this.config.telegramToken}/sendMessage`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: this.config.telegramChatId, text: message }), signal: AbortSignal.timeout(8000)
-    });
-    if (!response.ok) throw new Error(`Telegram failure notification HTTP ${response.status}`);
-    return true;
+    const delivered = await deliver({ db: this.db, eventKey: `execution-failure:${request.executionId}`, text: message,
+      token: this.config.telegramToken, chatId: this.config.telegramChatId });
+    await this.event(request.executionId, 'TELEGRAM_DELIVERY', delivered);
+    return delivered.sent;
   }
 }
 

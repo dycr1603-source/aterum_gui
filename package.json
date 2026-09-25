@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node trade.js",
     "chart-api": "node server.js",
-    "check": "node -c trade.js && node -c server.js && node -c routes/analytics.js && node -c routes/learning.js && node -c routes/knowledge.js && node -c routes/opportunities.js && node -c services/decision_trace.js && node -c services/learning_changes.js && node -c services/learning_bias.js && node -c services/knowledge_graph.js && node -c services/opportunity_engine.js && node -c views/research.js && node -c views/knowledge.js",
+    "check": "node -c trade.js && node -c server.js && node -c routes/analytics.js && node -c routes/learning.js && node -c routes/knowledge.js && node -c routes/opportunities.js && node -c services/decision_trace.js && node -c services/learning_changes.js && node -c services/learning_bias.js && node -c services/knowledge_graph.js && node -c services/opportunity_engine.js && node -c views/research.js && node -c views/knowledge.js && node -c routes/jev.js && node -c services/jev.js && node -c services/jev_execution.js && node -c services/telegram_delivery.js && node -c scripts/integrate-jev-workflow.js && node -c services/jev_authority.js",
     "test:learning": "node tests/learning_changes.test.js",
     "test:knowledge": "node tests/knowledge_graph.test.js",
     "test:opportunity": "node tests/opportunity_engine.test.js",
@@ -13,7 +13,9 @@
     "replay:decision-trace": "node scripts/replay-decision-trace.js",
     "test:research-shadow": "node tests/research_shadow.test.js",
     "test:workflow": "node tests/workflow_redesign.test.js && node tests/trailing_manager_regression.test.js && node tests/sl_monitor_regression.test.js && node tests/efficiency_gate.test.js && node tests/portfolio_allocation_regression.test.js",
-    "test:execution": "node position-guard/execution-engine.test.js && node position-guard/synchronization.test.js && node position-guard/close-lifecycle.test.js && node position-guard/reconciliation.test.js && node position-guard/portfolio-allocation.test.js"
+    "test:execution": "node position-guard/execution-engine.test.js && node position-guard/synchronization.test.js && node position-guard/close-lifecycle.test.js && node position-guard/reconciliation.test.js && node position-guard/portfolio-allocation.test.js",
+    "test:jev": "node --test tests/jev.test.js tests/jev_integration.test.js tests/jev_routes.test.js tests/telegram_delivery.test.js",
+    "test:offline": "node scripts/test-offline.js"
   },
   "keywords": [],
   "author": "",

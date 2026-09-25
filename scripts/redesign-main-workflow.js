@@ -154,6 +154,8 @@ byName.get('AGENTE DE MERCADO').parameters.jsCode = code('market-context-v2.js')
 byName.get('Market Scanner').parameters.jsCode = code('opportunity-discovery-v2.js');
 byName.get('Research Learning Gate').parameters.jsCode = code('research-learning-gate-v2.js');
 byName.get('Build AI Skip Message').parameters.jsCode = code('build-entry-rejection-v2.js');
+byName.get('Telegram: Risk Halt').parameters.jsCode = code('send-risk-halt-notification-v1.js');
+byName.get('Telegram: No Setup').parameters.jsCode = code('send-no-setup-notification-v1.js');
 byName.get('Execute Trade').parameters.jsCode = patchExecuteTradeProtection(byName.get('Execute Trade').parameters.jsCode);
 
 byName.get('Market Scanner').name = 'Opportunity Discovery';
