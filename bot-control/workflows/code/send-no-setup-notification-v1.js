@@ -4,6 +4,7 @@ const capacity = cycle.portfolioCapacity || payload.portfolioCapacity || {};
 const dynamicSlots = Number(capacity.dynamicAdditionalPositions);
 const remainingRisk = Number(capacity.remainingRiskPct ?? capacity.risk?.remainingRiskPct);
 const reason = String(payload.reason || 'No hubo un candidato elegible en este ciclo.').replace(/\s+/g, ' ').slice(0, 500);
+const sideEmoji = 'ℹ️';
 const lines = [
   'ℹ️ SIN PROPUESTA PARA JEV',
   '',
@@ -13,8 +14,7 @@ const lines = [
   '',
   'Jev no fue consultado y no se envió ninguna orden a Binance.'
 ].filter(Boolean);
-
-const telegramText = lines.join('\n');
+const telegramText = buildClosingBox(lines).join('\n').replace(/^┃/gm, '┃');
 const notificationEventKey = `no-setup:${cycle.cycleId || 'unknown'}`;
 try {
   const response = await this.helpers.httpRequest({

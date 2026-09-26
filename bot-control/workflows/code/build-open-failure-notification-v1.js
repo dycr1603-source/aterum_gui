@@ -7,6 +7,8 @@ const rejected = d.finalStatus === 'REJECTED' || d.status === 'PORTFOLIO_CAPACIT
   || d.failureCategory === 'EXECUTION_REJECTED';
 let telegramText;
 
+const sideEmoji = rejected && d.positionSide ? (String(d.positionSide).toUpperCase() === 'LONG' ? '🟢' : '🔴') : '';
+
 if (rejected) {
   const code = String(rejection.code || 'PORTFOLIO_CAPACITY_REJECTED');
   const label = code.toLowerCase().split('_')
@@ -17,28 +19,68 @@ if (rejected) {
   const equity = Number(capacity.account?.equity || 0);
   const current = equity > 0 ? equity * currentPct / 100 : currentPct;
   const maximum = equity > 0 ? equity * maximumPct / 100 : maximumPct;
-  telegramText = ['❌ TRADE REJECTED', d.symbol || 'UNKNOWN', '', `Reason: ${label}`,
-    direction ? `Current ${direction} Exposure: ${current.toFixed(2)} USDT (${currentPct.toFixed(2)}% equity)` : null,
-    maximum > 0 ? `Maximum Allowed: ${maximum.toFixed(2)} USDT (${maximumPct.toFixed(2)}% equity)` : null,
-    maximum > 0 ? `Remaining Capacity: ${Math.max(0, maximum - current).toFixed(2)} USDT` : null,
-    `Execution ID: ${d.executionId || 'not-created'}`, 'No Binance order was created.',
-    'Verification and persistence were not started.', 'This is an expected risk protection.']
-    .filter(Boolean).join('\n');
+  const riskPct = formatRiskPct(currentPct);
+  const balanceLine = formatBalanceUsage(equity, currentPct);
+  telegramText = buildClosingBox([
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    '❌ TRADE RECHAZADO',
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    '',
+    `${sideEmoji} ${direction} ${d.symbol || 'UNKNOWN'}`,
+    `Reason: ${label}`,
+    '',
+    '╭ Exposures ╮',
+    `│ Current     │ ${riskPct} ${current.toFixed(2)} USDT`,
+    `│ Maximum     │ ${formatRiskPct(maximumPct)} ${maximum.toFixed(2)} USDT`,
+    `│ Remaining   │ ${Math.max(0, maximum - current).toFixed(2)} USDT`,
+    '╰╯╭╮╰╮╰╮╰╮╰╮',
+    `│ Execution   │ ${d.executionId || 'not-created'}`,
+    '│ No Binance order was created.',
+    '│ Verification and persistence were not started.',
+    '│ This is an expected risk protection.',
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    balanceLine,
+    '━━━━━━━━━━━━━━━━━━━━━━━'
+  ].filter(Boolean).join('\n'));
 } else if (d.failureCategory === 'PERSISTENCE_FAILURE' || d.verificationResult?.exchangeVerified === true) {
-  telegramText = ['🚨 PERSISTENCE FAILED', `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,
-    `Execution ID: ${d.executionId || 'not-created'}`, 'Binance execution and verification succeeded.',
+  telegramText = buildClosingBox([
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    '🚨 PERSISTENCE FAILED',
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    '',
+    `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,
+    `Execution ID: ${d.executionId || 'not-created'}`,
+    'Binance execution and verification succeeded.',
     'Local persistence failed. No TRADE OPENED notification was sent.',
-    `Error: ${String(d.error || 'unknown').slice(0, 500)}`].join('\n');
+    `Error: ${formatErrorSnippet(d.error || 'unknown', 200)}`,
+    '━━━━━━━━━━━━━━━━━━━━━━━'
+  ].filter(Boolean).join('\n'));
 } else if (d.failureCategory === 'VERIFICATION_FAILURE') {
-  telegramText = ['⚠ VERIFICATION FAILED', `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,
-    `Execution ID: ${d.executionId || 'not-created'}`, 'Execution may have occurred, but Binance read-back did not confirm it.',
+  telegramText = buildClosingBox([
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    '⚠ VERIFICATION FAILED',
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    '',
+    `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,
+    `Execution ID: ${d.executionId || 'not-created'}`,
+    'Execution may have occurred, but Binance read-back did not confirm it.',
     'No persistence or TRADE OPENED notification occurred.',
-    `Error: ${String(d.error || 'unknown').slice(0, 500)}`].join('\n');
+    `Error: ${formatErrorSnippet(d.error || 'unknown', 200)}`,
+    '━━━━━━━━━━━━━━━━━━━━━━━'
+  ].filter(Boolean).join('\n'));
 } else {
-  telegramText = ['🚨 EXECUTION FAILED', `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,
-    `Execution ID: ${d.executionId || 'not-created'}`, 'Binance did not execute the requested position.',
+  telegramText = buildClosingBox([
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    '🚨 EXECUTION FAILED',
+    '━━━━━━━━━━━━━━━━━━━━━━━',
+    '',
+    `OPEN POSITION ${d.symbol || 'UNKNOWN'}`,
+    `Execution ID: ${d.executionId || 'not-created'}`,
+    'Binance did not execute the requested position.',
     'Verification and persistence were not started. No TRADE OPENED notification was sent.',
-    `Error: ${String(d.error || 'unknown').slice(0, 500)}`].join('\n');
+    `Error: ${formatErrorSnippet(d.error || 'unknown', 200)}`,
+    '━━━━━━━━━━━━━━━━━━━━━━━'
+  ].filter(Boolean).join('\n'));
 }
 
 return [{ json: { ...d, telegramText } }];

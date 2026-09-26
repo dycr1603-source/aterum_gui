@@ -1011,11 +1011,12 @@ router.get('/db/stats', async (req, res) => {
     const [daily,symbols,recent,topRejections,weeklyPnl,winLoss] = await Promise.all([
       query(`SELECT * FROM daily_pnl LIMIT 30`),
       query(`SELECT symbol, ROUND(CAST(total_pnl AS DECIMAL(10,2)),2) as total_pnl, win_rate FROM symbol_performance LIMIT 20`),
-      query(`SELECT t.*,tc.pnl_usdt,tc.r_final,tc.close_reason,tc.trailing_stage,tc.duration_minutes,tc.closed_at FROM trades t LEFT JOIN trade_closes tc ON t.id=tc.trade_id ORDER BY t.opened_at DESC LIMIT 50`),
+      query(`SELECT t.*,tc.exit_price,tc.pnl_usdt,tc.r_final,tc.close_reason,tc.trailing_stage,tc.duration_minutes,tc.closed_at FROM trades t LEFT JOIN trade_closes tc ON t.id=tc.trade_id ORDER BY t.opened_at DESC LIMIT 50`),
       query(`SELECT skip_reason,COUNT(*) as count FROM trade_rejections GROUP BY skip_reason ORDER BY count DESC LIMIT 10`),
       query(`SELECT DATE_FORMAT(closed_at,'%Y-%u') as week, ROUND(CAST(SUM(pnl_usdt) AS DECIMAL(10,2)),2) as pnl, COUNT(*) as trades FROM trade_closes GROUP BY DATE_FORMAT(closed_at,'%Y-%u') ORDER BY week DESC LIMIT 12`),
       query(`SELECT SUM(pnl_usdt>0) as wins,SUM(pnl_usdt<=0) as losses,ROUND(AVG(r_final),2) as avg_r,ROUND(SUM(pnl_usdt),2) as total_pnl FROM trade_closes`)
     ]);
+    if (![daily,symbols,recent,topRejections,weeklyPnl,winLoss].every(Array.isArray)) return res.status(503).json({error:'HISTORICAL_DATA_UNAVAILABLE'});
     res.json({ daily, symbols, recent, topRejections, weeklyPnl, winLoss: winLoss?.[0] });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

@@ -512,7 +512,7 @@ ${getSharedNav('analytics', user, 'blue', '<div class="nav-badge"><span class="l
   <div class="page-hdr">
     <div>
       <div class="page-title">Análisis <span>&amp;</span> Cuenta</div>
-      <div class="page-sub">Rendimiento completo del sistema · actualización en tiempo real</div>
+      <div class="page-sub">Cuenta en vivo e historial de las últimas 50 operaciones; los filtros se aplican a esta muestra</div>
     </div>
   </div>
 
@@ -770,13 +770,13 @@ function getAnalyticsRowsForAssistant(){
   if(period>0){
     const cut=Date.now()-period*86400000;
     rows=rows.filter(t=>{
-      const d=new Date(t.opened_at||t.closed_at).getTime();
+      const d=new Date(t.closed_at||t.opened_at).getTime();
       return d>=cut;
     });
   }
   if(filterDir)rows=rows.filter(t=>t.direction===filterDir);
   if(filterResult==='win')rows=rows.filter(t=>(+t.pnl_usdt||0)>0);
-  if(filterResult==='loss')rows=rows.filter(t=>(+t.pnl_usdt||0)<=0);
+  if(filterResult==='loss')rows=rows.filter(t=>t.pnl_usdt!=null&&Number(t.pnl_usdt)<=0);
   return rows;
 }
 
@@ -831,7 +831,18 @@ function setVal(id,text,color,doFlash=true){
   }
 }
 
+let latestAccount=null;
 function renderAccount(acct){
+  latestAccount=acct;
+  if(acct.status==='unavailable'||acct.status==='loading'){
+    ['acctEquity','acctBalance','acctAvail','acctMargin','acctUnreal','acctPositions'].forEach(id=>setVal(id,'—','var(--text2)',false));
+    document.getElementById('acctTs').textContent='Cuenta no disponible · esperando una lectura válida';
+    document.getElementById('acctLiveDot').className='live-dot';
+    document.getElementById('navLiveDot').className='live-dot';
+    document.getElementById('acctLiveBadge').className='acct-live';
+    document.getElementById('navLiveTs').textContent='Cuenta no disponible';
+    return;
+  }
   const balance    = acct.balance     || 0;
   const available  = acct.available   || 0;
   const margin     = acct.totalMargin || 0;
@@ -842,22 +853,23 @@ function renderAccount(acct){
   const recent = allStats?.recent || [];
   const today  = new Date().toISOString().slice(0,10);
   const todayClosed = recent.filter(t=>t.pnl_usdt!=null&&(t.closed_at||'').toString().slice(0,10)===today);
-  const dailyPnl  = todayClosed.reduce((s,t)=>s+(+t.pnl_usdt||0),0);
+  const daily=allStats?.daily?.find(d=>String(d.day).slice(0,10)===today);
+  const dailyPnl=daily?Number(daily.pnl):todayClosed.reduce((s,t)=>s+(+t.pnl_usdt||0),0);
   const marginPct = balance>0?(margin/balance*100):0;
   const dailyRoi  = balance>0?(dailyPnl/balance*100):0;
 
   const fmt  = v=>'$'+Math.abs(+v).toFixed(2);
   const sign = v=>((+v)>=0?'+':'-')+fmt(v);
 
-  const equity = acct.equity || (balance + unreal);
-  setVal('acctEquity', balance>0?fmt(equity):'—', equity>balance?'var(--green)':equity<balance?'var(--red)':'var(--green)');
-  setVal('acctBalance', balance>0?fmt(balance):'—', 'var(--text2)', false);
-  setVal('acctAvail',   balance>0?fmt(available):'—', 'var(--blue)');
+  const equity = acct.equity ?? (balance + unreal);
+  setVal('acctEquity', fmt(equity), equity>balance?'var(--green)':equity<balance?'var(--red)':'var(--green)');
+  setVal('acctBalance', fmt(balance), 'var(--text2)', false);
+  setVal('acctAvail',   fmt(available), 'var(--blue)');
   setVal('acctMargin',  fmt(margin), 'var(--gold)');
   setVal('acctUnreal',  sign(unreal), unreal>=0?'var(--green)':'var(--red)');
   document.getElementById('acctUnrealAccent').style.background=unreal>=0?'var(--green)':'var(--red)';
 
-  setVal('acctDailyPnl', todayClosed.length?sign(dailyPnl):'$0.00', dailyPnl>=0?'var(--green)':'var(--red)');
+  setVal('acctDailyPnl', allStats?sign(dailyPnl):'—', dailyPnl>=0?'var(--green)':'var(--red)');
   document.getElementById('acctDailyAccent').style.background=dailyPnl>=0?'var(--green)':'var(--red)';
   document.getElementById('acctDailyRoi').textContent=balance>0?(dailyRoi>=0?'+':'')+dailyRoi.toFixed(2)+'% del balance':'—';
 
@@ -872,26 +884,20 @@ function renderAccount(acct){
   // Position chips
   const posList=document.getElementById('acctPosList');
   if(posList&&acct.positions&&Object.keys(acct.positions).length>0){
-    posList.innerHTML=Object.entries(acct.positions).map(([sym,p])=>{
-      const pnlSign=(p.unrealized||0)>=0?'+':'-';
-      const pnlColor=(p.unrealized||0)>=0?'var(--green)':'var(--red)';
-      return \`<div class="acct-pos-chip">
-        <span class="acct-pos-sym">\${sym.replace('USDT','')}</span>
-        <span class="acct-pos-side \${p.side==='SHORT'?'side-short':'side-long'}">\${p.side}</span>
-        <span class="acct-pos-pnl" style="color:\${pnlColor}">\${pnlSign}$\${Math.abs(p.unrealized||0).toFixed(2)}</span>
-        <span style="font-size:9px;color:var(--text2)">@\${p.entryPrice||'—'}</span>
-      </div>\`;
-    }).join('');
+    posList.innerHTML=AterumUI.table(['Símbolo','Dirección','Cantidad','Entrada','Marca','Margen','Apalancamiento','PnL flotante','Stop loss','Take profit'],Object.entries(acct.positions).map(([sym,p])=>[
+      AterumUI.escape(sym),AterumUI.escape(p.side),AterumUI.number(p.qty,8),AterumUI.number(p.entryPrice,8),AterumUI.number(p.markPrice,8),AterumUI.number(p.margin),AterumUI.number(p.leverage)+'×',AterumUI.money(p.unrealized),p.sl?AterumUI.number(p.sl,8):'Sin SL informado',p.tp?AterumUI.number(p.tp,8):'Sin TP informado'
+    ]));
   } else if(posList){
     posList.innerHTML='<span style="font-size:10px;color:var(--text2);padding:4px 0">Sin posiciones abiertas</span>';
   }
 
   // Update live badge
-  const ts=new Date(acct.ts||Date.now()).toISOString().replace('T',' ').slice(11,19)+' UTC';
-  document.getElementById('acctTs').textContent='⚡ en vivo · '+ts;
-  document.getElementById('acctLiveDot').className='live-dot on';
-  document.getElementById('acctLiveBadge').className='acct-live on';
-  document.getElementById('navLiveDot').className='live-dot on';
+  const fresh=AterumUI.accountFresh(acct);
+  const ts=acct.ts?new Date(acct.ts).toISOString().replace('T',' ').slice(11,19)+' UTC':'Sin actualización';
+  document.getElementById('acctTs').textContent=(fresh?'En vivo · ':'Datos desactualizados · ')+ts;
+  document.getElementById('acctLiveDot').className=fresh?'live-dot on':'live-dot';
+  document.getElementById('acctLiveBadge').className=fresh?'acct-live on':'acct-live';
+  document.getElementById('navLiveDot').className=fresh?'live-dot on':'live-dot';
   document.getElementById('navLiveTs').textContent=ts;
 }
 
@@ -908,13 +914,13 @@ function startAccountStream(){
   };
 }
 async function loadAccountData(){
-  try{ const r=await fetch('/api/account'); renderAccount(await r.json()); }catch(e){}
+  try{ renderAccount(await AterumUI.json('/api/account')); }catch(e){document.getElementById('acctTs').textContent=e.message;}
 }
 
 // ── Circuit Breaker UI ────────────────────────────────────────────────────────
 async function loadCBStatus(){
   try{
-    const cb = await fetch('/cb/status').then(r=>r.json());
+    const cb = await AterumUI.json('/cb/status');
     const active    = cb.active;
     const consec    = cb.consecutiveSL || 0;
     const dir       = cb.lastDirection || cb.direction || '—';
@@ -1082,35 +1088,46 @@ function applyFilters(){
 
 async function loadStats(){
   try{
-    const r=await fetch('/db/stats');
-    allStats=await r.json();
+    allStats=await AterumUI.json('/db/stats');
     render();
+    if(latestAccount)renderAccount(latestAccount);
   }catch(e){
-    document.getElementById('kpiGrid').innerHTML='<div class="empty">Error cargando datos — verifica DB</div>';
+    showAnalyticsLoadError('kpiGrid','No se pudieron cargar las estadísticas de operaciones.',loadStats,e);
+    showAnalyticsLoadError('bestSymbols','Estadísticas por símbolo no disponibles.',loadStats,e);
+    showAnalyticsLoadError('worstSymbols','Estadísticas por símbolo no disponibles.',loadStats,e);
+    showAnalyticsLoadError('researchHours','Estadísticas por horario no disponibles.',loadStats,e);
+    showAnalyticsLoadError('rejList','Rechazos históricos no disponibles.',loadStats,e);
+    showAnalyticsLoadError('tradesTbl','Historial de operaciones no disponible.',loadStats,e,true);
   }
   return allStats;
 }
 
+function showAnalyticsLoadError(id,message,retry,error,row=false){
+  const el=document.getElementById(id);if(!el)return;
+  const note=escapeHtml(error?.message||'');
+  const button='<button type="button" class="filter-btn" onclick="'+(retry===loadStats?'loadStats()':'loadResearch()')+'">Reintentar</button>';
+  el.innerHTML=row?'<tr><td colspan="10" class="empty">'+message+' '+note+' '+button+'</td></tr>':'<div class="empty" role="alert">'+message+' '+note+' '+button+'</div>';
+}
+
 async function loadResearch(){
-  try{
-    const [summary,symbols,hours,rejections,setups]=await Promise.all([
-      fetch('/api/research/summary').then(r=>r.json()),
-      fetch('/api/research/symbols').then(r=>r.json()),
-      fetch('/api/research/hours').then(r=>r.json()),
-      fetch('/api/research/rejections').then(r=>r.json()),
-      fetch('/api/research/setups').then(r=>r.json())
-    ]);
-    allResearch={summary,symbols,hours,rejections,setups};
-    renderResearch();
-    if(allStats)render();
-  }catch(e){
-    const el=document.getElementById('researchKpis');
-    if(el)el.innerHTML='<div class="empty">Error cargando research</div>';
+  const sources=[['summary','/api/research/summary'],['symbols','/api/research/symbols'],['hours','/api/research/hours'],['rejections','/api/research/rejections'],['setups','/api/research/setups']];
+  const results=await Promise.allSettled(sources.map(([,url])=>AterumUI.json(url)));
+  allResearch=allResearch||{};
+  results.forEach((result,index)=>{if(result.status==='fulfilled')allResearch[sources[index][0]]=result.value;});
+  if(results.some(result=>result.status==='fulfilled')){renderResearch();if(allStats)render();}
+  const failed=results.some(result=>result.status==='rejected');
+  if(failed){
+    const errors=results.filter(result=>result.status==='rejected').map(result=>result.reason?.message).filter(Boolean);
+    ['researchKpis','bestSymbols','worstSymbols','researchHours','researchRejections','researchSetups','postTradeList','recurrentTerms'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el&&/loading-shell|loading-shell-wrap|loading/.test(el.innerHTML))showAnalyticsLoadError(id,'Parte de Research no está disponible.',loadResearch,{message:errors.join(' · ')});
+    });
   }
 }
 
 function money(v){
-  const n=+v||0;
+  if(v==null||!Number.isFinite(Number(v)))return '—';
+  const n=Number(v);
   return (n>=0?'+':'-')+'$'+Math.abs(n).toFixed(2);
 }
 function pct(v){return (+v||0).toFixed(1)+'%'}
@@ -1239,10 +1256,10 @@ function renderResearchSetups(data){
 function render(){
   if(!allStats)return;
   let rows=allStats.recent||[];
-  if(period>0){const cut=Date.now()-period*86400000;rows=rows.filter(t=>{const d=new Date(t.opened_at||t.closed_at).getTime();return d>=cut;}); }
+  if(period>0){const cut=Date.now()-period*86400000;rows=rows.filter(t=>{const d=new Date(t.closed_at||t.opened_at).getTime();return d>=cut;}); }
   if(filterDir) rows=rows.filter(t=>t.direction===filterDir);
   if(filterResult==='win')  rows=rows.filter(t=>(+t.pnl_usdt||0)>0);
-  if(filterResult==='loss') rows=rows.filter(t=>(+t.pnl_usdt||0)<=0);
+  if(filterResult==='loss') rows=rows.filter(t=>t.pnl_usdt!=null&&Number(t.pnl_usdt)<=0);
   rows.forEach(t=>{t.pnl_usdt=t.pnl_usdt!=null?+t.pnl_usdt:null;t.r_final=t.r_final!=null?+t.r_final:null;t.final_score=+t.final_score||0;t.entry_price=+t.entry_price||0;t.exit_price=t.exit_price!=null?+t.exit_price:null;});
   const closed=rows.filter(t=>t.pnl_usdt!==null);
   const wins=closed.filter(t=>t.pnl_usdt>0).length;
@@ -1261,25 +1278,26 @@ function render(){
 function renderKPIs({totalPnL,winRate,wins,losses,avgR,total,bestTrade,worstTrade}){
   const research=allResearch?.summary||{};
   const kpis=[
-    {lbl:'PnL Total',val:(totalPnL>=0?'+':'')+'$'+Math.abs(totalPnL).toFixed(2),sub:total+' trades cerrados',cls:totalPnL>=0?'kpi-green':'kpi-red',icon:'💰',color:totalPnL>=0?'var(--green)':'var(--red)'},
+    {lbl:'PnL Total',val:(totalPnL>=0?'+':'-')+'$'+Math.abs(totalPnL).toFixed(2),sub:total+' trades cerrados',cls:totalPnL>=0?'kpi-green':'kpi-red',icon:'💰',color:totalPnL>=0?'var(--green)':'var(--red)'},
     {lbl:'Tasa de acierto',val:winRate+'%',sub:wins+' G · '+losses+' P',cls:'kpi-blue',icon:'🎯',color:'var(--blue)'},
-    {lbl:'Profit Factor',val:research.profitFactor==null?'∞':fmtNum(research.profitFactor,2)+'x',sub:'beneficio bruto / pérdida',cls:(research.profitFactor||0)>=1?'kpi-green':'kpi-red',icon:'⚖',color:(research.profitFactor||0)>=1?'var(--green)':'var(--red)'},
-    {lbl:'Expectancy',val:money(research.expectancy),sub:'por operación cerrada',cls:(research.expectancy||0)>=0?'kpi-green':'kpi-red',icon:'Σ',color:metricColor(research.expectancy)},
-    {lbl:'Drawdown',val:money(research.maxDrawdown),sub:'máxima caída cerrada',cls:(research.maxDrawdown||0)<0?'kpi-red':'kpi-green',icon:'↧',color:(research.maxDrawdown||0)<0?'var(--red)':'var(--green)'},
+    {lbl:'Profit Factor · histórico',val:!allResearch?'—':research.profitFactor===null?'∞':fmtNum(research.profitFactor,2)+'x',sub:'beneficio bruto / pérdida',cls:(research.profitFactor||0)>=1?'kpi-green':'kpi-red',icon:'⚖',color:(research.profitFactor||0)>=1?'var(--green)':'var(--red)'},
+    {lbl:'Expectancy · histórico',val:money(research.expectancy),sub:'por operación cerrada',cls:(research.expectancy||0)>=0?'kpi-green':'kpi-red',icon:'Σ',color:metricColor(research.expectancy)},
+    {lbl:'Drawdown · histórico',val:money(research.maxDrawdown),sub:'máxima caída cerrada',cls:(research.maxDrawdown||0)<0?'kpi-red':'kpi-green',icon:'↧',color:(research.maxDrawdown||0)<0?'var(--red)':'var(--green)'},
     {lbl:'R promedio',val:(avgR>=0?'+':'')+avgR+'R',sub:'por trade',cls:avgR>=0?'kpi-green':'kpi-red',icon:'📊',color:avgR>=0?'var(--green)':'var(--red)'},
     {lbl:'Señales aceptadas',val:research.acceptedSignals||0,sub:(research.rejectedSignals||0)+' rechazadas',cls:'kpi-purple',icon:'✓',color:'var(--green)'},
-    {lbl:'Mejor Trade',val:bestTrade?((+bestTrade.pnl_usdt>=0?'+':'')+'$'+Math.abs(+bestTrade.pnl_usdt||0).toFixed(2)):'—',sub:bestTrade?.symbol||'—',cls:'kpi-green',icon:'🏆',color:'var(--green)'},
+    {lbl:'Mejor Trade',val:bestTrade?((+bestTrade.pnl_usdt>=0?'+':'-')+'$'+Math.abs(+bestTrade.pnl_usdt||0).toFixed(2)):'—',sub:bestTrade?.symbol||'—',cls:'kpi-green',icon:'🏆',color:'var(--green)'},
     {lbl:'Peor Trade',val:worstTrade?((+worstTrade.pnl_usdt>=0?'+':'-')+'$'+Math.abs(+worstTrade.pnl_usdt||0).toFixed(2)):'—',sub:worstTrade?.symbol||'—',cls:'kpi-red',icon:'🛑',color:'var(--red)'},
     {lbl:'Operaciones totales',val:total,sub:'en el periodo',cls:'kpi-purple',icon:'📈',color:'var(--purple)'},
   ];
   document.getElementById('kpiGrid').innerHTML=kpis.map(k=>\`<div class="kpi \${k.cls}"><div class="kpi-glow"></div><div class="kpi-accent"></div><div class="kpi-lbl">\${k.lbl}</div><div class="kpi-val" style="color:\${k.color}">\${k.val}</div><div class="kpi-sub">\${k.sub}</div><div class="kpi-icon">\${k.icon}</div></div>\`).join('');
   const cum=document.getElementById('pnlBadge');
-  if(cum)cum.textContent=(totalPnL>=0?'+':'')+'$'+Math.abs(totalPnL).toFixed(2);
+  if(cum)cum.textContent=(totalPnL>=0?'+':'-')+'$'+Math.abs(totalPnL).toFixed(2);
   cum.style.color=totalPnL>=0?'var(--green)':'var(--red)';
 }
 
 let pnlChart=null,wlChart=null,weeklyChart=null;
 function renderPnLChart(closed){
+  if(!window.Chart)return;
   const sorted=[...closed].sort((a,b)=>new Date(a.closed_at)-new Date(b.closed_at));
   let cum=0;
   const labels=sorted.map(t=>new Date(t.closed_at).toLocaleDateString('es',{month:'short',day:'numeric'}));
@@ -1301,6 +1319,7 @@ function renderPnLChart(closed){
       }}});
 }
 function renderWinLoss(wins,losses){
+  if(!window.Chart)return;
   const ctx=document.getElementById('chartWinLoss').getContext('2d');
   if(wlChart)wlChart.destroy();
   wlChart=new Chart(ctx,{type:'doughnut',data:{labels:['Ganadas','Perdidas'],datasets:[{
@@ -1312,7 +1331,8 @@ function renderWinLoss(wins,losses){
         tooltip:{backgroundColor:'rgba(6,9,16,.9)',borderColor:'rgba(30,46,69,.8)',borderWidth:1,callbacks:{label:c=>c.label+': '+c.raw+(wins+losses>0?' ('+((c.raw/(wins+losses))*100).toFixed(1)+'%)':'')}}}}});
 }
 function renderWeekly(weekly){
-  if(!weekly?.length){document.getElementById('chartWeekly').parentElement.innerHTML='<div class="empty">Sin datos semanales</div>';return}
+  if(!window.Chart)return;
+  weekly=weekly||[];
   const ctx=document.getElementById('chartWeekly').getContext('2d');
   if(weeklyChart)weeklyChart.destroy();
   const sorted=[...weekly].reverse();
@@ -1337,7 +1357,7 @@ function renderSymbols(symbols){
       <div class="sym-name">\${(s.symbol||'').replace('USDT','')}</div>
       <div class="sym-bar-wrap"><div class="sym-bar-fill" style="width:\${Math.min(Math.abs(+s.total_pnl||0)/max*100,100)}%;background:\${pos?'var(--green)':'var(--red)'}"></div></div>
       <div class="sym-wr" style="color:var(--text2)">\${+s.win_rate||0}%</div>
-      <div class="sym-pnl \${pos?'pp':'pn'}">\${pos?'+':''}\$\${Math.abs(+s.total_pnl||0).toFixed(2)}</div>
+      <div class="sym-pnl \${pos?'pp':'pn'}">\${pos?'+':'-'}\$\${Math.abs(+s.total_pnl||0).toFixed(2)}</div>
     </div>\`;
   }).join('');
 }
@@ -1361,19 +1381,11 @@ function renderTable(rows){
   if(!rows.length){tbody.innerHTML='<tr><td colspan="10" class="empty">Sin trades en este período</td></tr>';return}
   tbody.innerHTML=rows.map(t=>{
     const pnl=t.pnl_usdt,fr=t.r_final,mins=t.duration_minutes;
-    const reason=t.close_reason||'';
-    const winStages1=['TIME_LOCK','LOCK','BREAKEVEN','TRAILING'];
-    const isWinStage1=winStages1.includes(t.trailing_stage||'');
-    const pnlFixed=pnl!=null?(
-      reason==='SL'&&+pnl>0&&!isWinStage1?-pnl:
-      reason==='SL'&&+pnl<0&&isWinStage1&&+fr>0?Math.abs(+pnl):
-      reason==='TP'&&+pnl<0?Math.abs(+pnl):
-      +pnl
-    ):null;
+    const pnlFixed=pnl==null?null:Number(pnl);
     const dur=mins?mins<60?mins+'m':Math.floor(mins/60)+'h '+(mins%60)+'m':'—';
     const rm={SL:'<span class="badge b-sl">SL</span>',TP:'<span class="badge b-tp">TP</span>',MANUAL:'Manual',SYNC:'Sync'};
     return \`<tr>
-      <td><strong>\${t.symbol||'—'}</strong></td>
+      <td><a href="/knowledge?decision=trade%3A\${encodeURIComponent(t.id)}"><strong>\${AterumUI.escape(t.symbol||'—')}</strong></a></td>
       <td><span class="badge \${t.direction==='LONG'?'b-long':'b-short'}">\${t.direction||'—'}</span></td>
       <td>$\${(+t.entry_price||0).toFixed(4)}</td>
       <td>\${t.exit_price?'$'+(+t.exit_price).toFixed(4):'—'}</td>

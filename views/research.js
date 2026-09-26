@@ -191,6 +191,7 @@ ${getSharedNav('research', user, 'blue')}
     </div>
   </section>
 
+  <section class="data-panel" data-panel="engine" id="shadowPanel" aria-label="Research en observación"></section>
   <section class="metric-grid" data-panel="changes" id="learningChangeMetrics">${getLoadingMarkup('Cargando cambios')}</section>
 
   <section class="surface section" data-panel="changes">
@@ -369,7 +370,7 @@ async function loadResearchReports(){
   const from=document.getElementById('reportFrom')?.value||'';
   const to=document.getElementById('reportTo')?.value||'';
   if(type)params.set('type',type); if(from)params.set('from',from); if(to)params.set('to',to); params.set('limit','80');
-  const data=await fetch('/api/research/reports?'+params.toString()).then(r=>r.json());
+  const data=await AterumUI.json('/api/research/reports?'+params.toString());
   researchReports=data.reports||[];
   document.getElementById('reportStatus').textContent=researchReports.length+' informes';
   const history=document.getElementById('reportHistory');
@@ -520,9 +521,9 @@ function renderLearningChanges(){
 
 async function loadRecommendationLearning(){
   const [recs,perf,evolution]=await Promise.all([
-    fetch('/api/research/recommendations?limit=180').then(r=>r.json()),
-    fetch('/api/research/recommendations/performance').then(r=>r.json()),
-    fetch('/api/research/strategy-evolution').then(r=>r.json())
+    AterumUI.json('/api/research/recommendations?limit=180'),
+    AterumUI.json('/api/research/recommendations/performance'),
+    AterumUI.json('/api/research/strategy-evolution')
   ]);
   researchRecommendations=recs.recommendations||[];
   recommendationPerformance=perf||{};
@@ -532,9 +533,9 @@ async function loadRecommendationLearning(){
 
 async function loadLearningEngine(){
   const [summary,rules,decisions]=await Promise.all([
-    fetch('/api/learning/summary').then(r=>r.json()),
-    fetch('/api/learning/rules').then(r=>r.json()),
-    fetch('/api/learning/decisions?limit=40').then(r=>r.json())
+    AterumUI.json('/api/learning/summary'),
+    AterumUI.json('/api/learning/rules'),
+    AterumUI.json('/api/learning/decisions?limit=40')
   ]);
   learningSummary=summary||{};
   learningRules=rules.rules||[];
@@ -544,9 +545,9 @@ async function loadLearningEngine(){
 
 async function loadLearningChanges(){
   const [changes,summary,timeline]=await Promise.all([
-    fetch('/api/learning/changes?limit=160').then(r=>r.json()),
-    fetch('/api/learning/changes/summary').then(r=>r.json()),
-    fetch('/api/learning/timeline?limit=160').then(r=>r.json())
+    AterumUI.json('/api/learning/changes?limit=160'),
+    AterumUI.json('/api/learning/changes/summary'),
+    AterumUI.json('/api/learning/timeline?limit=160')
   ]);
   learningChanges=changes.changes||[];
   learningChangeSummary=summary||{};
@@ -556,7 +557,8 @@ async function loadLearningChanges(){
 
 async function refreshResearch(){
   try{
-    await Promise.all([loadResearchReports(),loadRecommendationLearning(),loadLearningEngine(),loadLearningChanges()]);
+    const tasks=[['reportHistory',loadResearchReports],['recommendationMetrics',loadRecommendationLearning],['learningMetrics',loadLearningEngine],['learningChangeMetrics',loadLearningChanges]];
+    await Promise.allSettled(tasks.map(async ([id,load])=>{try{await load();}catch(error){const root=document.getElementById(id);if(root)root.innerHTML='<div class="empty" role="alert">'+escapeHtml(error.message)+'</div>';}}));
   }catch(error){
     document.getElementById('recommendationMetrics').innerHTML='<div class="empty">No se pudo cargar Research</div>';
   }

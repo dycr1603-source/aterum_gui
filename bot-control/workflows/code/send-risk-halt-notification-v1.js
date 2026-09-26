@@ -5,10 +5,11 @@ const code = String(reason.code || 'RISK_REJECTED');
 const detail = String(reason.reason || payload.haltReason || 'El control de riesgo rechazó la evaluación.').replace(/\s+/g, ' ').slice(0, 500);
 const available = Number(payload.availableBalance ?? capacity.account?.availableMargin);
 const minimum = Number(capacity.limits?.minimumTradeMargin);
+const sideEmoji = '⚠️';
 const lines = [
   '⚠️ OPERACIÓN NO EVALUADA',
   '',
-  'Motivo: control de riesgo',
+  `Motivo: control de riesgo`,
   `Código: ${code}`,
   `Detalle: ${detail}`,
   Number.isFinite(available) ? `Margen disponible: ${available.toFixed(4)} USDT` : null,
@@ -16,8 +17,7 @@ const lines = [
   '',
   'Jev no fue consultado y no se envió ninguna orden a Binance.'
 ].filter(Boolean);
-
-const telegramText = lines.join('\n');
+const telegramText = buildClosingBox(lines).join('\n').replace(/^┃/gm, '┃');
 const notificationEventKey = `risk-halt:${code}:${Math.floor(Date.now() / 300000)}`;
 try {
   const response = await this.helpers.httpRequest({

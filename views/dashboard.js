@@ -1,6 +1,7 @@
 'use strict';
 
 const {
+  getSharedHeadAssets,
   getSharedChrome,
   getSharedStyles,
   getSharedScript,
@@ -14,6 +15,7 @@ function getDashboardHTML(symbol, user) { return `<!DOCTYPE html>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#f5f5f7">
 <title>ATERUM — ${symbol}</title>
+${getSharedHeadAssets()}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
@@ -4127,7 +4129,7 @@ ${getSharedNav('dashboard', user, 'blue',
         <div class="market-card"><div class="market-label">Mínimo 24H</div><div class="market-value" id="marketLow">—</div><div class="market-sub">zona de soporte</div><svg class="market-spark" id="sparkMarketLow" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
         <div class="market-card"><div class="market-label">Volumen 24H</div><div class="market-value" id="marketVolume">—</div><div class="market-sub">futuros perpetuos</div><svg class="market-spark" id="sparkMarketVolume" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"></svg></div>
         <div class="market-card sentiment-card">
-          <div class="market-label">Sentimiento</div>
+          <div class="market-label" title="Estimación visual a partir del cambio de precio de 24 horas y ADX; no es una señal de entrada">Sesgo técnico</div>
           <svg class="sentiment-gauge" viewBox="0 0 64 64" aria-hidden="true">
             <circle class="sentiment-gauge-track" cx="32" cy="32" r="26"></circle>
             <circle class="sentiment-gauge-fill" id="sentimentGaugeFill" cx="32" cy="32" r="26" stroke-dasharray="163" stroke-dashoffset="163"></circle>
@@ -4138,9 +4140,9 @@ ${getSharedNav('dashboard', user, 'blue',
       </div>
       <div class="wave-row">
         <div class="wave-card">
-          <div class="wave-label">Flujo de capital 24h</div>
+          <div class="wave-label">PnL de cierres visibles</div>
           <div class="wave-value" id="waveFlowValue">—</div>
-          <div class="wave-sub">entrada neta</div>
+          <div class="wave-sub">muestra de la lista de posiciones</div>
           <svg class="wave-spark" id="waveFlowSpark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-hidden="true"></svg>
         </div>
         <div class="wave-card">
@@ -4282,7 +4284,7 @@ ${getSharedNav('dashboard', user, 'blue',
           <div class="stat-c"><div class="stat-lbl">ROI diario</div><div class="stat-val" id="acctDailyRoi">—</div></div>
         </div>
         <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">
-          <span id="acctPositions" style="font-size:10px;color:var(--text2)">—</span>
+          <span id="accountFreshness" role="status" style="font-size:11px;color:var(--text2)">Esperando cuenta</span><span id="acctPositions" style="font-size:10px;color:var(--text2)">—</span>
           <span id="acctMarginPct" style="font-size:10px;color:var(--muted)">—</span>
         </div>
         <div style="margin-top:6px;height:4px;background:var(--bg4);border-radius:999px;overflow:hidden">
@@ -4868,13 +4870,14 @@ function paintSigned(id,val,suffix){
 function updateWorkspacePanel(extra={}){
   const bal=+(accountSnapshot.balance||0);
   const avail=+(accountSnapshot.available||0);
-  const equity=+(accountSnapshot.equity||bal+(accountSnapshot.totalUnreal||0));
+  const equity=+(accountSnapshot.equity??bal+(accountSnapshot.totalUnreal||0));
+  const available=!!accountSnapshot.ts&&!['unavailable','loading'].includes(accountSnapshot.status);
   const daily=+(extra.dailyPnl||0);
   const marginPct=+(extra.marginPct||0);
   const runRate=bal>0?((accountSnapshot.totalUnreal||0)/bal*100):0;
-  setText('workspaceBalance',bal>0?fmtUSD(bal):'—');
-  setText('workspaceAvail',avail>0?fmtUSD(avail):'—');
-  setText('workspaceEquity',equity>0?fmtUSD(equity):'—');
+  setText('workspaceBalance',available?fmtUSD(bal):'—');
+  setText('workspaceAvail',available?fmtUSD(avail):'—');
+  setText('workspaceEquity',available?fmtUSD(equity):'—');
   setText('workspaceDaily',daily||daily===0?fmtSignedUSD(daily):'—');
   setText('workspaceRunRate',bal>0?fmtPct(runRate):'—');
   setText('workspaceOpen',String(accountSnapshot.openPositions||0));
@@ -5081,6 +5084,12 @@ function hydrateCurrentTradeFromAccount(acct){
   updatePnL();
 }
 function applyAccountSnapshot(acct){
+  if(acct.status==='loading'||acct.status==='unavailable'){
+    ['workspaceBalance','workspaceAvail','workspaceEquity','workspaceOpen','acctBalance','acctAvail','acctMargin','acctUnreal','metricMarginInUse','metricUnrealized'].forEach(id=>setText(id,'—'));
+    setText('accountFreshness','Cuenta no disponible · esperando una lectura válida');
+    return;
+  }
+  setText('accountFreshness',AterumUI.accountFresh(acct)?'Cuenta actualizada':'Cuenta sin actualización reciente');
   const positionKey=getAccountPositionKey(acct);
   if(positionKey!==lastAccountPositionKey){
     lastAccountPositionKey=positionKey;
@@ -5091,12 +5100,12 @@ function applyAccountSnapshot(acct){
   const totalMargin=+(acct.totalMargin||0);
   const totalUnreal=+(acct.totalUnreal||0);
   const openCount=+(acct.openPositions||0);
-  const equity=+(acct.equity||balance+totalUnreal);
+  const equity=+(acct.equity??balance+totalUnreal);
   const marginPct=balance>0?(totalMargin/balance*100):(cachedAccountDerived.marginPct||0);
   accountSnapshot={...acct,equity,balance,available,totalMargin,totalUnreal,openPositions:openCount};
 
-  setText('acctBalance',balance>0?fmtUSD(balance):'—');
-  setText('acctAvail',available>0?fmtUSD(available):'—');
+  setText('acctBalance',fmtUSD(balance));
+  setText('acctAvail',fmtUSD(available));
   setText('acctMargin',fmtUSD(totalMargin));
   setText('acctUnreal',fmtSignedUSDWithPct(totalUnreal,balance));
   setSignedTone('acctUnreal',totalUnreal);
@@ -5461,9 +5470,11 @@ async function loadAccountData(){
   if(pendingFetches.account)return;
   pendingFetches.account=true;
   try{
-    const acctResp=await fetch('/api/account');
+    const acctResp=await fetch('/api/account',{cache:'no-store',signal:AbortSignal.timeout(15000)});
+    if(!acctResp.ok)throw new Error('HTTP '+acctResp.status);
     applyAccountSnapshot(await acctResp.json());
-  }catch(e){ console.error('Account data error:', e); }
+    setDataIssue('accountLoadIssue','');
+  }catch(e){ setDataIssue('accountLoadIssue','Cuenta no disponible: '+e.message);console.error('Account data error:', e); }
   finally{pendingFetches.account=false;}
 }
 
@@ -5481,7 +5492,8 @@ async function loadDailyStats(){
       t.pnl_usdt!=null &&
       (t.closed_at||'').toString().slice(0,10)===today
     );
-    const dailyPnl=todayClosed.reduce((s,t)=>s+(+t.pnl_usdt||0),0);
+    const daily=stats.daily?.find(d=>String(d.day).slice(0,10)===today);
+    const dailyPnl=daily?Number(daily.pnl):todayClosed.reduce((s,t)=>s+(+t.pnl_usdt||0),0);
     const marginPct=balance>0?(totalMargin/balance*100):0;
     const dailyRoi=balance>0?(dailyPnl/balance*100):0;
     cachedAccountDerived={dailyPnl,dailyRoi,marginPct};
@@ -5517,8 +5529,7 @@ async function loadDashboardState(){
   pendingFetches.dashboard=true;
   lastTradeRefreshAt=Date.now();
   try{
-    const r=await fetch('/api/dashboard/state',{cache:'no-store'});
-    const data=await r.json();
+    const data=await AterumUI.json('/api/dashboard/state');
     const active=data.trades?.active||{},closed=data.trades?.closed||{};
     Object.assign(wlPrices,data.prices||{});
     cachedAccountDerived={
@@ -5527,6 +5538,7 @@ async function loadDashboardState(){
       marginPct:+(data.stats?.marginPct||0)
     };
     applyTradesSnapshot(active,closed);
+    setDataIssue('dashboardLoadIssue','');
     applyingDashboardState=true;
     applyAccountSnapshot(data.account||{});
     applyingDashboardState=false;
@@ -5537,11 +5549,23 @@ async function loadDashboardState(){
     setText('execUpdated','updated '+shortUtc);
     window.AterumAssistant?.notifyContextChanged({refetchSummary:true});
   }catch(e){
+    setDataIssue('dashboardLoadIssue','No se pudieron actualizar las posiciones: '+e.message);
     console.log('Dashboard state:',e.message);
   }finally{
     applyingDashboardState=false;
     pendingFetches.dashboard=false;
   }
+}
+
+function setDataIssue(id,message){
+  let el=document.getElementById(id);
+  if(message&&!el){
+    el=document.createElement('div');el.id=id;el.className='dashboard-data-issue';el.setAttribute('role','status');
+    el.style.cssText='display:none;padding:8px;margin:6px 0;border:1px solid rgba(245,166,35,.35);border-radius:8px;color:var(--gold);font-size:10px;line-height:1.4';
+    const anchor=id==='accountLoadIssue'?(document.querySelector('.workspace-card')||document.querySelector('.wl')):(document.querySelector('.wl-hdr')||document.querySelector('.wl'));
+    anchor?.appendChild(el);
+  }
+  if(el){el.replaceChildren(document.createTextNode(message));el.style.display=message?'block':'none';}
 }
 
 async function loadKlines(){

@@ -160,6 +160,7 @@ router.get('/db/ai-data', async (req, res) => {
              GROUP BY t.ai_regime`, [cutoff])
     ]);
 
+    if (![trades,rejections,postTrades,tf4hStats,macroStats,visionStats,regimeStats].every(Array.isArray)) return res.status(503).json({error:'AI_DATA_UNAVAILABLE'});
     res.json({ trades, rejections, postTrades, tf4hStats, macroStats, visionStats, regimeStats });
   }catch(e){ res.status(500).json({ error: e.message }); }
 });

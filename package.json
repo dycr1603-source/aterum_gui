@@ -15,7 +15,11 @@
     "test:workflow": "node tests/workflow_redesign.test.js && node tests/trailing_manager_regression.test.js && node tests/sl_monitor_regression.test.js && node tests/efficiency_gate.test.js && node tests/portfolio_allocation_regression.test.js",
     "test:execution": "node position-guard/execution-engine.test.js && node position-guard/synchronization.test.js && node position-guard/close-lifecycle.test.js && node position-guard/reconciliation.test.js && node position-guard/portfolio-allocation.test.js",
     "test:jev": "node --test tests/jev.test.js tests/jev_integration.test.js tests/jev_routes.test.js tests/telegram_delivery.test.js",
-    "test:offline": "node scripts/test-offline.js"
+    "test:offline": "node scripts/test-offline.js",
+    "build": "npm run check && node scripts/check-gui.js",
+    "preview:gui": "node scripts/preview-gui.js",
+    "test:gui": "node scripts/check-gui.js && node tests/gui_contract.test.js && node tests/account_snapshot.test.js && node tests/simulator_sources.test.js",
+    "test:gui:live": "node tests/gui-browser.cjs"
   },
   "keywords": [],
   "author": "",

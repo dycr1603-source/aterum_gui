@@ -59,6 +59,7 @@ const shared = {
   API_SECRET_ACCT,
   crypto_acct: crypto,
   accountState: {
+    status: 'loading', snapshotTs: null,
     balance: 0, available: 0, totalMargin: 0,
     totalUnreal: 0, openPositions: 0, positions: {}, ts: Date.now()
   },

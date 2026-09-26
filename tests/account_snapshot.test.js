@@ -1,0 +1,12 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { validateAccountSnapshot } = require('../services/account_snapshot');
+const balances = [{asset:'USDT',balance:'0.0000',availableBalance:'0'}];
+assert.equal(validateAccountSnapshot(balances, []).balance, '0.0000', 'A genuine zero balance is valid');
+assert.throws(()=>validateAccountSnapshot({code:-2015,msg:'Rejected'}, []), /ACCOUNT_SOURCE_UNAVAILABLE/);
+assert.throws(()=>validateAccountSnapshot(balances, {code:-1021}), /ACCOUNT_SOURCE_UNAVAILABLE/);
+assert.throws(()=>validateAccountSnapshot([], []), /ACCOUNT_SNAPSHOT_INVALID/);
+assert.throws(()=>validateAccountSnapshot([{asset:'USDT',balance:null,availableBalance:'0'}], []), /ACCOUNT_SNAPSHOT_INVALID/);
+assert.throws(()=>validateAccountSnapshot(balances, [{positionAmt:'NaN',unRealizedProfit:'0'}]), /ACCOUNT_SNAPSHOT_INVALID/);
+assert.equal(validateAccountSnapshot([{asset:'USDT',balance:'125.33',availableBalance:'12.4'}], [{positionAmt:'-2',unRealizedProfit:'-3.5'}]).balance, '125.33');
+console.log('account snapshot contracts: ok');

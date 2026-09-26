@@ -874,6 +874,8 @@ ${getSharedNav('aidata', user, 'purple')}
       </table>
     </div>
   </div>
+<section class="data-panel" id="opportunitiesPanel" aria-label="Oportunidades"></section>
+<section class="data-panel" id="coveragePanel" aria-label="Cobertura"></section>
 </div>
 </div>
 
@@ -1214,7 +1216,7 @@ function render(){
   const stats = [
     { lbl:'Trades Analizados', val:closed.length, sub:rows.length+' total', color:'var(--purple)', accent:'var(--purple)' },
     { lbl:'Tasa de Acierto', val:wr+'%', sub:wins.length+'G / '+(closed.length-wins.length)+'P', color:'var(--blue)', accent:'var(--blue)' },
-    { lbl:'PnL Total', val:(totalPnL>=0?'+':'')+'$'+Math.abs(totalPnL).toFixed(2), sub:'periodo seleccionado', color:totalPnL>=0?'var(--green)':'var(--red)', accent:totalPnL>=0?'var(--green)':'var(--red)' },
+    { lbl:'PnL Total', val:(totalPnL>=0?'+':'-')+'$'+Math.abs(totalPnL).toFixed(2), sub:'periodo seleccionado', color:totalPnL>=0?'var(--green)':'var(--red)', accent:totalPnL>=0?'var(--green)':'var(--red)' },
     { lbl:'Puntaje promedio', val:avgScore, sub:'de 100 pts', color:'var(--gold)', accent:'var(--gold)' },
     { lbl:'R promedio', val:(+avgR>=0?'+':'')+avgR+'R', sub:'por trade cerrado', color:+avgR>=0?'var(--green)':'var(--red)', accent:+avgR>=0?'var(--green)':'var(--red)' },
     { lbl:'Análisis PT', val:allData.postTrades?.length||0, sub:'análisis guardados', color:'var(--orange)', accent:'var(--orange)' },
@@ -1525,6 +1527,7 @@ function renderPerfGrid(elId, data, key, labelFn){
 
 let scoreChart=null, fgChart=null;
 function renderScoreChart(closed){
+  if(!window.Chart)return;
   const ctx = document.getElementById('chartScore').getContext('2d');
   if(scoreChart) scoreChart.destroy();
   const bins = {};
@@ -1544,6 +1547,7 @@ function renderScoreChart(closed){
 }
 
 function renderFGChart(closed){
+  if(!window.Chart)return;
   const ctx = document.getElementById('chartFG').getContext('2d');
   if(fgChart) fgChart.destroy();
   const withFG = closed.filter(t => t.macro_fear_greed != null);
@@ -1591,6 +1595,10 @@ function renderPostTrades(items){
   }).join('');
 }
 
+function renderAIContext(t){
+  const fields=[['Razonamiento',t.ai_reasoning],['Riesgo principal',t.ai_key_risk],['Visión',t.vision_reason],['Tendencia 4H',t.tf4h_trend],['RSI 4H',t.tf4h_rsi],['Cambio BTC',t.macro_btc_change==null?null:t.macro_btc_change+'%'],['Riesgo efectivo',t.effective_risk_pct==null?null:t.effective_risk_pct+'%'],['Multiplicador de score',t.score_multiplier],['Multiplicador macro',t.macro_size_mult],['Score de escaneo',t.scan_score],['Fallback',t.used_fallback==null?null:Number(t.used_fallback)?'Sí':'No'],['Símbolo original',t.original_symbol]];
+  return '<details class="ai-context"><summary>Ver contexto</summary><dl>'+fields.map(([label,value])=>'<dt>'+AterumUI.escape(label)+'</dt><dd>'+AterumUI.escape(value)+'</dd>').join('')+'</dl></details>';
+}
 function renderTable(rows){
   const tbody = document.getElementById('aiTbl');
   document.getElementById('tblCount').textContent = rows.length + ' trades';
@@ -1604,24 +1612,17 @@ function renderTable(rows){
 
   tbody.innerHTML = rows.map(t => {
     const pnl = t.pnl_usdt, fr = t.r_final;
-    const winStages2=['TIME_LOCK','LOCK','BREAKEVEN','TRAILING'];
-    const isWinStage2=winStages2.includes(t.trailing_stage||'');
-    const pnlFixed = pnl!=null?(
-      t.close_reason==='SL'&&+pnl>0&&!isWinStage2?-pnl:
-      t.close_reason==='SL'&&+pnl<0&&isWinStage2&&+t.r_final>0?Math.abs(+pnl):
-      t.close_reason==='TP'&&+pnl<0?Math.abs(+pnl):
-      +pnl
-    ):null;
+    const pnlFixed=pnl==null?null:Number(pnl);
     return \`<tr>
-      <td><strong>\${t.symbol||'—'}</strong></td>
+      <td><a href="/knowledge?decision=trade%3A\${encodeURIComponent(t.id)}"><strong>\${AterumUI.escape(t.symbol||'—')}</strong></a>\${renderAIContext(t)}</td>
       <td><span class="badge \${t.direction==='LONG'?'b-long':'b-short'}">\${t.direction||'—'}</span></td>
-      <td style="color:var(--blue);font-weight:600">\${t.final_score||'—'}</td>
+      <td style="color:var(--blue);font-weight:600">\${t.final_score??'—'}</td>
       <td>\${t.tf4h_status?'<span class="badge '+tf4hBadge(t.tf4h_status)+'">'+t.tf4h_status+'</span>':'<span style="color:var(--muted)">—</span>'}</td>
       <td>\${t.macro_bias?'<span class="badge '+macroBadge(t.macro_bias)+'">'+t.macro_bias+'</span>':'<span style="color:var(--muted)">—</span>'}</td>
       <td>\${t.vision_state?'<span class="badge '+visBadge(t.vision_state)+'">'+t.vision_state.replace('_TREND','')+'</span>':'<span style="color:var(--muted)">—</span>'}</td>
       <td>\${t.ai_regime?'<span class="badge '+regBadge(t.ai_regime)+'">'+t.ai_regime.replace('_',' ')+'</span>':'<span style="color:var(--muted)">—</span>'}</td>
       <td style="color:var(--gold)">\${t.recommended_leverage||'—'}x</td>
-      <td style="color:var(--text2)">\${t.macro_fear_greed||'—'}</td>
+      <td style="color:var(--text2)">\${t.macro_fear_greed??'—'}</td>
       <td class="\${pnlFixed>0?'pp':pnlFixed<0?'pn':''}">\${pnlFixed!=null?(pnlFixed>=0?'+':'-')+'$'+Math.abs(pnlFixed).toFixed(2):'ABIERTO'}</td>
       <td class="\${+fr>0?'rp':+fr<0?'rn':''}">\${fr!=null?(+fr>=0?'+':'')+fr+'R':'—'}</td>
       <td style="color:var(--text2);font-size:9px">\${stageMap[t.trailing_stage]||t.trailing_stage||'—'}</td>

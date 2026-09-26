@@ -61,14 +61,15 @@ async function executeVerified(helpers, request){
 
 function executionFailureText(result, action, symbol){
   if(result?.failureNotificationSent) return null;
+  const sideEmoji = (String(action).includes('STOP') || String(action).includes('TRAILING')) ? '🟡' : '🚨';
   return [
     '🚨 ATERUM EXECUTION FAILED',
-    `${action} ${symbol}`,
+    `${sideEmoji} ${action} ${symbol}`,
     `Execution ID: ${result?.executionId || 'not-created'}`,
     result?.verificationResult?.exchangeVerified
-      ? 'Binance confirmed the exchange action, but local persistence/synchronization failed.'
-      : 'Binance did not confirm the requested change. Local trade state was not advanced.',
-    'No success notification was sent.',
+      ? 'Binance confirmó la ejecución, pero la persistencia/local sync falló.'
+      : 'Binance no confirmó la solicitud cambiada. El estado local no avanzó.',
+    'No se envió notificación de éxito.',
     `Error: ${String(result?.error || 'unknown').slice(0,500)}`
   ].join('\n');
 }

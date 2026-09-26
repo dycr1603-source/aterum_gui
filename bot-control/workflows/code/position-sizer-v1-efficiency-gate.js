@@ -2,8 +2,23 @@ const d = $input.first().json;
 const DASHBOARD = process.env.INTERNAL_DASHBOARD_BASE || 'http://127.0.0.1:3001';
 const { symbol, direction, indicators, aiResult, balance, availableBalance, openCount, openSymbols, candles, intelAdjFinal, portfolioCapacity } = d;
 
+// ── Límite máximo de operaciones concurrentes ──────────────────────────────────
+// Permitir máximo 6 operaciones abiertas a la vez (dinero de prueba)
+if (Number(openCount) >= 6) {
+  return [{
+    json: {
+      ...d,
+      qty: 0,
+      allocationAllowed: false,
+      skipReason: 'MAX_CONCURRENT_OPERATIONS_REACHED: Limite de 6 operaciones activas alcanzado',
+      efficiencyGate: { pass: false, reason: 'Max 6 concurrent operations reached, waiting for existing positions to close' }
+    }
+  }];
+}
+
 // ── Parámetros base ───────────────────────────────────────────────────────────
-const BASE_RISK_PCT  = 0.02;
+// Usar 95% del balance disponible para el riesgo por operación (dinero de prueba)
+const BASE_RISK_PCT  = 0.95;
 const MAX_MARGIN_PCT = 0.30;
 const MIN_RISK_PCT   = 0.005;
 
@@ -52,7 +67,7 @@ function sizeCandidate(candidate, allocation) {
     * macroSizeMultiplier
     * (1 - aiRiskReduction);
 
-  const effectiveRisk = Math.min(0.05, Math.max(MIN_RISK_PCT, rawRisk));
+  const effectiveRisk = Math.min(0.95, Math.max(MIN_RISK_PCT, rawRisk));
 
   const maxLeverage = tf4h.status === 'CONTRADICTS' ? 4 : 15;
   const leverage = Math.min(Math.max(d.leverageOverride || aiResult?.recommended_leverage || 5, 2), maxLeverage);

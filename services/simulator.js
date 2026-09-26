@@ -1,7 +1,5 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const shared = require('../shared');
@@ -242,6 +240,7 @@ async function getSimulatorPolicy(options = {}) {
     generatedAt: new Date().toISOString(),
     reportGeneratedAt: report.generatedAt,
     options: report.options,
+    sources: report.sources,
     guardrails: { ...POLICY_GUARDRAILS },
     opportunityGroups
   };
@@ -299,10 +298,11 @@ async function getActualTradeStats() {
         FROM trades t LEFT JOIN trade_closes tc ON tc.trade_id=t.id
         ORDER BY t.opened_at DESC LIMIT 20`)
     ]);
-    return { summary: summary?.[0] || null, by4h: by4h || [], byMacro: byMacro || [], recent: recent || [] };
+    if (![summary,by4h,byMacro,recent].every(Array.isArray)) throw new Error('ACTUAL_STATS_UNAVAILABLE');
+    return { status: 'ready', summary: summary?.[0] || null, by4h: by4h || [], byMacro: byMacro || [], recent: recent || [] };
   } catch (error) {
     console.warn('[Simulator] DB unavailable for actual stats:', error.message);
-    return { summary: null, by4h: [], byMacro: [], recent: [] };
+    return { status: 'unavailable', summary: null, by4h: [], byMacro: [], recent: [] };
   }
 }
 
@@ -314,6 +314,7 @@ async function getSimulatorReport(options = {}) {
   if (!force && cache && cache.key === cacheKey && Date.now() - cache.ts < CACHE_MS) return cache.data;
 
   let executions = [];
+  let executionSource = 'ready';
   try {
     executions = await sqliteRows(`SELECT e.id, e.startedAt, e.status
       FROM execution_entity e
@@ -322,6 +323,7 @@ async function getSimulatorReport(options = {}) {
       ORDER BY e.startedAt DESC
       LIMIT ${limit}`);
   } catch (error) {
+    executionSource = 'unavailable';
     console.warn('[Simulator] N8N database unavailable:', error.message);
     executions = [];
   }
@@ -385,45 +387,20 @@ async function getSimulatorReport(options = {}) {
     });
   }
 
-  let data;
-  if (signals.length === 0) {
-    console.warn('[Simulator] No executions found, using sample data');
-    try {
-      const sample = JSON.parse(fs.readFileSync(path.join(__dirname, 'sample-report.json'), 'utf8'));
-      data = {
-        generatedAt: new Date().toISOString(),
-        options: { limit, hours },
-        stats: sample.stats,
-        groups: sample.groups,
-        signals: sample.signals,
-        actual: sample.actual
-      };
-    } catch (e) {
-      console.error('[Simulator] Could not load sample data:', e.message);
-      data = {
-        generatedAt: new Date().toISOString(),
-        options: { limit, hours },
-        stats: { total: 0, opened: 0, rejected: 0, tp: 0, sl: 0, good: 0, bad: 0, avgMfe: 0, avgMae: 0, avgEnd: 0, goodRate: 0 },
-        groups: {},
-        signals: [],
-        actual: { summary: null, by4h: [], byMacro: [], recent: [] }
-      };
-    }
-  } else {
-    const groups = {};
-    signals.filter(s => s.outcome).forEach(signal => {
-      bumpGroup(groups, `${signal.type}|${signal.direction}|macro=${signal.macroRelation}|4h=${signal.tf4h}`, signal);
-    });
-    const actual = await getActualTradeStats();
-    data = {
-      generatedAt: new Date().toISOString(),
-      options: { limit, hours },
-      stats: buildStats(signals.filter(s => s.outcome)),
-      groups: finalizeGroups(groups),
-      signals,
-      actual
-    };
-  }
+  const groups = {};
+  signals.filter(s => s.outcome).forEach(signal => {
+    bumpGroup(groups, `${signal.type}|${signal.direction}|macro=${signal.macroRelation}|4h=${signal.tf4h}`, signal);
+  });
+  const actual = await getActualTradeStats();
+  const data = {
+    generatedAt: new Date().toISOString(),
+    options: { limit, hours },
+    sources: { executions: executionSource === 'unavailable' ? 'unavailable' : signals.length ? 'ready' : 'empty', actual: actual.status },
+    stats: buildStats(signals.filter(s => s.outcome)),
+    groups: finalizeGroups(groups),
+    signals,
+    actual
+  };
   cache = { key: cacheKey, ts: Date.now(), data };
   return data;
 }

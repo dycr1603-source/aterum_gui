@@ -1,9 +1,11 @@
 'use strict';
 
 const { BRAND_LOGO_PATH } = require('./brand');
+const professionalStyles = require('fs').readFileSync(require('path').join(__dirname, '../assets/gui.css'), 'utf8');
 
 function getSharedHeadAssets() {
   return `<meta name="mobile-web-app-capable" content="yes">
+<script src="/aterum-assets/gui.js"></script>
 <link rel="icon" type="image/png" href="${BRAND_LOGO_PATH}">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script>
@@ -2395,6 +2397,7 @@ body.play-v3 .mine-tile{
     transition:none !important;
   }
 }
+${professionalStyles}
 `;
 }
 
@@ -3056,7 +3059,7 @@ function getSharedScript() {
 
   const handleNav=()=>{
     ticking=false;
-    if(!nav||window.innerWidth>840)return;
+    if(!nav||window.innerWidth>1200)return;
     const y=window.scrollY||0;
     const delta=y-lastY;
     if(y<24||delta<-8){
@@ -3068,13 +3071,13 @@ function getSharedScript() {
   };
 
   window.addEventListener('scroll',()=>{
-    if(window.innerWidth>840||ticking)return;
+    if(window.innerWidth>1200||ticking)return;
     ticking=true;
     requestAnimationFrame(handleNav);
   },{passive:true});
 
   window.addEventListener('resize',()=>{
-    if(window.innerWidth>840&&navHidden&&nav){
+    if(window.innerWidth>1200&&navHidden&&nav){
       nav.classList.remove('nav-hidden');
       navHidden=false;
     }
@@ -3223,10 +3226,10 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
       <a href="/dashboard" class="nav-link${current==='dashboard'?' active':''}">Trading</a>
       <a href="/analytics" class="nav-link${current==='analytics'?' active':''}">Analytics</a>
       <a href="/research" class="nav-link${current==='research'?' active':''}">Research</a>
-      <a href="/knowledge" class="nav-link${current==='knowledge'?' active':''}">Decisions</a>
-      <a href="/ai-data#inteligencia" class="nav-link${current==='aidata'?' active':''}">News</a>
-      <a href="/simulator" class="nav-link${current==='simulator'?' active':''}">Simulator</a>
-      <a href="/ai-data#asistente-ia" class="nav-link${current==='assistant'?' active':''}">AI Assistant</a>
+      <a href="/knowledge" class="nav-link${current==='knowledge'?' active':''}">Decisiones</a>
+      <a href="/ai-data#inteligencia" class="nav-link${current==='aidata'?' active':''}">Inteligencia</a>
+      <a href="/simulator" class="nav-link${current==='simulator'?' active':''}">Simulador</a>
+      <a href="/ai-data#asistente-ia" class="nav-link${current==='assistant'?' active':''}">Asistente</a>
     </nav>
   </div>
   <div class="nav-utility">
@@ -3235,7 +3238,7 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
       <span class="theme-toggle-icon" aria-hidden="true">◐</span>
       <span class="theme-toggle-label" id="themeToggleLabel">Oscuro</span>
     </button>
-    <span class="nav-user nav-user-${accent}">${user?.username || ''}</span>
+    <span class="nav-user nav-user-${accent}">${String(user?.username || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</span>
     <a href="/logout" class="nav-link nav-link-ghost" data-no-transition="true">Salir</a>
     <button class="nav-toggle" id="navToggle" type="button" aria-label="Abrir menú" aria-controls="navDrawer" aria-expanded="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -3256,17 +3259,17 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
     <a href="/dashboard" class="nav-drawer-link${current==='dashboard'?' active':''}">Trading</a>
     <a href="/analytics" class="nav-drawer-link${current==='analytics'?' active':''}">Analytics</a>
     <a href="/research" class="nav-drawer-link${current==='research'?' active':''}">Research</a>
-    <a href="/knowledge" class="nav-drawer-link${current==='knowledge'?' active':''}">Decisions</a>
-    <a href="/ai-data#inteligencia" class="nav-drawer-link${current==='aidata'?' active':''}">News</a>
-    <a href="/simulator" class="nav-drawer-link${current==='simulator'?' active':''}">Simulator</a>
-    <a href="/ai-data#asistente-ia" class="nav-drawer-link${current==='assistant'?' active':''}">AI Assistant</a>
+    <a href="/knowledge" class="nav-drawer-link${current==='knowledge'?' active':''}">Decisiones</a>
+    <a href="/ai-data#inteligencia" class="nav-drawer-link${current==='aidata'?' active':''}">Inteligencia</a>
+    <a href="/simulator" class="nav-drawer-link${current==='simulator'?' active':''}">Simulador</a>
+    <a href="/ai-data#asistente-ia" class="nav-drawer-link${current==='assistant'?' active':''}">Asistente</a>
   </nav>
   <div class="nav-drawer-foot">
     <button class="theme-toggle theme-toggle-drawer" id="themeToggleDrawer" type="button" aria-label="Cambiar tema">
       <span class="theme-toggle-icon" aria-hidden="true">◐</span>
       <span class="theme-toggle-label" id="themeToggleDrawerLabel">Oscuro</span>
     </button>
-    <div class="nav-drawer-user">${user?.username || ''}</div>
+    <div class="nav-drawer-user">${String(user?.username || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</div>
     <a href="/logout" class="nav-drawer-logout" data-no-transition="true">Cerrar sesión</a>
   </div>
 </aside>
@@ -3284,6 +3287,7 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
   var themeToggleLabel=document.getElementById('themeToggleLabel');
   var themeToggleDrawerLabel=document.getElementById('themeToggleDrawerLabel');
   if(!navShell)return;
+  if(drawer)drawer.inert=true;
   body.classList.add('has-shared-nav');
   function getTheme(){
     return root.getAttribute('data-theme')==='dark'?'dark':'light';
@@ -3304,7 +3308,8 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
   function setOpen(open){
     body.classList.toggle('nav-drawer-open',!!open);
     if(toggle)toggle.setAttribute('aria-expanded',open?'true':'false');
-    if(drawer)drawer.setAttribute('aria-hidden',open?'false':'true');
+    if(drawer){drawer.setAttribute('aria-hidden',open?'false':'true');drawer.inert=!open;}
+    if(open){drawer?.querySelector('button')?.focus();}else{toggle?.focus();}
   }
   function toggleTheme(){
     applyTheme(getTheme()==='dark'?'light':'dark');
@@ -3322,9 +3327,15 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
   });
   document.addEventListener('keydown',function(event){
     if(event.key==='Escape'&&body.classList.contains('nav-drawer-open')) setOpen(false);
+    if(event.key==='Tab'&&body.classList.contains('nav-drawer-open')){
+      var items=Array.from(drawer.querySelectorAll('a,button')).filter(el=>el.offsetParent!==null);
+      var first=items[0],last=items[items.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+    }
   });
   window.addEventListener('resize',function(){
-    if(window.innerWidth>840&&body.classList.contains('nav-drawer-open')) setOpen(false);
+    if(window.innerWidth>1200&&body.classList.contains('nav-drawer-open')) setOpen(false);
   });
 })();
 </script>`;

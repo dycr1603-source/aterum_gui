@@ -5,6 +5,7 @@ const WebSocket = require('ws');
 const { WebSocketServer } = require('ws');
 const router    = express.Router();
 const shared    = require('../shared');
+const { validateAccountSnapshot } = require('../services/account_snapshot');
 
 const { API_KEY_ACCT, API_SECRET_ACCT, crypto_acct, activeTrades } = shared;
 
@@ -188,7 +189,7 @@ function attachRealtimeServer(server) {
 
 // ── Binance HTTP helpers ────────────────────────────────────────────────────────
 function signAcct(params) {
-  const obj = { ...params, timestamp: Date.now(), recvWindow: 60000 };
+  const obj = { ...params, timestamp: Date.now() + binanceTimeOffsetMs, recvWindow: 60000 };
   const qs  = Object.entries(obj).map(([k,v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
   return qs + '&signature=' + crypto_acct.createHmac('sha256', API_SECRET_ACCT).update(qs).digest('hex');
 }
@@ -214,6 +215,18 @@ function httpsPost(url, headers = {}) {
 
 // ── Account state management ────────────────────────────────────────────────────
 let listenKey = null, accountWS = null, listenKeyInterval = null;
+let binanceTimeOffsetMs = 0, binanceClockSyncedAt = 0;
+
+async function syncBinanceClock() {
+  if (binanceClockSyncedAt && Date.now() - binanceClockSyncedAt < 30000) return;
+  const startedAt = Date.now();
+  const response = await httpsGet('https://fapi.binance.com/fapi/v1/time');
+  const receivedAt = Date.now();
+  const serverTime = Number(response?.serverTime);
+  if (!Number.isFinite(serverTime) || serverTime <= 0) throw new Error('BINANCE_TIME_SYNC_UNAVAILABLE');
+  binanceTimeOffsetMs = Math.round(serverTime - (startedAt + receivedAt) / 2);
+  binanceClockSyncedAt = receivedAt;
+}
 
 function classifyExitOrder(positionSide, order) {
   const closeSide = positionSide === 'LONG' ? 'SELL' : 'BUY';
@@ -243,13 +256,17 @@ function classifyExitOrder(positionSide, order) {
 
 async function fetchAccountSnapshot() {
   try {
+    // Binance rejects signed requests when the host clock drifts by more than one second.
+    await syncBinanceClock();
     const [balances, positions, openOrders, openAlgoOrders] = await Promise.all([
       httpsGet(`https://fapi.binance.com/fapi/v2/balance?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT }),
       httpsGet(`https://fapi.binance.com/fapi/v2/positionRisk?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT }),
       httpsGet(`https://fapi.binance.com/fapi/v1/openOrders?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT }),
       httpsGet(`https://fapi.binance.com/fapi/v1/openAlgoOrders?${signAcct({})}`, { 'X-MBX-APIKEY': API_KEY_ACCT })
     ]);
-    const usdt    = (Array.isArray(balances) ? balances : []).find(b => b.asset === 'USDT') || {};
+    const usdt = validateAccountSnapshot(balances, positions);
+    if (!Array.isArray(openOrders)) throw new Error('BINANCE_OPEN_ORDERS_UNAVAILABLE');
+    if (!Array.isArray(openAlgoOrders)) throw new Error('BINANCE_ALGO_ORDERS_UNAVAILABLE');
     const openPos = (Array.isArray(positions) ? positions : []).filter(p => Math.abs(parseFloat(p.positionAmt || 0)) > 0);
     const bySymbolOrders = {};
     (Array.isArray(openOrders) ? openOrders : []).forEach((o) => {
@@ -307,6 +324,8 @@ async function fetchAccountSnapshot() {
     const bal    = parseFloat(usdt.balance || 0);
     const unreal = openPos.reduce((s, p) => s + parseFloat(p.unRealizedProfit || 0), 0);
     shared.accountState = {
+      status:        'ready',
+      snapshotTs:    Date.now(),
       balance:       bal,
       equity:        bal + unreal,
       available:     parseFloat(usdt.availableBalance || 0),
@@ -317,7 +336,11 @@ async function fetchAccountSnapshot() {
       ts:            Date.now()
     };
     shared.broadcastAccount();
-  } catch(e) { console.error('[Account] Snapshot error:', e.message); }
+  } catch(e) {
+    shared.accountState.status = shared.accountState.snapshotTs ? 'stale' : 'unavailable';
+    shared.broadcastAccount();
+    console.error('[Account] Snapshot error:', e.message);
+  }
 }
 
 async function startUserDataStream() {

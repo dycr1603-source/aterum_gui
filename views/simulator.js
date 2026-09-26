@@ -142,6 +142,7 @@ ${getSharedChrome({accent:'#57b0ff',accentSoft:'rgba(87,176,255,.18)',secondary:
 <div class="page-shell">
 ${getSharedNav('simulator', user, 'blue')}
 <main class="page">
+<div id="simSourceStatus" class="data-status" role="status" aria-live="polite"></div>
   <section class="hero">
     <div>
       <div class="kicker">Laboratorio de señales</div>
@@ -207,6 +208,7 @@ ${getSharedNav('simulator', user, 'blue')}
     </div>
   </section>
 
+  <details class="sim-help"><summary>Cómo interpretar la simulación y sus métricas</summary>
   <section class="explain-grid">
     <div class="card">
       <div class="card-h"><div class="card-title">Cómo leer esta pantalla</div></div>
@@ -232,8 +234,9 @@ ${getSharedNav('simulator', user, 'blue')}
     </div>
   </section>
 
+  </details>
   <div class="filter-strip">
-    <select id="filterSel" class="select">
+    <select id="filterSel" aria-label="Tipo de señal" class="select">
       <option value="all">Todo</option>
       <option value="opened">Solo abiertos</option>
       <option value="rejected">Solo rechazados</option>
@@ -242,24 +245,24 @@ ${getSharedNav('simulator', user, 'blue')}
       <option value="bad">Malos</option>
       <option value="good">Buenos</option>
     </select>
-    <select id="dirFilter" class="select">
+    <select id="dirFilter" aria-label="Dirección" class="select">
       <option value="all">LONG + SHORT</option>
       <option value="LONG">Solo LONG</option>
       <option value="SHORT">Solo SHORT</option>
     </select>
-    <select id="macroFilter" class="select">
+    <select id="macroFilter" aria-label="Contexto macro" class="select">
       <option value="all">Macro todo</option>
       <option value="aligns">Macro a favor</option>
       <option value="contradicts">Macro en contra</option>
       <option value="neutral">Macro neutral</option>
     </select>
-    <select id="tf4hFilter" class="select">
+    <select id="tf4hFilter" aria-label="Tendencia 4H" class="select">
       <option value="all">4H todo</option>
       <option value="CONFIRMS">4H confirma</option>
       <option value="NEUTRAL">4H neutral</option>
       <option value="CONTRADICTS">4H contradice</option>
     </select>
-    <select id="outcomeFilter" class="select">
+    <select id="outcomeFilter" aria-label="Resultado simulado" class="select">
       <option value="all">Resultado todo</option>
       <option value="tp">TP simulado</option>
       <option value="sl">SL simulado</option>
@@ -340,6 +343,7 @@ ${getSharedNav('simulator', user, 'blue')}
       </table>
     </div>
   </section>
+<section class="data-panel" id="policyPanel" aria-label="Política del simulador"></section>
 </main>
 </div>
 <script>
@@ -559,6 +563,11 @@ function renderSignals(){
 }
 function render(report){
   state.report = report;
+  const notices=[];
+  if(report.sources?.executions==='unavailable')notices.push('No se pudo leer el historial de ejecuciones. Los resultados de simulación no están disponibles.');
+  else if(report.sources?.executions==='empty')notices.push('No hay señales compatibles con esta consulta.');
+  if(report.sources?.actual==='unavailable')notices.push('No se pudo cargar el historial de operaciones reales.');
+  document.getElementById('simSourceStatus').textContent=notices.join(' ');
   renderKpis(report.stats || {});
   renderRealSummary(report.actual && report.actual.summary);
   renderGroups(report.groups || {});
@@ -619,8 +628,10 @@ document.getElementById('capitalInput').addEventListener('input', renderSignals)
 document.getElementById('leverageInput').addEventListener('input', renderSignals);
 document.getElementById('loadBtn').addEventListener('click', ()=>load(false).catch(err=>{
   setLoading(false);
-  document.getElementById('signalsBody').innerHTML = '<tr><td colspan="12"><div class="empty">'+err.message+'</div></td></tr>';
-  alert(err.message);
+  document.getElementById('signalsBody').innerHTML = '<tr><td colspan="12"><div class="empty">'+AterumUI.escape(err.message)+'</div></td></tr>';
+  document.getElementById('groupList').textContent='Consulta no disponible. Vuelve a cargar el análisis.';
+  document.getElementById('simSourceStatus').textContent='Error al actualizar. Los valores de la consulta anterior pueden estar desactualizados.';
+
 }));
 document.getElementById('clearBtn').addEventListener('click', clearView);
 clearView();
