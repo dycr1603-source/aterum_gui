@@ -29,6 +29,21 @@ function readJson(req) {
   });
 }
 
+function startupReconciliationEvent(summary = {}) {
+  const fields = ['positions','protected','unprotected','emergencyClosed','reconciled','driftDetected',
+    'adopted','pendingPersistence','pendingExecutions','projectionsRefreshed','durationMs','at','errors'];
+  const actual = Object.fromEntries(fields.filter(key => summary[key] !== undefined).map(key => [key, summary[key]]));
+  const ok = summary.ok === true;
+  return {
+    eventType: 'STARTUP_RECONCILIATION_COMPLETED',
+    severity: ok ? 'INFO' : 'WARNING',
+    expected: { source: 'PROCESS_START', comparison: 'BINANCE_VS_LOCAL_OPEN_TRADES' },
+    actual,
+    action: 'RECONCILE_BINANCE_POSITIONS_AND_OPEN_TRADES',
+    actionStatus: ok ? 'SUCCESS' : 'PARTIAL'
+  };
+}
+
 async function main() {
   if (!config.apiKey || !config.apiSecret) throw new Error('Position Guard Binance credentials are required');
   const db = mysql.createPool(config.db);
@@ -44,7 +59,11 @@ async function main() {
   const runtime = { ready: true, startedAt: new Date().toISOString(), lastScan: null, lastHealth: null, lastError: null };
   const scan = async () => {
     try { runtime.lastScan = await guard.scan(); runtime.lastError = null; }
-    catch (error) { runtime.lastError = error.message; console.error('[Position Guard] scan:', error.message); }
+    catch (error) {
+      runtime.lastError = error.message;
+      runtime.lastScan = { ok:false, errors:[error.message], at:new Date().toISOString() };
+      console.error('[Position Guard] scan:', error.message);
+    }
   };
   const health = async () => {
     runtime.lastHealth = await healthSnapshot({ config, db, binance });
@@ -54,6 +73,8 @@ async function main() {
     }
   };
   await scan();
+  try { await guard.event(startupReconciliationEvent(runtime.lastScan)); }
+  catch (error) { console.error('[Position Guard] startup audit:', error.message); }
   await health();
   const scanTimer = setInterval(scan, config.pollMs);
   const healthTimer = setInterval(health, config.healthMs);
@@ -120,4 +141,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(error => { console.error('[Position Guard] fatal:', error.message); process.exit(1); });
-module.exports = { main };
+module.exports = { main, startupReconciliationEvent };
