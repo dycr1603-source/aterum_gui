@@ -1,0 +1,23 @@
+[Unit]
+Description=Aterum stack (%i)
+Wants=network-online.target
+Requires=docker.service
+After=network-online.target docker.service
+ConditionPathExists=!/home/%i/.local/state/aterum-control/inhibited
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=%i
+SupplementaryGroups=docker
+WorkingDirectory=/home/%i/projects/aterum/aterum_gui
+ExecStart=/usr/bin/node /home/%i/projects/aterum/aterum_gui/scripts/aterum-control.js start --boot
+ExecStop=/usr/bin/node /home/%i/projects/aterum/aterum_gui/scripts/aterum-control.js stop --shutdown
+TimeoutStartSec=15min
+TimeoutStopSec=infinity
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

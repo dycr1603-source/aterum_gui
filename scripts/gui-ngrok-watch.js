@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 require('../services/load_env');
+const { isInhibited } = require('../services/host_control_state');
 
 const REPO = path.resolve(__dirname, '..');
 const GUI_URL = process.env.ATERUM_GUI_LOCAL_URL || 'http://127.0.0.1:3001';
@@ -261,6 +262,10 @@ async function runTunnelSession() {
 }
 
 async function main() {
+  if (isInhibited()) {
+    console.log('[aterum-gui-tunnel] skipped: host stopped or retired');
+    return;
+  }
   const attempt = Number.parseInt(process.env.ATERUM_BOOT_RETRY_LIMIT || '12', 10);
   for (let cycle = 1; cycle <= Math.max(1, Math.min(attempt, 30)) && !stopping; cycle++) {
     try { await runTunnelSession(); return; }

@@ -8,6 +8,7 @@ const { PositionGuard } = require('./guard');
 const { ExecutionEngine } = require('./execution-engine');
 const { PortfolioAllocator } = require('./portfolio-allocation');
 const { healthSnapshot } = require('./health');
+const { operationDrain } = require('./operation-drain');
 
 function sendJson(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -57,21 +58,24 @@ async function main() {
   await binance.positions();
 
   const runtime = { ready: true, startedAt: new Date().toISOString(), lastScan: null, lastHealth: null, lastError: null };
-  const scan = async () => {
+  const operations = operationDrain();
+  const scan = () => operations.run(async () => {
+    if (!runtime.ready) return;
     try { runtime.lastScan = await guard.scan(); runtime.lastError = null; }
     catch (error) {
       runtime.lastError = error.message;
       runtime.lastScan = { ok:false, errors:[error.message], at:new Date().toISOString() };
       console.error('[Position Guard] scan:', error.message);
     }
-  };
-  const health = async () => {
+  });
+  const health = () => operations.run(async () => {
+    if (!runtime.ready) return;
     runtime.lastHealth = await healthSnapshot({ config, db, binance });
     const failed = runtime.lastHealth.checks.filter(item => !item.ok);
     for (const item of failed) {
       console.warn(`[Position Guard] health ${item.name}: ${item.error || 'inactive'} (internal only)`);
     }
-  };
+  });
   await scan();
   try { await guard.event(startupReconciliationEvent(runtime.lastScan)); }
   catch (error) { console.error('[Position Guard] startup audit:', error.message); }
@@ -79,8 +83,9 @@ async function main() {
   const scanTimer = setInterval(scan, config.pollMs);
   const healthTimer = setInterval(health, config.healthMs);
 
-  const server = http.createServer(async (req, res) => {
+  const server = http.createServer((req, res) => operations.run(async () => {
     try {
+      if (!runtime.ready) return sendJson(res, 503, { ok: false, error: 'POSITION_GUARD_DRAINING' });
       const url = new URL(req.url, `http://${req.headers.host || 'position-guard'}`);
       if (req.method === 'GET' && url.pathname === '/healthz') {
         const healthy = runtime.ready && runtime.lastScan && Date.now() - new Date(runtime.lastScan.at).getTime() < config.pollMs * 4;
@@ -128,12 +133,18 @@ async function main() {
       console.error('[Position Guard] request:', error.message);
       return sendJson(res, 400, { ok: false, error: error.message });
     }
-  });
+  }));
   server.listen(config.port, '0.0.0.0');
   console.log(`[Position Guard] ready enforce=${config.enforce} poll=${config.pollMs}ms`);
 
+  let stopping = false;
   const stop = async signal => {
-    runtime.ready = false; clearInterval(scanTimer); clearInterval(healthTimer); server.close();
+    if (stopping) return;
+    stopping = true;
+    runtime.ready = false; clearInterval(scanTimer); clearInterval(healthTimer);
+    await new Promise(resolve => server.close(resolve));
+    await operations.wait();
+    await Promise.allSettled([...executionEngine.inFlight.values()]);
     await db.end(); console.log(`[Position Guard] ${signal}, stopped`); process.exit(0);
   };
   process.on('SIGTERM', () => stop('SIGTERM'));

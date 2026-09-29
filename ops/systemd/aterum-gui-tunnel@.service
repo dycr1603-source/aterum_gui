@@ -2,6 +2,7 @@
 Description=Aterum temporary GUI tunnel and Telegram link (%i)
 Wants=network-online.target docker.service
 After=network-online.target docker.service
+ConditionPathExists=!/home/%i/.local/state/aterum-control/inhibited
 StartLimitIntervalSec=0
 
 [Service]
