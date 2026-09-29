@@ -1,0 +1,25 @@
+'use strict';
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+const {GitControl} = require('../services/host_control_git');
+test('Git handover blocks old receipts, competing owners and uninitialized startup; only control metadata is pushed', async t => {
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'aterum-control-git-test-'));
+ t.after(()=>fs.rmSync(temp,{recursive:true,force:true}));
+ const remote=path.join(temp,'remote.git'),root=path.join(temp,'work');
+ const git=(args,cwd)=>execFileSync('git',args,{cwd,stdio:'pipe'}).toString().trim();
+ git(['init','--bare',remote],temp); git(['init',root],temp); git(['remote','add','origin',remote],root);
+ fs.writeFileSync(path.join(root,'.env'),'SECRET=must-never-be-pushed');
+ const a=new GitControl({root}), b=new GitControl({root});
+ await assert.rejects(a.claim('a'),/NOT_INITIALIZED/);
+ await a.release('a'); await b.claim('b');
+ await assert.rejects(a.claim('a'),/OTHER_PC_ACTIVE/);
+ await assert.rejects(a.release('a'),/OTHER_PC_ACTIVE/);
+ await b.release('b');
+ const results=await Promise.allSettled([a.claim('a'),b.claim('b')]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal(git(['--git-dir',remote,'ls-tree','--name-only','aterum-host-control'],temp),'control.json');
+});

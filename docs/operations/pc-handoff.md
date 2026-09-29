@@ -2,6 +2,18 @@
 
 El control opera sobre el Compose existente, con perfiles `trading`, `ai` y `aux`. No cambia `.env`, límites de riesgo, workflows ni órdenes de Binance. El estado de control vive **fuera del repositorio**, en `~/.local/state/aterum-control/`, con permisos restrictivos. No copies `host.json` ni `inhibited` a otra PC: son el estado de este host.
 
+## Cambio automático mediante Git (vigente)
+
+El comando instalado consulta y publica exclusivamente `control.json` en la rama separada `aterum-host-control` del remoto `origin`. Usa un repositorio temporal aislado: no hace commits del árbol de trabajo, no sube `.env`, bases de datos ni workflows, y no modifica `main` durante el arranque. El fetch equivale a obtener el último estado; el push es fast-forward y rechaza reservas simultáneas. No se usan recibos locales antiguos para autorizar arranques automáticos.
+
+Ambas PCs deben actualizar primero el código (`git pull --ff-only origin main`, conservando sus cambios locales). Git debe poder leer y escribir en origin sin preguntas interactivas, también bajo el usuario de systemd. No pongas tokens en la URL del remoto; usa el gestor de credenciales o SSH. Cada operación de Git tiene un límite de 30 segundos. Si falla, no arranca; si falla el push al detener, los servicios quedan detenidos y el turno no se libera: repetir `aterum migrate` cuando vuelva la conexión.
+
+Inicialización: actualizar el código en la PC que está actualmente activa y ejecutar `~/.local/bin/aterum migrate`. Solo un apagado certificado puede crear el estado RELEASED inicial. No inicializar desde una PC antigua retirada si la otra está trabajando. Luego, en la PC de destino, ejecutar `~/.local/bin/aterum start`. No requiere `--handoff` ni `--reactivate`. Para cambios posteriores: `aterum migrate` en la actual y `aterum start` en la siguiente. `stop` también publica la liberación si el apagado se certifica; el apagado ordenado de systemd hace lo mismo. El bloqueo local tras una retirada sigue impidiendo el arranque automático por reinicio.
+
+No se fuerza la toma de control tras suspensión, caída de energía o pérdida de red: Git puede seguir indicando ACTIVE; primero comprobar y detener la PC anterior. No es un lease renovable ni puede detener una PC que alguien arranque directamente con Docker. Protege los cambios cooperativos que usan este comando. No garantiza sincronización de bases ni reconciliación entre instalaciones con datos distintos.
+
+Las instrucciones con transferencia manual de handoff abajo describen el mecanismo anterior y las pruebas históricas; el comando instalado actualizado usa Git automáticamente.
+
 ## Instalar en cada PC
 
 Desde `/home/<usuario>/projects/aterum/aterum_gui`:

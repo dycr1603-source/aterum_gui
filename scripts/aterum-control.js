@@ -9,6 +9,7 @@ const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { stateDirectory } = require('../services/host_control_state');
+const { GitControl } = require('../services/host_control_git');
 const exec = promisify(execFile);
 const ROOT = path.resolve(__dirname, '..');
 const PROFILES = ['--profile', 'trading', '--profile', 'ai', '--profile', 'aux'];
@@ -50,8 +51,8 @@ async function defaultRun(command, args) {
 
 class HostController {
   constructor({ directory = stateDirectory(), run = defaultRun, hostId = hostnameId(), user = os.userInfo().username,
-    sleep = delay, now = () => new Date().toISOString(), log = console.log, inspectTunnel = publicTunnelRemaining } = {}) {
-    Object.assign(this, { directory, run, hostId, user, sleep, now, log, inspectTunnel });
+    sleep = delay, now = () => new Date().toISOString(), log = console.log, inspectTunnel = publicTunnelRemaining, gitControl = null } = {}) {
+    Object.assign(this, { directory, run, hostId, user, sleep, now, log, inspectTunnel, gitControl });
     this.stateFile = path.join(directory, 'host.json');
     this.inhibitFile = path.join(directory, 'inhibited');
   }
@@ -169,6 +170,11 @@ class HostController {
       this.log(`PC retirada. Constancia: ${path.join(this.directory, 'handoff.json')}`);
     }
     this.log(`Aterum detenido. Preparado para migración: ${migrationReady ? 'sí' : 'NO'}. Volúmenes y órdenes Binance conservados.`);
+    if (migrationReady && this.gitControl) {
+      this.log('[Aterum] Publicando retirada verificada en Git…');
+      try { await this.gitControl.release(this.hostId); }
+      catch (error) { this.save({ ...state, gitReleasePending: true }); throw error; }
+    }
     if (errors.length) throw new Error(errors.join('; '));
     return state;
   }
@@ -183,16 +189,20 @@ class HostController {
   async start({ boot = false, reactivate = false, handoff = null, firstInstall = false } = {}) {
     const previous = this.state();
     if (boot && fs.existsSync(this.inhibitFile)) { this.log('Arranque omitido: PC detenida o retirada.'); return; }
-    if (previous?.mode === 'RETIRED' && !reactivate) throw new Error('PC_RETIRED: use --reactivate only after stopping the other PC');
+    if (!this.gitControl && previous?.mode === 'RETIRED' && !reactivate) throw new Error('PC_RETIRED: use --reactivate only after stopping the other PC');
     if (handoff) {
       const receipt = readJson(handoff);
       if (receipt?.schema !== 'aterum-handoff-v1' || !receipt.migrationReady || !receipt.containersStopped
           || !receipt.tunnelStopped || receipt.drain?.workflows !== 0 || receipt.drain?.executions !== 0
           || receipt.hostId === this.hostId) throw new Error('INVALID_HANDOFF_RECEIPT');
     }
-    if ((!previous || previous.requiresHandoff) && !handoff && !firstInstall)
+    if (!this.gitControl && (!previous || previous.requiresHandoff) && !handoff && !firstInstall)
       throw new Error('FIRST_START_REQUIRES: --handoff <file> or --first-install for this existing sole installation');
     await this.compose(['config', '--quiet']);
+    if (this.gitControl) {
+      this.log('[Aterum] Consultando Git y reservando esta PC antes de iniciar servicios…');
+      await this.gitControl.claim(this.hostId);
+    }
     this.save({ mode: 'STARTING', migrationReady: false, requiresHandoff: previous?.requiresHandoff === true });
     // Inhibit remains until core services are healthy, preventing premature ngrok announcements.
     try {
@@ -235,7 +245,7 @@ async function main(argv = process.argv.slice(2)) {
     if (!accepted.has(args[i])) throw new Error('UNKNOWN_ARGUMENT');
     if (args[i] === '--handoff') { handoff = args[++i]; if (!handoff || handoff.startsWith('--')) throw new Error('HANDOFF_FILE_REQUIRED'); }
   }
-  const controller = new HostController();
+  const controller = new HostController({ gitControl: new GitControl({ root: ROOT }) });
   if (command === 'status') { await controller.status(); return 0; }
   fs.mkdirSync(controller.directory, { recursive: true, mode: 0o700 });
   const lock = path.join(controller.directory, 'lock');
