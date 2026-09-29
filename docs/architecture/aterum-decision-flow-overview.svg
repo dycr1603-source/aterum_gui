@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1210" viewBox="0 0 1800 1210">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#405674"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c73c3c"/></marker></defs>
+<rect width="1800" height="1210" fill="#ffffff"/>
+<polyline points="370.0,257.5 410.0,257.5" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="710.0,257.5 750.0,257.5" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="1050.0,257.5 1090.0,257.5" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="1390.0,257.5 1430.0,257.5" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="370.0,505.0 410.0,505.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="710.0,505.0 750.0,505.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="1050.0,505.0 1090.0,505.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="1390.0,505.0 1430.0,505.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="370.0,765.0 410.0,765.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="710.0,765.0 750.0,765.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="1050.0,765.0 1090.0,765.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="1390.0,765.0 1430.0,765.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="1580.0,840.0 900.0,890.0" fill="none" stroke="#6a80a0" stroke-width="2.5" marker-end="url(#arrow)" stroke-dasharray="9 7"/>
+<rect x="70" y="190" width="300" height="135" rx="16" fill="#e8f0fe" stroke="#2563eb" stroke-width="2.5"/>
+<text x="220.0" y="264.2" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="220.0" dy="0">n8n | cada 15 min</tspan>
+</text>
+<rect x="410" y="190" width="300" height="135" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="560.0" y="238.2" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="560.0" dy="0">Risk Guard</tspan>
+<tspan x="560.0" dy="26">Saldo, posiciones, PnL</tspan>
+<tspan x="560.0" dy="26">y limites</tspan>
+</text>
+<rect x="750" y="190" width="300" height="135" rx="16" fill="#f3e8ff" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="900.0" y="238.2" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="900.0" dy="0">Contexto de mercado</tspan>
+<tspan x="900.0" dy="26">BTC y ETH 4H; F&amp;G;</tspan>
+<tspan x="900.0" dy="26">inteligencia</tspan>
+</text>
+<rect x="1090" y="190" width="300" height="135" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="1240.0" y="238.2" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="1240.0" dy="0">Discovery</tspan>
+<tspan x="1240.0" dy="26">Escaneo y ranking</tspan>
+<tspan x="1240.0" dy="26">de oportunidades</tspan>
+</text>
+<rect x="1430" y="190" width="300" height="135" rx="16" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="1580.0" y="251.2" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="1580.0" dy="0">Setup elegible</tspan>
+<tspan x="1580.0" dy="26">Si no: fin y aviso</tspan>
+</text>
+<rect x="70" y="430" width="300" height="150" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="220.0" y="485.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="220.0" dy="0">Prevalidacion</tspan>
+<tspan x="220.0" dy="26">Precio, frescura, riesgo</tspan>
+<tspan x="220.0" dy="26">y capacidad</tspan>
+</text>
+<rect x="410" y="430" width="300" height="150" rx="16" fill="#f3e8ff" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="560.0" y="485.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="560.0" dy="0">JSON de oportunidad</tspan>
+<tspan x="560.0" dy="26">Velas, indicadores,</tspan>
+<tspan x="560.0" dy="26">mercado y cartera</tspan>
+</text>
+<rect x="750" y="430" width="300" height="150" rx="16" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="900.0" y="485.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="900.0" dy="0">Jev Choice 1</tspan>
+<tspan x="900.0" dy="26">NO_TRADE / LONG / SHORT</tspan>
+<tspan x="900.0" dy="26">+ niveles SL y TP</tspan>
+</text>
+<rect x="1090" y="430" width="300" height="150" rx="16" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="1240.0" y="485.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="1240.0" dy="0">Si LONG/SHORT:</tspan>
+<tspan x="1240.0" dy="26">politica de leverage</tspan>
+<tspan x="1240.0" dy="26">+ Jev Choice 2</tspan>
+</text>
+<rect x="1430" y="430" width="300" height="150" rx="16" fill="#f3e8ff" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="1580.0" y="485.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="1580.0" dy="0">Propuesta guardada</tspan>
+<tspan x="1580.0" dy="26">Telegram: propuesta</tspan>
+<tspan x="1580.0" dy="26">No es una orden</tspan>
+</text>
+<rect x="70" y="690" width="300" height="150" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="220.0" y="758.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="220.0" dy="0">Learning Gate</tspan>
+<tspan x="220.0" dy="26">Proteccion de capital</tspan>
+</text>
+<rect x="410" y="690" width="300" height="150" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="560.0" y="745.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="560.0" dy="0">Position Sizer</tspan>
+<tspan x="560.0" dy="26">Cantidad, margen,</tspan>
+<tspan x="560.0" dy="26">riesgo en USD</tspan>
+</text>
+<rect x="750" y="690" width="300" height="150" rx="16" fill="#e7f7ec" stroke="#21844a" stroke-width="2.5"/>
+<text x="900.0" y="745.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="900.0" dy="0">Position Guard</tspan>
+<tspan x="900.0" dy="26">Recibo, Binance,</tspan>
+<tspan x="900.0" dy="26">cartera y duplicados</tspan>
+</text>
+<rect x="1090" y="690" width="300" height="150" rx="16" fill="#e7f7ec" stroke="#21844a" stroke-width="2.5"/>
+<text x="1240.0" y="745.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="1240.0" dy="0">Binance Futures</tspan>
+<tspan x="1240.0" dy="26">MARKET + SL/TP</tspan>
+<tspan x="1240.0" dy="26">Lectura y persistencia</tspan>
+</text>
+<rect x="1430" y="690" width="300" height="150" rx="16" fill="#e7f7ec" stroke="#21844a" stroke-width="2.5"/>
+<text x="1580.0" y="758.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="1580.0" dy="0">Orden verificada</tspan>
+<tspan x="1580.0" dy="26">Telegram: confirmada</tspan>
+</text>
+<rect x="70" y="890" width="1660" height="90" rx="16" fill="#eff3f8" stroke="#66788a" stroke-width="2.5"/>
+<text x="900.0" y="941.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="900.0" dy="0">Despues: SL Monitor cada 10 s, Trailing Manager cada 60 s, conciliacion y cierre</tspan>
+</text>
+<rect x="70" y="1010" width="1660" height="90" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="900.0" y="1061.7" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="20">
+<tspan x="900.0" dy="0">En cualquier rechazo: motivo registrado; no se anuncia una apertura no verificada</tspan>
+</text>
+<text x="70" y="64.6" font-family="Arial,sans-serif" font-size="36" font-weight="700" fill="#0c1f37">ATERUM | Flujo completo de una entrada</text>
+<text x="70" y="106.0" font-family="Arial,sans-serif" font-size="18" font-weight="400" fill="#51647e">Instalacion actual | Jev real en enforce | Una oportunidad por decision | No incluye reportes diarios</text>
+<text x="65" y="165.2" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#0f766e">1. Riesgo y descubrimiento</text>
+<text x="65" y="410.2" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#7c3aed">2. Decision de Jev</text>
+<text x="65" y="665.2" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#21844a">3. Tamano, ejecucion y proteccion</text>
+<text x="70" y="1154.5" font-family="Arial,sans-serif" font-size="17" font-weight="400" fill="#51647e">Las flechas horizontales indican el orden. Los rechazos concretos estan en la pagina 02.</text>
+</svg>

@@ -61,7 +61,7 @@ test('engine failure and confirmed-close delivery inspect Telegram response', as
   try {
     assert.equal(await e.notifyFailure({executionId:'failure-1',symbol:'BTCUSDT',positionSide:'LONG',type:'OPEN_POSITION'},new Error('rejected'),false,'EXECUTION_FAILURE'),true);
     assert.equal((await e.sendCanonicalClose({executionId:'close-1',symbol:'BTCUSDT',positionSide:'LONG',closeReason:'SL',pnl:1,rFinal:1,durationMinutes:1})).messageId,7);
-    assert(messages[0].includes('EJECUCIÓN FALLIDA')); assert(messages[1].includes('TRADE CLOSED'));
+    assert(messages[0].includes('EJECUCIÓN FALLIDA')); assert(messages[1].includes('OPERACIÓN CERRADA'));
     global.fetch=async()=>({ok:true,status:200,json:async()=>({ok:false,error_code:400})});
     assert.equal(await e.notifyFailure({executionId:'failure-2',symbol:'BTCUSDT'},new Error('rejected')),false);
     await assert.rejects(e.sendCanonicalClose({executionId:'close-2',symbol:'BTCUSDT'}),/TELEGRAM_CLOSE/);

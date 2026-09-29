@@ -2,7 +2,7 @@
 const express = require('express');
 const path    = require('path');
 const shared  = require('./shared');
-const { setupAuth, requireAuth } = require('./middleware/auth');
+const { setupAuth, requireAuth, protectPublicTunnel } = require('./middleware/auth');
 
 const app  = express();
 const PORT = Number(process.env.DASHBOARD_PORT || process.env.PORT || 3001);
@@ -25,6 +25,7 @@ app.get('/favicon.ico', (req, res) => {
 
 // ── Auth: session + login/logout routes ──────────────────────────────────────
 setupAuth(app, shared.db);
+app.use(protectPublicTunnel);
 
 // ── Page routes (require auth for browser access) ────────────────────────────
 const { getDashboardHTML }  = require('./views/dashboard');

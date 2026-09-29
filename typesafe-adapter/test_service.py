@@ -25,7 +25,7 @@ class FakeClient:
         self.state, self.questions = state, questions
         return type("Response", (), {
             "model": "claude-test",
-            "answers": {next(iter(questions)): FakeAnswer()},
+            "answers": {key: FakeAnswer() for key in questions},
             "usage": type("Usage", (), {"input_tokens": 3, "output_tokens": 4,
               "latency": .001, "n_retries": 0, "n_retries_malformed_structure": 0})(),
         })()
@@ -33,10 +33,13 @@ class FakeClient:
 
 class AdapterTests(unittest.TestCase):
     def payload(self):
-        return {"state": {"symbol": "BTCUSDT"}, "questions": {"entry_x": {
-            "type": "choice", "instructions": "decide", "criteria": {
-                "NO_TRADE": "no", "LONG": {"sl": 1}, "SHORT": {"tp": 1}
-            }}}}
+        questions = {"entry_x": {"type": "choice", "instructions": "decide",
+            "criteria": {"NO_TRADE": "no", "LONG": "long", "SHORT": "short"}}}
+        for side in ("LONG", "SHORT"):
+            questions[f"entry_x_{side}_leverage"] = {"type": "choice", "criteria": {f"x{i}": f"{i}x" for i in range(1, 11)}}
+            for kind in ("sl", "tp"):
+                questions[f"entry_x_{side}_{kind}"] = {"type": "choice", "criteria": {f"{kind}{i}": str(i) for i in range(1, 4)}}
+        return {"state": {"symbol": "BTCUSDT"}, "questions": questions}
 
     def test_uses_official_adapter_with_native_schema(self):
         result = asyncio.run(adapter.evaluate_payload(self.payload(), client_type=FakeClient, provider_type=FakeProvider))

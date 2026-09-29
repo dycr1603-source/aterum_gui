@@ -17,8 +17,8 @@ if (Number(openCount) >= 6) {
 }
 
 // ── Parámetros base ───────────────────────────────────────────────────────────
-// Usar 95% del balance disponible para el riesgo por operación (dinero de prueba)
-const BASE_RISK_PCT  = 0.95;
+// Mantener el presupuesto monetario de riesgo configurado en el workflow activo.
+const BASE_RISK_PCT  = 0.02;
 const MAX_MARGIN_PCT = 0.30;
 const MIN_RISK_PCT   = 0.005;
 
@@ -70,15 +70,19 @@ function sizeCandidate(candidate, allocation) {
   const effectiveRisk = Math.min(0.95, Math.max(MIN_RISK_PCT, rawRisk));
 
   const maxLeverage = tf4h.status === 'CONTRADICTS' ? 4 : 15;
-  const leverage = Math.min(Math.max(d.leverageOverride || aiResult?.recommended_leverage || 5, 2), maxLeverage);
+  const jevProposal = d.jev?.mode === 'enforce' ? d.jev.proposal : null;
+  const leverage = jevProposal ? Number(jevProposal.leverage)
+    : Math.min(Math.max(d.leverageOverride || aiResult?.recommended_leverage || 5, 2), maxLeverage);
+  if (jevProposal && (!Number.isInteger(leverage) || leverage < 1 || leverage > 10))
+    throw new Error('JEV_INVALID_LEVERAGE');
 
   const slMultiplier = d.slMultiplier || 1.5;
   const tpMultiplier = d.tpMultiplier || 2.0;
 
-  const jevProposal = d.jev?.mode === 'enforce' ? d.jev.proposal : null;
   const slDistance = jevProposal ? Math.abs(currentPrice - jevProposal.sl) : atrVal * slMultiplier;
+  const riskPerUnit = jevProposal ? slDistance + (currentPrice + jevProposal.sl) * 0.001 : slDistance;
   const requestedRiskAmount = balance * effectiveRisk;
-  let   qty        = requestedRiskAmount / slDistance;
+  let   qty        = requestedRiskAmount / riskPerUnit;
   const requestedMargin = (qty * currentPrice) / leverage;
 
   const margin = (qty * currentPrice) / leverage;
@@ -95,7 +99,7 @@ function sizeCandidate(candidate, allocation) {
   const currentSymbolExposure = Number(allocation.exposure?.bySymbol?.[cSymbol] || 0);
   const currentDirectionExposure = Number(allocation.exposure?.direction?.[cDirection] || 0);
   const qtyCaps = [qty];
-  if(Number.isFinite(remainingRiskAmount) && remainingRiskAmount >= 0) qtyCaps.push(remainingRiskAmount / slDistance);
+  if(Number.isFinite(remainingRiskAmount) && remainingRiskAmount >= 0) qtyCaps.push(remainingRiskAmount / riskPerUnit);
   if(Number.isFinite(remainingMargin) && remainingMargin >= 0) qtyCaps.push(remainingMargin * leverage / currentPrice);
   if(Number.isFinite(remainingExposure) && remainingExposure >= 0) qtyCaps.push(remainingExposure / currentPrice);
   if(maxSymbolExposure > 0) qtyCaps.push(Math.max(0, maxSymbolExposure - currentSymbolExposure) / currentPrice);
@@ -119,7 +123,8 @@ function sizeCandidate(candidate, allocation) {
 
   if (jevProposal) { sl = jevProposal.sl; tp = jevProposal.tp; }
 
-  const maxLoss        = +(Math.abs(currentPrice - sl) * qty).toFixed(2);
+  const feeReserve = jevProposal ? qty * (currentPrice + sl) * 0.001 : 0;
+  const maxLoss        = +(Math.abs(currentPrice - sl) * qty + feeReserve).toFixed(2);
   const maxGain         = +(Math.abs(tp - currentPrice) * qty).toFixed(2);
   const marginRequired  = +((qty * currentPrice) / leverage).toFixed(2);
 
@@ -239,10 +244,15 @@ console.log(`[${r.candidate.symbol}] result: risk=${r.actualRiskPct}% ($${r.actu
 
 const chosen = r.candidate;
 const usedFallback = chosen.symbol !== symbol;
+const jevRecord = d.jev?.leveragePolicy ? { ...d.jev, leveragePolicy: {
+  ...d.jev.leveragePolicy, finalAppliedLeverage: r.leverage,
+  positionNotional: +(r.qty * r.currentPrice).toFixed(8), requiredMargin: r.marginRequired,
+  riskAtSL: r.actualRiskAmount, riskBudgetUsd: r.requestedRiskAmount
+} } : (d.jev || null);
 
 return [{
   json: {
-    jev: d.jev || null, opportunityCycleId: d.opportunityCycleId, marketDataAt: d.marketDataAt,
+    jev: jevRecord, opportunityCycleId: d.opportunityCycleId, marketDataAt: d.marketDataAt,
     symbol: chosen.symbol, side: r.side, direction: chosen.direction || direction, qty: r.qty, leverage: r.leverage,
     entryPrice:      +r.currentPrice.toFixed(r.currentPrice >= 1000 ? 1 : r.currentPrice >= 10 ? 2 : r.currentPrice >= 1 ? 3 : 4),
     sl: r.sl, tp: r.tp,

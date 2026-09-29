@@ -136,6 +136,8 @@ docker compose up -d --build
 
 Para un cambio de dominio o proxy sobre imagenes ya construidas usar `docker compose up -d --force-recreate dashboard aterum_gui n8n nginx`; no reconstruir imagenes.
 
+`aterum_gui` y `n8n` usan `network_mode: service:dashboard`. Si se reinicia Dashboard sin recrearlo, reiniciar también esos dos servicios **después** de Dashboard (`docker compose restart dashboard` y luego `docker compose restart aterum_gui n8n`). De lo contrario pueden quedar en el namespace anterior, perder DNS/salida a Binance y dejar los puertos 3000/5678 inaccesibles desde Dashboard. Verificar `/healthz` en los tres puertos y una consulta al reloj de Binance desde n8n antes de dar el despliegue por terminado. Si Dashboard se recrea, recrear también sus servicios asociados como indica el comando anterior.
+
 3. Verificar servicios:
 
 ```bash

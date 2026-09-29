@@ -47,6 +47,15 @@ async function run() {
         if (route === '/knowledge') await page.waitForFunction(() => !document.querySelector('#decisionDetail .loading-line'), {timeout:30000});
         const snapshot = await page.evaluate(() => ({
           width:innerWidth, scroll:document.documentElement.scrollWidth,
+          docHeight:document.documentElement.scrollHeight,
+          viewportHeight:innerHeight,
+          overflowY:getComputedStyle(document.documentElement).overflowY,
+          bodyOverflowY:getComputedStyle(document.body).overflowY,
+          dashboardPanels:document.body.classList.contains('dashboard-v3')?{
+            watchlistPosition:getComputedStyle(document.querySelector('.wl')).position,
+            executionPosition:getComputedStyle(document.querySelector('.sb')).position,
+            layoutHeight:Math.round(document.querySelector('.layout').getBoundingClientRect().height)
+          }:null,
           errors:[...document.querySelectorAll('.data-error')].map(el=>el.textContent),
           clipped:[...document.querySelectorAll('main,.page,.nav-shell,.data-panel')].filter(el=>el.getBoundingClientRect().right>innerWidth+2).map(el=>el.className)
         }));
@@ -54,6 +63,22 @@ async function run() {
         await page.screenshot({path:path.join(output,file)});
         reports.push({route,viewport:viewport.width,...snapshot,jsErrors:[...errors]});
         console.log(JSON.stringify(reports.at(-1)));
+        if(snapshot.docHeight>snapshot.viewportHeight+2){
+          assert.notEqual(snapshot.overflowY,'hidden',route+' hides document vertical overflow');
+          const reached=await page.evaluate(async()=>{
+            const max=document.documentElement.scrollHeight-innerHeight;
+            window.scrollTo({top:max,behavior:'instant'});
+            await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+            const value=window.scrollY;
+            window.scrollTo({top:0,behavior:'instant'});
+            return value;
+          });
+          assert(reached>0,route+' does not scroll vertically despite overflowing the viewport');
+        }
+        if(route==='/dashboard'&&viewport.width<=840){
+          assert.notEqual(snapshot.dashboardPanels.watchlistPosition,'fixed','Mobile dashboard watchlist must stay in document flow');
+          assert.notEqual(snapshot.dashboardPanels.executionPosition,'fixed','Mobile dashboard execution panel must stay in document flow');
+        }
         if (route === '/ai-data') {
           const comparison = await page.evaluate(async () => {
             const d=await AterumUI.json('/api/opportunities/latest?limit=10');
@@ -115,7 +140,7 @@ async function run() {
     fs.writeFileSync(path.join(output,'report.json'),JSON.stringify(reports,null,2));
     assert(reports.every(r=>r.jsErrors.length===0),'Browser runtime errors: see report.json');
     assert(reports.every(r=>r.scroll<=r.width+2 && !r.clipped.length),'Responsive overflow: see report.json');
-    console.log('PASS authenticated GUI, desktop/mobile, themes, navigation; screenshots: '+output);
+    console.log('PASS authenticated GUI, desktop/mobile, vertical scrolling, themes, navigation; screenshots: '+output);
   } finally {
     if(browser)await browser.close();
     server.closeAllConnections(); await new Promise(resolve=>server.close(resolve));

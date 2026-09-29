@@ -17,7 +17,7 @@ const { createCommands } = require('./commands');
   const stats = await api.stats();
   const symbol = String(stats.recent?.[0]?.symbol || 'BTCUSDT').toUpperCase();
   const cases = [
-    ...['start', 'status', 'balance', 'positions', 'performance', 'research', 'learning', 'health', 'logs', 'news', 'ai', 'context', 'changes', 'help', 'tutorial', 'new']
+    ...['start', 'status', 'tunnel', 'balance', 'positions', 'performance', 'research', 'learning', 'health', 'logs', 'news', 'ai', 'context', 'changes', 'help', 'tutorial', 'new']
       .map(command => ({ command, args: [], role: 'viewer' })),
     { command: 'guide', args: ['1'], role: 'viewer' },
     { command: 'explain', args: ['meaning', 'performance'], role: 'viewer' },

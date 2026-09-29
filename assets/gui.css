@@ -12,6 +12,26 @@ html body.has-shared-nav {
   background:var(--color-bg) !important;
   font-family:Inter,system-ui,sans-serif !important; line-height:1.5;
 }
+/* Every shared-nav view uses the document as its vertical scroll container. */
+html:has(body.has-shared-nav) {
+  min-height:100%;
+  height:auto !important;
+  overflow-x:hidden !important;
+  overflow-y:auto !important;
+  scrollbar-gutter:stable;
+}
+html body.has-shared-nav {
+  min-height:100dvh !important;
+  height:auto !important;
+  overflow-x:hidden !important;
+  overflow-y:auto !important;
+  overscroll-behavior-y:auto;
+}
+html body.has-shared-nav .page-shell {
+  height:auto !important;
+  min-height:100dvh;
+  overflow:visible !important;
+}
 html[data-theme='light'] body.has-shared-nav {
   --color-bg:#f3f5f8; --color-bg-elev:#f7f9fc; --color-surface:#fff;
   --color-surface-2:#edf2f8; --color-text:#16283f; --color-text-muted:#53647a;
@@ -86,6 +106,7 @@ html body.has-shared-nav .assistant-fab {box-shadow:var(--shadow-sm) !important;
   html body.has-shared-nav .nav-toggle {display:flex}
 }
 @media(max-width:760px) {
+  html:has(body.has-shared-nav) {scrollbar-gutter:auto}
   html body.has-shared-nav .nav-shell {min-height:64px;padding:10px 16px}
   html body.has-shared-nav .nav-user,html body.has-shared-nav .nav-extra {display:none}
   html body.has-shared-nav :is(.page,.research-page,.knowledge-shell) {padding:20px 14px 96px}

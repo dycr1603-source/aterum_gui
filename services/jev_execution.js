@@ -12,10 +12,13 @@ async function validateJevExecution(request, { db, livePrice, quoteTime, rules, 
   const result = rows[0]?.result ? JSON.parse(rows[0].result) : null;
   if (!result || result.mode !== 'enforce' || result.id !== receipt.id || result.symbol !== request.symbol ||
       result.decision !== request.positionSide || !result.proposal) throw new Error('JEV_RECEIPT_REJECTED');
+  if (result.provider !== cfg.provider) throw new Error('JEV_PROVIDER_CHANGED');
   fresh(result.marketDataAt, now, cfg.maxAgeMs);
   fresh(quoteTime, now, cfg.maxAgeMs);
   if (!Number.isFinite(result.expiresAt) || now > result.expiresAt) throw new Error('JEV_STALE_DATA');
   const p = result.proposal;
+  if (!Number.isInteger(p.leverage) || p.leverage < 1 || p.leverage > 10 || request.leverage !== p.leverage)
+    throw new Error('JEV_LEVERAGE_CHANGED');
   if (request.stopLoss !== p.sl || request.takeProfit !== p.tp) throw new Error('JEV_LEVELS_CHANGED');
   if (Math.abs(livePrice / p.entry - 1) * 100 > cfg.maxDriftPct) throw new Error('JEV_PRICE_DRIFT');
   validateLevels(p, livePrice, { tickSize: rules.tick, minPrice: rules.minPrice, maxPrice: rules.maxPrice });

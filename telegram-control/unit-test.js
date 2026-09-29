@@ -3,7 +3,7 @@
 const assert = require('assert');
 const { commandFrom, identity } = require('./index');
 const { commandAllowed } = require('./commands');
-const { splitMessage } = require('./telegram');
+const { splitMessage, keyboardFor } = require('./telegram');
 const knowledge = require('./knowledge');
 
 assert.deepEqual(commandFrom({ message: { text: '/status' } }, 'Delcon8n_bot'), { command: 'status', args: [], source: 'message' });
@@ -14,12 +14,19 @@ assert.deepEqual(commandFrom({ message: { text: '@Delcon8n_bot explica el drawdo
 assert.deepEqual(commandFrom({ message: { text: '¿Qué es Research?', chat: { type: 'private' } } }, 'Delcon8n_bot'), { command: 'ask', args: ['¿Qué', 'es', 'Research?'], source: 'conversation' });
 assert.equal(commandFrom({ message: { text: 'status' } }, 'Delcon8n_bot'), null);
 assert.equal(commandAllowed('viewer', 'status'), true);
+assert.equal(commandAllowed('viewer', 'tunnel'), true);
 assert.equal(commandAllowed('viewer', 'ask'), true);
 assert.equal(commandAllowed('viewer', 'timeline'), true);
 assert.equal(commandAllowed('viewer', 'simulate'), false);
 assert.equal(commandAllowed('moderator', 'simulate'), true);
 assert.equal(commandAllowed('moderator', 'users'), false);
 assert.equal(commandAllowed('admin', 'users'), true);
+assert.deepEqual(commandFrom({ callback_query: { data: 'command:tunnel' } }), { command: 'tunnel', args: [], source: 'callback' });
+const tunnelKeyboard = keyboardFor('tunnel', [], '🌐 GUI [https://sample.ngrok-free.dev](https://sample.ngrok-free.dev)');
+assert.deepEqual(tunnelKeyboard.inline_keyboard[0][0], { text: '🌐 Abrir GUI', url: 'https://sample.ngrok-free.dev' });
+assert.deepEqual(keyboardFor('tunnel', [], 'GUI PÚBLICO\nhttps://sample.ngrok-free.dev').inline_keyboard[0][0], { text: '🌐 Abrir GUI', url: 'https://sample.ngrok-free.dev' });
+assert.deepEqual(keyboardFor('tunnel', [], '🌐 GUI [https://evil.example](https://evil.example)').inline_keyboard[0][0], { text: '🔄 Actualizar enlace', callback_data: 'command:tunnel' });
+assert.equal(require('./telegram').keyboardFor('start').inline_keyboard.at(-1)[0].callback_data, 'command:tunnel');
 assert.equal(knowledge.commandIntent('¿Cómo está el balance?'), 'balance');
 assert.equal(knowledge.commandIntent('muéstrame el historial BTCUSDT').command, 'history');
 assert.match(knowledge.answer('¿Qué significa Profit Factor?'), /No se consultó Claude/);

@@ -289,12 +289,14 @@ class ExecutionEngine {
     }
     const pnl = Number(close.pnl || 0);
     const rFinal = Number(close.rFinal || 0);
-    const message = ['🛑 TRADE CLOSED', `${close.symbol} ${close.positionSide}`,
+    const message = ['🛑 OPERACIÓN CERRADA', close.providerLabel || 'Proveedor de entrada no registrado',
+      `${close.symbol} ${close.positionSide}`,
+      close.entryLeverage ? `Entrada: ${close.entryLeverage}× · TP ${close.entryTp} · SL ${close.entrySl}` : null,
       `Reason: ${this.closeReasonLabel(close.closeReason, close.trailingStage)}`,
       `Execution ID: ${close.executionId}`, `Final Stage: ${close.trailingStage}`,
       `PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} USDT`,
       `Final R: ${rFinal >= 0 ? '+' : ''}${rFinal.toFixed(2)}R`,
-      `Duration: ${close.durationMinutes} minutes`].join('\n');
+      `Duration: ${close.durationMinutes} minutes`].filter(Boolean).join('\n');
     const delivered = await deliver({ db: this.db, eventKey: `close:${close.executionId}`, text: message,
       token: this.config.telegramToken, chatId: this.config.telegramChatId });
     if (!delivered.sent) throw new Error(`TELEGRAM_CLOSE_${delivered.errorCode || delivered.status}`);
@@ -324,6 +326,22 @@ class ExecutionEngine {
       correlationId: reconciliation.correlationId, symbol: input.symbol, positionSide: input.positionSide,
       exchangeOrderId: String(input.exchangeOrderId), exitPrice, pnl, rFinal, closeReason,
       trailingStage, durationMinutes, closedAt };
+    if (trade.execution_id) {
+      try {
+        const [entries] = await this.db.execute('SELECT request_payload FROM trade_executions WHERE execution_id=?', [trade.execution_id]);
+        const original = parsedJson(entries[0]?.request_payload);
+        const receiptId = original?.tradeContext?.jev?.id;
+        if (receiptId) {
+          const [decisions] = await this.db.execute('SELECT result FROM jev_decisions WHERE id=?', [receiptId]);
+          const decision = parsedJson(decisions[0]?.result);
+          close.providerLabel = decision?.provider === 'typesafe-jev' ? `Jev real · ${decision.model}`
+            : decision?.provider === 'typesafe-adapter' ? `Haiku adapter · ${decision.model}` : null;
+        }
+        close.entryLeverage = Number(original?.leverage) || null;
+        close.entryTp = Number(original?.takeProfit) || null;
+        close.entrySl = Number(original?.stopLoss) || null;
+      } catch (_) { /* Closing and its canonical alert must continue if entry metadata is absent. */ }
+    }
 
     const connection = await this.db.getConnection();
     let lifecycleId;
@@ -537,9 +555,14 @@ class ExecutionEngine {
     if (!row) throw new Error(`Symbol ${symbol} is not available on Binance Futures`);
     const price = row.filters.find(filter => filter.filterType === 'PRICE_FILTER');
     const lot = row.filters.find(filter => filter.filterType === 'LOT_SIZE');
+    const marketLot = row.filters.find(filter => filter.filterType === 'MARKET_LOT_SIZE');
     const notional = row.filters.find(filter => ['MIN_NOTIONAL', 'NOTIONAL'].includes(filter.filterType));
-    return { minPrice: Number(price?.minPrice || 0), maxPrice: Number(price?.maxPrice || 0), tick: Number(price?.tickSize || 0), step: Number(lot?.stepSize || 0),
-      minQty: Number(lot?.minQty || 0), minNotional: Number(notional?.notional || notional?.minNotional || 0) };
+    const positiveMaxima = [Number(lot?.maxQty), Number(marketLot?.maxQty)].filter(n => Number.isFinite(n) && n > 0);
+    return { minPrice: Number(price?.minPrice || 0), maxPrice: Number(price?.maxPrice || 0), tick: Number(price?.tickSize || 0),
+      step: Number(marketLot?.stepSize || 0) || Number(lot?.stepSize || 0), lotStep: Number(lot?.stepSize || 0),
+      minQty: Math.max(Number(lot?.minQty || 0), Number(marketLot?.minQty || 0)),
+      maxQty: positiveMaxima.length ? Math.min(...positiveMaxima) : 0,
+      minNotional: Number(notional?.notional || notional?.minNotional || 0) };
   }
 
   rounded(value, increment, mode = 'nearest') {
@@ -589,7 +612,10 @@ class ExecutionEngine {
     const quantity = this.rounded(request.quantity, rules.step, 'floor');
     const stopLoss = this.rounded(request.stopLoss, rules.tick);
     const takeProfit = this.rounded(request.takeProfit, rules.tick);
-    if (!(quantity >= rules.minQty) || quantity * livePrice < rules.minNotional) {
+    const lotUnits = quantity / rules.lotStep;
+    if (!(quantity >= rules.minQty) || (rules.maxQty > 0 && quantity > rules.maxQty) ||
+        (rules.lotStep > 0 && Math.abs(lotUnits - Math.round(lotUnits)) > 1e-6) ||
+        quantity * livePrice < rules.minNotional) {
       throw new Error(`Requested quantity violates Binance minimums (qty=${quantity}, notional=${quantity * livePrice})`);
     }
     const long = request.positionSide === 'LONG';
@@ -599,10 +625,31 @@ class ExecutionEngine {
     if ((long && takeProfit <= livePrice) || (!long && takeProfit >= livePrice)) {
       throw new Error(`Take profit ${takeProfit} is on the wrong side of Binance price ${livePrice}`);
     }
+    let jevFeeAmount = 0;
+    if (request.tradeContext?.jev?.mode === 'enforce' && !marketOrder && !before.position) {
+      const [rawBrackets, commission] = await Promise.all([
+        this.binance.leverageBracket(request.symbol), this.binance.commissionRate(request.symbol)
+      ]);
+      const brackets = (Array.isArray(rawBrackets) ? rawBrackets : [rawBrackets])
+        .find(row => row.symbol === request.symbol)?.brackets;
+      const notional = quantity * livePrice;
+      const coefficient = Number((Array.isArray(rawBrackets) ? rawBrackets[0] : rawBrackets)?.notionalCoef || 1);
+      const bracket = brackets?.find(row => Number(row.notionalFloor) * coefficient <= notional &&
+        notional <= Number(row.notionalCap) * coefficient);
+      if (!bracket || request.leverage > Number(bracket.initialLeverage)) throw new Error('JEV_LEVERAGE_NOT_ALLOWED');
+      const takerFee = Number(commission?.takerCommissionRate);
+      if (!Number.isFinite(takerFee) || takerFee < 0 || takerFee > 0.01) throw new Error('JEV_COMMISSION_UNAVAILABLE');
+      // Conservative buffer also covers rate changes between sizing and execution.
+      const feeRate = Math.max(takerFee, 0.001);
+      jevFeeAmount = quantity * (livePrice + stopLoss) * feeRate;
+    }
     let portfolioAllocation = null;
+    if (request.tradeContext?.jev?.mode === 'enforce' && !this.portfolioAllocator)
+      throw new Error('JEV_RISK_UNAVAILABLE');
     if (this.portfolioAllocator) {
       portfolioAllocation = await this.portfolioAllocator.capacity({ symbol: request.symbol,
-        positionSide: request.positionSide, quantity, entryPrice: livePrice, stopLoss, leverage: request.leverage });
+        positionSide: request.positionSide, quantity, entryPrice: livePrice, stopLoss,
+        leverage: request.leverage, riskFeeAmount: jevFeeAmount });
       if (!portfolioAllocation.allowed) {
         const primary = portfolioAllocation.primaryReason || { code: 'PORTFOLIO_CAPACITY_REJECTED' };
         const error = new Error(`${primary.code}: portfolio capacity rejected the entry`);

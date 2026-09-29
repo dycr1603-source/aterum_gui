@@ -1,5 +1,6 @@
 'use strict';
 const { eligibleForJev } = require('./jev_authority');
+const { intelligenceReference } = require('./intelligence_reference');
 
 const crypto = require('crypto');
 const shared = require('../shared');
@@ -228,8 +229,8 @@ function directionalScore(direction, snapshot) {
   const intelRaw = direction === 'LONG'
     ? number(snapshot.marketContext?.intelligenceSignal?.scoreAdjustment?.ifLong)
     : number(snapshot.marketContext?.intelligenceSignal?.scoreAdjustment?.ifShort);
-  const intelConfidence = snapshot.marketContext?.intelligenceSignal?.confidence;
-  const intelDelta = clamp(intelConfidence === 'alta' ? intelRaw : intelConfidence === 'media' ? intelRaw * 0.5 : 0, -5, 5);
+  const intelApplied = intelligenceReference(snapshot.marketContext?.intelligenceSignal).applied;
+  const intelDelta = clamp(intelApplied ? intelRaw : 0, -5, 5);
   addContribution(contributions, 'intelligence', intelDelta, 'Noticias y sesión; confianza requerida', { maximum: 5 });
 
   const score = clamp(contributions.reduce((sum, item) => sum + number(item.value), 0), 0, 100);

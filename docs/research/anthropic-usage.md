@@ -125,3 +125,16 @@ La brecha no era falta de IA, sino falta de persistencia e interfaz historica pa
 - Se enriquece el Daily/Weekly existente.
 - Cada Daily/Weekly generado por Anthropic queda preparado para persistirse en `research_reports`.
 - `/ai-data` ahora muestra una seccion `AI Research` con ultimo informe, historico, filtros, recomendaciones, riesgos y oportunidades.
+
+## Prevalidacion y auditoria de reportes (2026-09-26)
+
+El workflow activo `Cz4TfvaVAygWGRJm` y el exportado se contrastaron antes del cambio; los dos nodos de reporte usan Anthropic y los filtros de capacidad se agregaron antes de construir datos o llamar al modelo.
+
+- `Daily Analysis Report`: 18:00 UTC.
+- `Weekly Deep Analysis`: domingo a las 14:00 UTC; el nodo deja el día sin especificar y n8n usa su valor predeterminado (`Sunday`).
+- Ambos verifican balance disponible de Binance Futures, capacidad de margen/riesgo de Position Guard, circuit breaker y proteccion de capital. Si una lectura falla, el reporte se omite de forma segura.
+- Una omision devuelve un mensaje al nodo de Telegram existente indicando el motivo y que Claude no fue consultado.
+- Las ejecuciones se guardan en `research_ai_runs`: estado, motivo, modelo, uso real de tokens de Anthropic, limites/capacidad observados y estimacion de tokens evitados. No se persisten prompts, claves ni texto del reporte.
+- El panel `Knowledge > AI Usage` muestra los ultimos 90 dias. Los tokens usados son valores de `usage` devueltos por Anthropic; en omisiones, la salida evitada es el tope configurado y la entrada evitada usa el promedio historico del mismo reporte cuando ya existe muestra. Son estimaciones, no facturacion exacta.
+- La escritura de auditoria y lectura de promedios entre n8n y el dashboard usa `RESEARCH_AI_AUDIT_TOKEN`, generado y guardado solo en `.env`; la vista requiere sesion autenticada.
+- El cambio se publica en una nueva version activa del workflow. Se guarda una copia de la base SQLite de n8n bajo `n8n_data/backups/` antes de actualizar.

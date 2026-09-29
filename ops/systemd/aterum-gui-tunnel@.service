@@ -1,0 +1,34 @@
+[Unit]
+Description=Aterum temporary GUI tunnel and Telegram link (%i)
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=%i
+SupplementaryGroups=docker
+WorkingDirectory=/home/%i/projects/aterum/aterum_gui
+ExecStart=/usr/bin/node /home/%i/projects/aterum/aterum_gui/scripts/gui-ngrok-watch.js
+Restart=on-failure
+RestartSec=45s
+KillMode=control-group
+TimeoutStopSec=15s
+UMask=0077
+RuntimeDirectory=aterum-gui-tunnel
+RuntimeDirectoryMode=0700
+StateDirectory=aterum-gui-tunnel
+StateDirectoryMode=0755
+Environment=RUNTIME_DIRECTORY=/run/aterum-gui-tunnel
+Environment=ATERUM_TUNNEL_STATE=/var/lib/aterum-gui-tunnel/state.json
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

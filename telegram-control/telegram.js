@@ -1,6 +1,7 @@
 'use strict';
 
 const f = require('./format');
+const { isTrustedGuiUrl } = require('./tunnel');
 
 const MAIN_MENU = {
   inline_keyboard: [
@@ -8,12 +9,23 @@ const MAIN_MENU = {
     [{ text: '🧠 Research', callback_data: 'command:research' }, { text: '🧬 Learning', callback_data: 'command:learning' }],
     [{ text: '🕘 Historial', callback_data: 'command:history' }, { text: '🧩 Cambios', callback_data: 'command:changes' }],
     [{ text: '📰 Noticias', callback_data: 'command:news' }, { text: '⚙ Sistema', callback_data: 'command:health' }],
-    [{ text: '💬 Copiloto', callback_data: 'help:copilot' }, { text: '❓ Ayuda', callback_data: 'command:help' }]
+    [{ text: '💬 Copiloto', callback_data: 'help:copilot' }, { text: '❓ Ayuda', callback_data: 'command:help' }],
+    [{ text: '🌐 GUI público', callback_data: 'command:tunnel' }]
   ]
 };
 
-function navigationKeyboard(command, args = []) {
+function navigationKeyboard(command, args = [], response = '') {
   const rows = [];
+  if (command === 'tunnel') {
+    const text = String(response);
+    const markdownUrl = text.match(/\]\((https:\/\/[^\s)]+)\)/)?.[1];
+    const plainUrl = text.match(/https:\/\/[^\s<>()[\]]+/)?.[0];
+    const url = markdownUrl || plainUrl;
+    if (url && isTrustedGuiUrl(url)) rows.push([{ text: '🌐 Abrir GUI', url }]);
+    rows.push([{ text: '🔄 Actualizar enlace', callback_data: 'command:tunnel' }]);
+    rows.push([{ text: '🏠 Inicio', callback_data: 'nav:home' }]);
+    return { inline_keyboard: rows };
+  }
   if (command === 'why' && args[0]) rows.push([{ text: '🧾 Ver Evidencia', callback_data: `evidence:${String(args[0]).toUpperCase()}` }]);
   if (!['help', 'start', 'guide', 'tutorial', 'menu', 'new', 'explain'].includes(command)) {
     rows.push([
@@ -47,11 +59,11 @@ function guideKeyboard(step) {
   return { inline_keyboard: [row, [{ text: '🏠 Inicio', callback_data: 'nav:home' }]].filter(items => items.length) };
 }
 
-function keyboardFor(command, args = []) {
+function keyboardFor(command, args = [], response = '') {
   if (command === 'help') return HELP_MENU;
   if (command === 'guide') return guideKeyboard(args[0]);
   if (command === 'start' || command === 'menu') return MAIN_MENU;
-  return navigationKeyboard(command, args);
+  return navigationKeyboard(command, args, response);
 }
 
 class TelegramClient {
@@ -90,6 +102,7 @@ class TelegramClient {
   setCommands() {
     const descriptions = {
       start: 'Abrir el centro de control', help: 'Ayuda por categorías', guide: 'Guía interactiva', tutorial: 'Ejemplos de uso',
+      tunnel: 'Consultar y abrir el GUI público temporal',
       menu: 'Abrir navegación', new: 'Últimos cambios reales', status: 'Estado general', balance: 'Balance y PnL',
       positions: 'Posiciones abiertas', performance: 'Performance', research: 'Último Research', learning: 'Learning Engine',
       health: 'Salud de servicios', logs: 'Eventos importantes', news: 'Noticias', ai: 'Uso y ahorro de IA',
@@ -111,9 +124,9 @@ class TelegramClient {
       const payload = {
         chat_id: chatId,
         text: chunks[index],
-        parse_mode: 'MarkdownV2',
         disable_web_page_preview: true
       };
+      if (options.parseMode !== false) payload.parse_mode = options.parseMode || 'MarkdownV2';
       if (options.disableNotification) payload.disable_notification = true;
       if (options.replyTo) payload.reply_parameters = { message_id: options.replyTo, allow_sending_without_reply: true };
       if (index === chunks.length - 1 && options.replyMarkup) payload.reply_markup = options.replyMarkup;
@@ -130,17 +143,18 @@ class TelegramClient {
     return results;
   }
 
-  async edit(chatId, messageId, text, replyMarkup) {
+  async edit(chatId, messageId, text, replyMarkup, options = {}) {
     if (String(text).length > 3800) return this.send(chatId, text, { replyMarkup });
     try {
-      return await this.call('editMessageText', {
+      const payload = {
         chat_id: chatId,
         message_id: messageId,
         text,
-        parse_mode: 'MarkdownV2',
         disable_web_page_preview: true,
         reply_markup: replyMarkup
-      });
+      };
+      if (options.parseMode !== false) payload.parse_mode = options.parseMode || 'MarkdownV2';
+      return await this.call('editMessageText', payload);
     } catch (error) {
       if (/message is not modified/i.test(error.message)) return null;
       if (!/parse entities/i.test(error.message)) throw error;

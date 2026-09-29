@@ -1,0 +1,30 @@
+{
+  "version": "jev-leverage-v1",
+  "qualityBands": [
+    { "probability": 0, "confidence": 0, "margin": 0, "min": 1, "max": 2 },
+    { "probability": 0.55, "confidence": 0.50, "margin": 0.15, "min": 1, "max": 3 },
+    { "probability": 0.68, "confidence": 0.60, "margin": 0.30, "min": 2, "max": 5 },
+    { "probability": 0.78, "confidence": 0.70, "margin": 0.45, "min": 3, "max": 7 },
+    { "probability": 0.90, "confidence": 0.85, "margin": 0.70, "min": 5, "max": 10 }
+  ],
+  "atrPctCaps": [{ "above": 2, "max": 7 }, { "above": 4, "max": 3 }],
+  "stopPctCaps": [{ "above": 2, "max": 7 }, { "above": 4, "max": 3 }],
+  "netRrCaps": [{ "below": 1.2, "max": 2 }, { "below": 1.6, "max": 5 }],
+  "portfolioUtilizationCaps": [{ "above": 0.75, "max": 3 }, { "above": 0.90, "max": 2 }],
+  "technicalScoreCaps": [{ "below": 55, "max": 2 }, { "below": 70, "max": 5 }],
+  "neutral4hCap": 5,
+  "contradicting4hCap": 2,
+  "rangingRegimeCap": 5,
+  "highVolatilityRegimeCap": 3,
+  "opposingTrendCap": 3,
+  "opposingMacroCap": 3,
+  "thinVolumeCap": 3,
+  "thinVolumeRatio": 0.8,
+  "extremeRsiCap": 3,
+  "longRsiExtreme": 75,
+  "shortRsiExtreme": 25,
+  "manyPositionsAt": 3,
+  "manyPositionsCap": 5,
+  "liquidationBufferMarginFraction": 0.10,
+  "feeRatePerSideFloor": 0.001
+}

@@ -28,6 +28,7 @@ module.exports = {
   aiMaxInputChars: Math.max(2000, Number(process.env.TELEGRAM_AI_MAX_INPUT_CHARS || 3000)),
   aiMaxTokens: Math.max(128, Math.min(1200, Number(process.env.TELEGRAM_AI_MAX_TOKENS || 400))),
   changelogPath: process.env.TELEGRAM_CHANGELOG_PATH || '/app/bot-control/CHANGELOG.md',
+  guiTunnelStateFile: process.env.ATERUM_TUNNEL_STATE_FILE || '/run/aterum-gui-tunnel-state/current.json',
   db: {
     host: process.env.DB_HOST || 'mysql',
     user: process.env.DB_USER || 'tradingbot',

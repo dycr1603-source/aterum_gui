@@ -143,7 +143,7 @@ function calculateCapacity({ balanceRows = [], positionRows = [], protectiveOrde
     const leverage = Math.max(1, finite(candidate.leverage, 1));
     const notional = quantity * entryPrice;
     const margin = notional / leverage;
-    const riskAmount = quantity * Math.abs(entryPrice - stop);
+    const riskAmount = quantity * Math.abs(entryPrice - stop) + Math.max(0, finite(candidate.riskFeeAmount));
     const nextSymbolExposure = (symbolExposure[symbol] || 0) + notional;
     const nextDirectionExposure = (directionExposure[direction] || 0) + notional;
     candidateMetrics = { symbol, direction, quantity, entryPrice, stopLoss: stop, leverage,

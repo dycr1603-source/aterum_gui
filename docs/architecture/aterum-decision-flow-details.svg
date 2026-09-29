@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1650" height="3290" viewBox="0 0 1650 3290">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#405674"/></marker><marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c73c3c"/></marker></defs>
+<rect width="1650" height="3290" fill="#ffffff"/>
+<polyline points="490.0,228.0 490.0,265.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,353.0 490.0,390.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,478.0 490.0,515.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,603.0 490.0,640.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="614.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,728.0 490.0,765.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,853.0 490.0,890.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="864.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,978.0 490.0,1015.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,1103.0 490.0,1140.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,1228.0 490.0,1265.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="1239.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,1353.0 490.0,1390.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,1478.0 490.0,1515.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="1489.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,1603.0 490.0,1640.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,1728.0 490.0,1765.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="1739.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,1853.0 490.0,1890.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,1978.0 490.0,2015.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="1989.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,2103.0 490.0,2140.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,2228.0 490.0,2265.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,2353.0 490.0,2390.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="2364.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,2478.0 490.0,2515.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,2603.0 490.0,2640.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="2614.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,2728.0 490.0,2765.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="490.0,2853.0 490.0,2890.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<text x="490.0" y="2864.5" text-anchor="middle" font-size="14" fill="#405674" font-family="Arial,sans-serif">Si / valido</text>
+<polyline points="490.0,2978.0 490.0,3015.0" fill="none" stroke="#405674" stroke-width="2.5" marker-end="url(#arrow)"/>
+<polyline points="900.0,559.0 1040.0,559.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="552.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<polyline points="900.0,809.0 1040.0,809.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="802.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<polyline points="900.0,1184.0 1040.0,1184.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="1177.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<polyline points="900.0,1434.0 1040.0,1434.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="1427.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<polyline points="900.0,1684.0 1040.0,1684.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="1677.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<polyline points="900.0,1934.0 1040.0,1934.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="1927.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<polyline points="900.0,2309.0 1040.0,2309.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="2302.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<polyline points="900.0,2559.0 1040.0,2559.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="2552.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<polyline points="900.0,2809.0 1040.0,2809.0" fill="none" stroke="#c73c3c" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+<text x="970.0" y="2802.0" text-anchor="middle" font-size="14" fill="#c73c3c" font-family="Arial,sans-serif">No / error</text>
+<rect x="80" y="140" width="820" height="88" rx="16" fill="#e8f0fe" stroke="#2563eb" stroke-width="2.5"/>
+<text x="490.0" y="190.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">01 | Main Schedule: cada 15 minutos</tspan>
+</text>
+<rect x="80" y="265" width="820" height="88" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="490.0" y="315.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">02 | Risk Guard: Binance, circuit breaker, capital, cartera</tspan>
+</text>
+<rect x="80" y="390" width="820" height="88" rx="16" fill="#f3e8ff" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="490.0" y="440.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">03 | Agente de mercado: BTC/ETH 4H, F&amp;G, inteligencia</tspan>
+</text>
+<polygon points="490.0,515 900,559.0 490.0,603 80,559.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="565.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">04 | ¿passRisk = true?</tspan>
+</text>
+<rect x="80" y="640" width="820" height="88" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="490.0" y="690.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">05 | Opportunity Discovery: escanear y ordenar simbolos</tspan>
+</text>
+<polygon points="490.0,765 900,809.0 490.0,853 80,809.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="815.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">06 | ¿Existe setup elegible?</tspan>
+</text>
+<rect x="80" y="890" width="820" height="88" rx="16" fill="#f3e8ff" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="490.0" y="940.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">07 | Jev Entry Gate: ID unico ciclo + simbolo</tspan>
+</text>
+<rect x="80" y="1015" width="820" height="88" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="490.0" y="1065.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">08 | Preflight: vigencia, Binance, precio, margen y SL viables</tspan>
+</text>
+<polygon points="490.0,1140 900,1184.0 490.0,1228 80,1184.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="1190.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">09 | ¿Hay al menos un lado viable?</tspan>
+</text>
+<rect x="80" y="1265" width="820" height="88" rx="16" fill="#f3e8ff" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="490.0" y="1315.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">10 | Construir JSON y consultar Jev Choice 1</tspan>
+</text>
+<polygon points="490.0,1390 900,1434.0 490.0,1478 80,1434.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="1440.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">11 | ¿Jev eligio LONG o SHORT valido?</tspan>
+</text>
+<rect x="80" y="1515" width="820" height="88" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="490.0" y="1565.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">12 | Filtrar leverage por policy, Binance y riesgo</tspan>
+</text>
+<polygon points="490.0,1640 900,1684.0 490.0,1728 80,1684.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="1690.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">13 | ¿Quedan opciones de leverage?</tspan>
+</text>
+<rect x="80" y="1765" width="820" height="88" rx="16" fill="#f3e8ff" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="490.0" y="1815.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">14 | Jev Choice 2: elegir leverage permitido</tspan>
+</text>
+<polygon points="490.0,1890 900,1934.0 490.0,1978 80,1934.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="1940.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">15 | ¿Propuesta y respuesta validas?</tspan>
+</text>
+<rect x="80" y="2015" width="820" height="88" rx="16" fill="#f3e8ff" stroke="#7c3aed" stroke-width="2.5"/>
+<text x="490.0" y="2065.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">16 | Guardar decision; Telegram: propuesta, no orden</tspan>
+</text>
+<rect x="80" y="2140" width="820" height="88" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="490.0" y="2190.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">17 | Learning Gate: capital y aprendizaje</tspan>
+</text>
+<polygon points="490.0,2265 900,2309.0 490.0,2353 80,2309.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="2315.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">18 | ¿Learning permite continuar?</tspan>
+</text>
+<rect x="80" y="2390" width="820" height="88" rx="16" fill="#e8f4f4" stroke="#0f766e" stroke-width="2.5"/>
+<text x="490.0" y="2440.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">19 | Position Sizer: cantidad, margen, riesgo, eficiencia</tspan>
+</text>
+<polygon points="490.0,2515 900,2559.0 490.0,2603 80,2559.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="2565.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">20 | ¿Cantidad viable?</tspan>
+</text>
+<rect x="80" y="2640" width="820" height="88" rx="16" fill="#e7f7ec" stroke="#21844a" stroke-width="2.5"/>
+<text x="490.0" y="2690.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">21 | Position Guard: recibo, precio, duplicados, filtros</tspan>
+</text>
+<polygon points="490.0,2765 900,2809.0 490.0,2853 80,2809.0" fill="#fff4d6" stroke="#c58511" stroke-width="2.5"/>
+<text x="490.0" y="2815.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">22 | ¿Guard valida todo?</tspan>
+</text>
+<rect x="80" y="2890" width="820" height="88" rx="16" fill="#e7f7ec" stroke="#21844a" stroke-width="2.5"/>
+<text x="490.0" y="2940.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">23 | Binance: MARKET, SL/TP, read-back y persistencia</tspan>
+</text>
+<rect x="80" y="3015" width="820" height="88" rx="16" fill="#e7f7ec" stroke="#21844a" stroke-width="2.5"/>
+<text x="490.0" y="3065.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="490.0" dy="0">24 | Confirmacion Binance + Telegram; seguimiento aparte</tspan>
+</text>
+<rect x="1040" y="515" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="565.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">Riesgo o capital bloqueado: Telegram y fin</tspan>
+</text>
+<rect x="1040" y="765" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="815.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">Sin setup: registrar y avisar; fin</tspan>
+</text>
+<rect x="1040" y="1140" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="1190.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">Preflight rechazado: 0 tokens Jev; fin</tspan>
+</text>
+<rect x="1040" y="1390" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="1440.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">NO_TRADE / error: guardar, Telegram; fin</tspan>
+</text>
+<rect x="1040" y="1640" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="1690.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">Sin leverage seguro: rechazar; fin</tspan>
+</text>
+<rect x="1040" y="1890" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="1940.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">Respuesta invalida / timeout: rechazar; fin</tspan>
+</text>
+<rect x="1040" y="2265" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="2315.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">Capital o learning bloquea: registrar; fin</tspan>
+</text>
+<rect x="1040" y="2515" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="2565.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">Tamano insuficiente: no llamar al ejecutor</tspan>
+</text>
+<rect x="1040" y="2765" width="510" height="88" rx="16" fill="#fde8e8" stroke="#c73c3c" stroke-width="2.5"/>
+<text x="1295.0" y="2815.0" text-anchor="middle" fill="#14243d" font-family="Arial,sans-serif" font-weight="700" font-size="18">
+<tspan x="1295.0" dy="0">Guard rechaza: no confirmar apertura</tspan>
+</text>
+<text x="70" y="64.6" font-family="Arial,sans-serif" font-size="35" font-weight="700" fill="#0c1f37">ATERUM | Decisiones y salidas de seguridad</text>
+<text x="70" y="106.8" font-family="Arial,sans-serif" font-size="18" font-weight="400" fill="#51647e">Ruta de entrada activa. Un NO_TRADE o fallo no llega a Binance. Los monitores corren aparte.</text>
+<text x="80" y="3210.2" font-family="Arial,sans-serif" font-size="18" font-weight="400" fill="#51647e">La politica de leverage se usa solo despues de LONG o SHORT. El score tecnico no obliga a operar.</text>
+</svg>

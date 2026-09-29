@@ -19,11 +19,23 @@ from system_one_adapter.providers.anthropic import AsyncAnthropicProvider
 MAX_BODY_BYTES = 1_000_000
 MODEL = os.environ.get("JEV_ADAPTER_MODEL", "claude-haiku-4-5-20251001")
 TOKEN = os.environ.get("JEV_ADAPTER_TOKEN", "")
-MAX_TOKENS = int(os.environ.get("JEV_ADAPTER_MAX_TOKENS", "512"))
+MAX_TOKENS = int(os.environ.get("JEV_ADAPTER_MAX_TOKENS", "2048"))
 
 
 def build_questions(raw: Any) -> dict[str, Choice]:
-    if not isinstance(raw, dict) or len(raw) != 1:
+    if not isinstance(raw, dict) or not 4 <= len(raw) <= 7:
+        raise ValueError("INVALID_QUESTIONS")
+    direction_keys = [key for key, question in raw.items() if isinstance(question, dict)
+                      and isinstance(question.get("criteria"), dict) and "NO_TRADE" in question["criteria"]]
+    if len(direction_keys) != 1:
+        raise ValueError("INVALID_QUESTIONS")
+    base = direction_keys[0]
+    directions = set(raw[base]["criteria"])
+    if "NO_TRADE" not in directions or not directions <= {"NO_TRADE", "LONG", "SHORT"} or len(directions) < 2:
+        raise ValueError("INVALID_CHOICES")
+    sides = directions - {"NO_TRADE"}
+    expected = {base} | {f"{base}_{side}_{kind}" for side in sides for kind in ("leverage", "sl", "tp")}
+    if set(raw) != expected:
         raise ValueError("INVALID_QUESTIONS")
     questions: dict[str, Choice] = {}
     for key, question in raw.items():
@@ -32,7 +44,11 @@ def build_questions(raw: Any) -> dict[str, Choice]:
         if question.get("type") != "choice" or not isinstance(question.get("criteria"), dict):
             raise ValueError("UNSUPPORTED_QUESTION")
         criteria = question["criteria"]
-        if set(criteria) != {"NO_TRADE", "LONG", "SHORT"}:
+        valid = [key == base and set(criteria) == directions,
+                 key.endswith("_leverage") and 0 < len(criteria) <= 10 and set(criteria) <= {f"x{i}" for i in range(1, 11)},
+                 key.endswith("_sl") and 0 < len(criteria) <= 3 and set(criteria) <= {f"sl{i}" for i in range(1, 4)},
+                 key.endswith("_tp") and 0 < len(criteria) <= 3 and set(criteria) <= {f"tp{i}" for i in range(1, 4)}]
+        if not any(valid):
             raise ValueError("INVALID_CHOICES")
         questions[key] = Choice(instructions=question.get("instructions"), criteria=criteria)
     return questions

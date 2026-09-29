@@ -3260,8 +3260,17 @@ body.dashboard-v3 .sb{
     radial-gradient(circle at 42% 0,rgba(73,115,255,.1),transparent 32%) !important;
   box-shadow:var(--at-shadow-z3) !important;
   backdrop-filter:blur(var(--at-blur-panel)) saturate(128%);
-  overflow:hidden;
 }
+body.dashboard-v3 .wl{overflow:hidden}
+body.dashboard-v3 .sb{
+  overflow-x:hidden;
+  overflow-y:auto;
+  scrollbar-gutter:stable;
+  scrollbar-color:rgba(115,183,255,.7) rgba(53,75,111,.18);
+}
+body.dashboard-v3 .sb::-webkit-scrollbar{width:8px}
+body.dashboard-v3 .sb::-webkit-scrollbar-track{background:rgba(53,75,111,.18)}
+body.dashboard-v3 .sb::-webkit-scrollbar-thumb{background:rgba(115,183,255,.7);border-radius:999px}
 body.dashboard-v3 .wl::before,
 body.dashboard-v3 .sb::before{
   content:'';
@@ -3643,7 +3652,7 @@ body.dashboard-v3 .wave-card:nth-child(2){--metric-accent:78,167,255}
 body.dashboard-v3 .wave-card:nth-child(3){--metric-accent:155,77,255}
 
 /* Professional execution console */
-body.dashboard-v3 .sb{padding:7px !important;gap:8px}
+body.dashboard-v3 .sb{padding:7px 7px 76px !important;gap:8px}
 body.dashboard-v3 .terminal-card{
   margin:0;
   border:1px solid rgba(105,147,218,.15) !important;
@@ -3987,6 +3996,64 @@ html[data-theme='light'] body.dashboard-v3 .exec-pnl-panel{
     transition-duration:.01ms !important;
   }
 }
+/* On phones, keep the complete trading terminal in normal document flow so
+   the page provides one predictable vertical scroll surface. */
+@media (max-width:840px){
+  html:has(body.dashboard-v3),
+  html:has(body.dashboard-v3) body.dashboard-v3{
+    height:auto !important;
+    min-height:100% !important;
+    overflow-x:hidden !important;
+    overflow-y:auto !important;
+    overscroll-behavior-y:auto !important;
+  }
+  body.dashboard-v3 .page-shell{
+    height:auto !important;
+    min-height:100dvh !important;
+    overflow:visible !important;
+  }
+  body.dashboard-v3 .layout{
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:stretch !important;
+    height:auto !important;
+    min-height:0 !important;
+    overflow:visible !important;
+    gap:12px !important;
+    padding:10px 10px 76px !important;
+  }
+  body.dashboard-v3 #chart-wrap{order:0;flex:none;width:100%;min-height:0;overflow:visible}
+  body.dashboard-v3 .wl{order:1}
+  body.dashboard-v3 .sb{order:2}
+  body.dashboard-v3 .wl,
+  body.dashboard-v3 .sb{
+    position:relative !important;
+    inset:auto !important;
+    transform:none !important;
+    z-index:auto !important;
+    width:100% !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    height:auto !important;
+    min-height:0 !important;
+    max-height:none !important;
+    overflow:visible !important;
+    border-radius:12px !important;
+  }
+  body.dashboard-v3 .wl-scroll{
+    flex:none !important;
+    min-height:0 !important;
+    max-height:none !important;
+    overflow:visible !important;
+  }
+  body.dashboard-v3 .bnav{
+    display:flex !important;
+    position:sticky !important;
+    bottom:0 !important;
+    z-index:240 !important;
+  }
+  body.dashboard-v3 .overlay{display:none !important}
+}
 </style>
 </head>
 <body class="dashboard-v3">
@@ -4212,6 +4279,7 @@ ${getSharedNav('dashboard', user, 'blue',
         <div class="terminal-card-title">Inteligencia de trade</div>
         <div class="terminal-card-meta" id="detailUpdated">—</div>
       </div>
+      <div class="terminal-card-meta" style="padding:8px 14px;border-bottom:1px solid var(--border)">Proveedor de entradas: ${process.env.JEV_ENABLED === 'true' ? (process.env.JEV_PROVIDER === 'typesafe-jev' ? 'Jev real' : process.env.JEV_PROVIDER === 'typesafe-adapter' ? 'Haiku adapter' : 'No configurado') : 'Desactivado'}${process.env.JEV_OBSERVE_ONLY !== 'false' ? ' · observación' : ' · activo'}</div>
       <div id="closedBanner"></div>
       <div class="pnl-hero" id="pnlHero">
         <div class="pnl-lbl" id="pnlLbl">PnL No Realizado</div>

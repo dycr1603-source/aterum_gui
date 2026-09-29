@@ -19,6 +19,7 @@ async function runScenario({ price, hoursOpen = 1, engineFailure = false }) {
   const state = { positions: { BTCUSDT: position } };
   const helpers = { httpRequest: async options => {
     calls.push({ method: options.method, url: options.url, body: options.body });
+    if (options.url.endsWith('/fapi/v1/time')) return { serverTime: Date.now() - 81000 };
     if (options.url.includes('/fapi/v2/positionRisk')) return [{
       symbol: 'BTCUSDT', positionAmt: '10', positionSide: 'LONG', entryPrice: '100'
     }];
@@ -64,6 +65,7 @@ async function runExternalClose({ finalizationFailure = false } = {}) {
   } } };
   const helpers = { httpRequest: async options => {
     calls.push({ method: options.method, url: options.url, body: options.body });
+    if (options.url.endsWith('/fapi/v1/time')) return { serverTime: Date.now() - 81000 };
     if (options.url.includes('/fapi/v2/positionRisk')) return [];
     if (options.url.includes('/fapi/v1/userTrades')) return [{ orderId: 11775207017, side: 'BUY',
       qty: '1.27', price: '199.92', realizedPnl: '4.1148', time: Date.now() - 1000 }];
@@ -104,6 +106,9 @@ async function runExternalClose({ finalizationFailure = false } = {}) {
 
 (async () => {
   const timed = await runScenario({ price: 99, hoursOpen: 6.1 });
+  const signedRequest = timed.calls.find(call => call.url.includes('/fapi/v2/positionRisk'));
+  assert(Math.abs(Number(new URL(signedRequest.url).searchParams.get('timestamp')) - (Date.now() - 81000)) < 5000,
+    'SL Monitor did not sign with Binance-synchronized time');
   assert.equal(timed.result.status, 'TIME_SL_ADJUSTED');
   assert.equal(timed.result.finalStatus, 'VERIFIED');
   assert.equal(timed.result.newSL, 93);

@@ -16,4 +16,5 @@ if (!['LONG', 'SHORT'].includes(jev.decision) || !jev.proposal || !jev.context |
 }
 return [{ json: { ...d, ...jev.context, jev, direction: jev.decision,
   decisionAuthority: 'JEV',
+  leverageOverride: jev.proposal.leverage,
   indicators: { ...jev.context.indicators, currentPrice: jev.proposal.entry } } }];

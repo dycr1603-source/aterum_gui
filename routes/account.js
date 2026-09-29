@@ -146,7 +146,14 @@ function stopWS(symbol) {
 
 function attachRealtimeServer(server) {
   if (realtimeWSS) return realtimeWSS;
-  realtimeWSS = new WebSocketServer({ server, path: '/ws', perMessageDeflate: false });
+  const { isPublicTunnelHost, hasAuthenticatedSession } = require('../middleware/auth');
+  realtimeWSS = new WebSocketServer({ server, path: '/ws', perMessageDeflate: false,
+    verifyClient(info, done) {
+      if (!isPublicTunnelHost(info.req.headers)) return done(true);
+      hasAuthenticatedSession(info.req).then(allowed => done(allowed, allowed ? undefined : 401, 'No autorizado'))
+        .catch(() => done(false, 401, 'No autorizado'));
+    }
+  });
   realtimeWSS.on('error', (err) => {
     console.error('[Realtime WS] disabled:', err.message);
   });

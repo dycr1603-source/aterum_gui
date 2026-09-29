@@ -15,7 +15,7 @@ const base=()=>({...require('./fixtures/jev_context')(),symbol:'BTCUSDT',directi
   tf4h:{status:'CONFIRMS'},aiResult:{regime:'TRENDING',recommended_leverage:5},
   portfolioCapacity:{allowed:true},opportunityCycleId:'cycle',marketDataAt:Date.now()});
 const receipt=()=>({id:'a'.repeat(64),symbol:'BTCUSDT',mode:'enforce',enabled:true,decision:'LONG',
-  context:require('../services/jev_authority').chosenContext(base(),'LONG'),expiresAt:Date.now()+10000,proposal:{direction:'LONG',entry:100,sl:97,tp:106}});
+  provider:'typesafe-jev',model:'jev-1.13.0',context:require('../services/jev_authority').chosenContext(base(),'LONG'),expiresAt:Date.now()+10000,proposal:{direction:'LONG',leverage:5,entry:100,sl:97,tp:106}});
 test('workflow topology retains risk, learning, sizing, sole writer and verified-open boundary',()=>{
   assert.equal(w.connections['If: Setup Found'].main[0][0].node,'Jev Entry Gate');
   assert.equal(w.connections['Jev Entry Gate'].main[0][0].node,'Deterministic Entry Gate');
@@ -28,6 +28,8 @@ test('NO_TRADE/error blocks learning and execution; observation preserves baseli
     assert.equal(gate.passAI,false); assert.equal(gate.jevBlocked,true);
     const out=await run('Deterministic Entry Gate',gate,async()=>{throw new Error('must not call');});
     assert.equal(out.passAI,false);
+    const rejection=await run('Build Entry Rejection',out,async()=>({}));
+    assert.equal(rejection.text,''); // Dashboard already sent the canonical Jev rejection.
   }
   const observed=await run('Jev Entry Gate',base(),async()=>({...receipt(),mode:'observe',decision:'SHORT'}));
   assert.equal(observed.direction,'LONG'); assert.equal(observed.jev.mode,'observe'); assert(!observed.jevBlocked);
@@ -40,15 +42,31 @@ test('operational learning halt after Jev approval persists rejection and never 
   assert.equal(learning.passAI,false);
   const calls=[];
   const rejected=await run('Build Entry Rejection',learning,async o=>{calls.push(o);return {};});
-  assert(rejected.text.includes('ENTRY REJECTED')); assert.equal(calls.length,2); assert.equal(rejected.jev.id,gate.jev.id);
+  assert(rejected.text.includes('OPERACIÓN RECHAZADA')); assert.equal(calls.length,2); assert.equal(rejected.jev.id,gate.jev.id);
 });
 test('sizer uses Jev SL for risk sizing, preserves selected levels and prevents alternate-symbol bypass',async()=>{
   const d={...base(),jev:receipt()};
   const sized=await run('Position Sizer',d);
   assert.equal(sized.sl,97); assert.equal(sized.tp,106); assert.equal(sized.jev.id,d.jev.id);
-  assert.equal(sized.riskAmount,Number((sized.qty*3).toFixed(2)));
+  assert.equal(sized.riskAmount,Number((sized.qty*(3+0.197)).toFixed(2)));
   const rejected=await run('Position Sizer',{...d,portfolioCapacity:{allowed:false},opportunityRanking:[{...base(),symbol:'ETHUSDT',finalScore:100}]});
   assert.equal(rejected.qty,0); assert.equal(rejected.efficiencyGate.attempts.length,1);
+});
+test('selected leverage telemetry reaches the existing executor request without changing sizing',async()=>{
+  const d={...base(),jev:{...receipt(),leveragePolicy:{policyVersion:'test-v1',
+    allowedChoices:[3,4,5],selectedLeverage:5,metrics:{probability:.8},caps:[{source:'quality',max:5}]}}};
+  const sized=await run('Position Sizer',d);
+  assert.equal(sized.jev.leveragePolicy.finalAppliedLeverage,5);
+  assert.equal(sized.jev.leveragePolicy.requiredMargin,sized.marginRequired);
+  assert.equal(sized.jev.leveragePolicy.riskAtSL,sized.riskAmount);
+  assert(sized.jev.leveragePolicy.riskBudgetUsd > 0);
+  assert(sized.jev.leveragePolicy.riskBudgetUsd <= Number(sized.balance)*.05);
+  let request;
+  await run('Execute Trade',sized,async options=>{request=options.body;return {ok:false,finalStatus:'FAILED',error:'simulated'};},
+    {EXECUTION_ENGINE_TOKEN:'test'});
+  assert.equal(request.leverage,5);
+  assert.equal(request.tradeContext.jev.leveragePolicy.selectedLeverage,5);
+  assert.equal(request.tradeContext.jev.leveragePolicy.finalAppliedLeverage,5);
 });
 test('same Jev decision uses one execution ID and one engine dispatch for concurrent and later replays',async()=>{
   const e=new ExecutionEngine({config:{},db:{execute:async()=>[{}]},binance:{}});
@@ -70,6 +88,19 @@ test('expired or invalid Jev result makes zero execution requests',async()=>{
     const result=await run('Execute Trade',{...base(),jev,qty:1,side:'BUY'},async()=>{calls++;},{EXECUTION_ENGINE_TOKEN:'test'});
     assert.equal(result.success,false);assert.equal(calls,0);
   }
+});
+test('late sizing rejection is an omitted operation with no engine call and a deduped notice',async()=>{
+  const sized={...base(),jev:receipt(),qty:0,side:'BUY',allocationAllowed:false,
+    rejectionReason:{code:'SIZE_REALIZATION_TOO_LOW'},skipReason:'SIZE_REALIZATION_TOO_LOW'};
+  let calls=0;
+  const result=await run('Execute Trade',sized,async()=>{calls++;throw new Error('must not execute');},{EXECUTION_ENGINE_TOKEN:'test'});
+  assert.equal(calls,0);
+  assert.equal(result.finalStatus,'REJECTED');
+  assert.equal(result.failureCategory,'PRE_EXECUTION_CAPACITY');
+  const notice=await run('Build Execution Failure',result);
+  assert(notice.telegramText.includes('OPERACIÓN OMITIDA POR CAPACIDAD'));
+  assert(notice.telegramText.includes('No se envió ninguna orden'));
+  assert(notice.notificationEventKey.startsWith('pre-execution-capacity:BTCUSDT:'));
 });
 test('proposal alone cannot generate confirmed-open Telegram message',async()=>{
   await assert.rejects(run('Build Trade Alert',{...base(),jev:receipt(),success:false}), /blocked for unverified/);
@@ -97,7 +128,7 @@ test('engine rejects missing receipt before any Binance mutation in enforced mod
 });
 test('opposite Jev decision survives advisory Learning veto and sizes the selected side', async()=>{
   const d=base(), context=require('../services/jev_authority').chosenContext(d,'SHORT');
-  const jev={...receipt(),decision:'SHORT',context,proposal:{direction:'SHORT',entry:100,sl:103,tp:94}};
+  const jev={...receipt(),decision:'SHORT',context,proposal:{direction:'SHORT',leverage:5,entry:100,sl:103,tp:94}};
   const proposed=await run('Jev Entry Gate',d,async()=>jev);
   assert.equal(proposed.direction,'SHORT');assert.equal(proposed.technicalScore,30);
   for (const primaryReason of ['SCORE_BELOW_THRESHOLD','LEARNING_HARD_BLOCK']) {
@@ -107,9 +138,41 @@ test('opposite Jev decision survives advisory Learning veto and sizes the select
     assert.equal(learning.decisionExplanation.primaryReason,'JEV_APPROVED');
     const sized=await run('Position Sizer',learning);
     assert.equal(sized.direction,'SHORT');assert.equal(sized.side,'SELL');
-    assert.equal(sized.sl,103);assert.equal(sized.tp,94);assert.equal(sized.leverage,4);
+    assert.equal(sized.sl,103);assert.equal(sized.tp,94);assert.equal(sized.leverage,5);
     assert.equal(sized.technicalScore,30);assert.equal(sized.tf4h.status,'CONTRADICTS');
   }
   const baseline=await run('Deterministic Entry Gate',d,async()=>({allowed:false,primaryReason:'SCORE_BELOW_THRESHOLD',capital:{halted:false}}));
   assert.equal(baseline.passAI,false);
+});
+test('sole writer checks account leverage bracket and fees before any Binance mutation', async () => {
+  const keys=['JEV_ENABLED','JEV_OBSERVE_ONLY','JEV_PROVIDER'];
+  const old=keys.map(key=>process.env[key]);
+  Object.assign(process.env,{JEV_ENABLED:'true',JEV_OBSERVE_ONLY:'false',JEV_PROVIDER:'typesafe-jev'});
+  const now=Date.now(), id='b'.repeat(64), hex=id.slice(0,32);
+  const executionId=[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');
+  const proposal={direction:'LONG',leverage:10,entry:100,sl:97,tp:104};
+  const decision={id,symbol:'BTCUSDT',provider:'typesafe-jev',mode:'enforce',decision:'LONG',proposal,
+    marketDataAt:now,expiresAt:now+120000};
+  const request={executionId,symbol:'BTCUSDT',positionSide:'LONG',quantity:1,leverage:10,stopLoss:97,takeProfit:104,
+    tradeContext:{jev:{id,mode:'enforce'}}};
+  let mutations=0, candidate;
+  const binance={tickerPrice:async()=>({price:'100',time:now}),
+    leverageBracket:async()=>[{symbol:'BTCUSDT',brackets:[{notionalFloor:0,notionalCap:1000,initialLeverage:10}]}],
+    commissionRate:async()=>({takerCommissionRate:'0.0005'}),
+    changeLeverage:async()=>{mutations++;},changeMarginType:async()=>{mutations++;},
+    createOrder:async()=>{mutations++;}};
+  const e=new ExecutionEngine({config:{},db:{execute:async()=>[[{result:JSON.stringify(decision)}]]},binance,
+    portfolioAllocator:{capacity:async value=>{candidate=value;return {allowed:false,primaryReason:{code:'RISK_LIMIT'}};}}});
+  e.snapshot=async()=>({position:null});e.recoverMarketOrder=async()=>null;
+  e.symbolRules=async()=>({tick:0.1,step:0.1,minQty:0.1,maxQty:10,minNotional:5});
+  try {
+    await assert.rejects(e.openPosition(request),/RISK_LIMIT/);
+    assert.equal(candidate.leverage,10);
+    assert.equal(candidate.riskFeeAmount,0.197);
+    assert.equal(mutations,0);
+    binance.leverageBracket=async()=>[{symbol:'BTCUSDT',brackets:[{notionalFloor:0,notionalCap:1000,initialLeverage:5}]}];
+    candidate=null;
+    await assert.rejects(e.openPosition(request),/JEV_LEVERAGE_NOT_ALLOWED/);
+    assert.equal(candidate,null);assert.equal(mutations,0);
+  } finally {keys.forEach((key,i)=>old[i]===undefined?delete process.env[key]:process.env[key]=old[i]);}
 });

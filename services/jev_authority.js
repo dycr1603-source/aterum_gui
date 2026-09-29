@@ -7,9 +7,8 @@ function operationalBlockers(candidate) {
 function eligibleForJev(candidate) {
   return operationalBlockers(candidate).length === 0 && ['LONG', 'SHORT'].some(side => {
     const evidence = candidate.directionalEvidence?.[side];
-    const values = Object.fromEntries((evidence?.contributions || []).map(item => [item.component, Number(item.value || 0)]));
-    return Array.isArray(candidate.directionalRisk?.[side]) && candidate.directionalRisk[side].length === 0
-      && values.trend_1h > 0 && (values.momentum_rsi > 0 || values.volume_quality > 0);
+    return evidence && Array.isArray(evidence.contributions) &&
+      Array.isArray(candidate.directionalRisk?.[side]) && candidate.directionalRisk[side].length === 0;
   });
 }
 function chosenContext(d, direction) {

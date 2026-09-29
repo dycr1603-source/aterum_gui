@@ -6,6 +6,7 @@ class BinanceFutures {
   constructor(config) {
     this.key = config.apiKey;
     this.secret = config.apiSecret;
+    this.fetch = config.fetchImpl || fetch;
     this.base = 'https://fapi.binance.com';
     this.timeOffsetMs = 0;
     this.timeOffsetExpiresAt = 0;
@@ -16,7 +17,7 @@ class BinanceFutures {
     if (Date.now() < this.timeOffsetExpiresAt) return;
     if (!this.timeSyncPromise) {
       this.timeSyncPromise = (async () => {
-        const response = await fetch(`${this.base}/fapi/v1/time`, { signal: AbortSignal.timeout(10000) });
+        const response = await this.fetch(`${this.base}/fapi/v1/time`, { signal: AbortSignal.timeout(10000) });
         const body = await response.json().catch(() => ({}));
         if (!response.ok || !Number.isFinite(Number(body?.serverTime))) {
           throw new Error(body?.msg || `Binance time HTTP ${response.status}`);
@@ -37,7 +38,7 @@ class BinanceFutures {
     });
     if (signed) query.set('signature', crypto.createHmac('sha256', this.secret).update(query.toString()).digest('hex'));
     const url = `${this.base}${path}${query.size ? `?${query}` : ''}`;
-    const response = await fetch(url, {
+    const response = await this.fetch(url, {
       method,
       headers: signed ? { 'X-MBX-APIKEY': this.key } : {},
       signal: AbortSignal.timeout(10000)
@@ -67,6 +68,8 @@ class BinanceFutures {
   exchangeInfo() { return this.request('GET', '/fapi/v1/exchangeInfo', {}, false); }
   tickerPrice(symbol) { return this.request('GET', '/fapi/v1/ticker/price', { symbol }, false); }
   balance() { return this.request('GET', '/fapi/v2/balance'); }
+  leverageBracket(symbol) { return this.request('GET', '/fapi/v1/leverageBracket', { symbol }); }
+  commissionRate(symbol) { return this.request('GET', '/fapi/v1/commissionRate', { symbol }); }
   positionMode() { return this.request('GET', '/fapi/v1/positionSide/dual'); }
   positions(symbol) { return this.request('GET', '/fapi/v2/positionRisk', { symbol }); }
   openOrders(symbol) { return this.request('GET', '/fapi/v1/openOrders', { symbol }); }

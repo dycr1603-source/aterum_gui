@@ -1,6 +1,8 @@
 'use strict';
 const bcrypt  = require('bcrypt');
 const session = require('express-session');
+const cookie = require('cookie');
+const signature = require('cookie-signature');
 const { BRAND_LOGO_PATH } = require('../views/brand');
 require('../services/load_env');
 
@@ -10,6 +12,31 @@ const SESSION_MAX_AGE = 8 * 60 * 60 * 1000;
 const loginAttempts = {};
 const RATE_LIMIT    = 5;
 const RATE_WINDOW   = 15 * 60 * 1000;
+const sessionStore = new session.MemoryStore();
+
+function isPublicTunnelHost(headers = {}) {
+  return [headers.host, headers['x-forwarded-host']].some(value => String(value || '').split(',')
+    .some(host => /(^|\.)ngrok(?:-free)?\.(?:app|io|dev)$/i.test(host.trim().replace(/:\d+$/, ''))));
+}
+
+function hasAuthenticatedSession(req) {
+  const raw = cookie.parse(req.headers.cookie || '')['connect.sid'];
+  if (!raw?.startsWith('s:')) return Promise.resolve(false);
+  const sid = signature.unsign(raw.slice(2), SESSION_SECRET);
+  if (!sid) return Promise.resolve(false);
+  return new Promise(resolve => sessionStore.get(sid, (error, data) => resolve(!error && !!data?.user)));
+}
+
+function protectPublicTunnel(req, res, next) {
+  if (!isPublicTunnelHost(req.headers)) return next();
+  if (req.path === '/' || req.path === '/login' || req.path === '/logout' || req.path === '/auth/logout') return next();
+  if (req.session?.user) return next();
+  if (req.method === 'GET' && req.accepts('html') && !req.path.startsWith('/api/') && !req.path.startsWith('/db/')) {
+    req.session.returnTo = req.path;
+    return res.redirect('/login');
+  }
+  return res.status(401).json({ error: 'No autorizado' });
+}
 
 function checkRateLimit(ip) {
   const now = Date.now();
@@ -22,7 +49,7 @@ function checkRateLimit(ip) {
 
 function setupAuth(app, db) {
   app.use(session({
-    secret: SESSION_SECRET, resave: false, saveUninitialized: false,
+    store: sessionStore, secret: SESSION_SECRET, resave: false, saveUninitialized: false,
     cookie: { maxAge: SESSION_MAX_AGE, httpOnly: true, sameSite: 'strict' }
   }));
   app.use(require('express').urlencoded({ extended: false }));
@@ -349,4 +376,4 @@ body{
 </body></html>`;
 }
 
-module.exports = { setupAuth, requireAuth };
+module.exports = { setupAuth, requireAuth, protectPublicTunnel, isPublicTunnelHost, hasAuthenticatedSession };

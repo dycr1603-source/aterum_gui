@@ -1,164 +1,55 @@
-# Jev en Aterum
+# Jev real en el flujo de entradas de Aterum
 
-Implementación preparada el 2026-09-24. No se desplegaron servicios, no se activaron workflows y no se cambiaron secretos. Falta una clave con acceso efectivo a Jev; las llamadas al proveedor y Telegram se comprobaron con clientes simulados.
+El workflow principal de n8n conserva Discovery, Learning, Position Sizer, Execute Trade y los avisos existentes. `Jev Entry Gate` llama a `POST /internal/jev/evaluate` en Dashboard. El resultado se reserva por ciclo/símbolo en `jev_decisions`, de modo que un reintento no vuelve a consultar el modelo ni cambia la propuesta. La ejecución sigue pasando únicamente por Position Guard y Binance Futures de producción. Los cierres, Position Guard, SL Monitor y Trailing Manager siguen siendo los mismos.
 
-## API auténtica y decisión técnica
+## Proveedores
 
-Fuentes oficiales consultadas:
+`JEV_PROVIDER=typesafe-jev` utiliza la API oficial `POST https://api.typesafe.ai/v1/systemone`, Bearer `TYPESAFE_API_KEY` y `JEV_MODEL=jev-latest`. La respuesta debe identificar un modelo `jev-*`. `JEV_PROVIDER=typesafe-adapter` utiliza el puente local con Claude Haiku; este proveedor se identifica como **Haiku adapter** en la decisión, el Dashboard y Telegram. No se sustituye uno por el otro automáticamente: si el proveedor seleccionado falla, la oportunidad termina en `NO_TRADE`.
 
-- https://typesafe.ai/blog/introducing-system-one-models-and-jev
-- https://docs.typesafe.ai/api
-- https://docs.typesafe.ai/models
+Contrato oficial: [Quickstart](https://docs.typesafe.ai/introduction/quickstart) y [Choice](https://docs.typesafe.ai/primitives/choice). Antes de consultar al modelo, Dashboard lee la capacidad actual autenticada de Position Guard, el precio y los filtros de Binance. Proyecta para cada dirección, stop loss y apalancamiento de 1× a 10× el tamaño que sobreviviría al Position Sizer activo, incluyendo riesgo monetario, comisiones reservadas, margen, exposición, lote y notional mínimo. Solo ofrece a Jev las direcciones y combinaciones viables. Si ninguna existe, registra `JEV_NO_FEASIBLE_POSITION` en `jev_decisions`, omite la llamada a TypeSafe y envía un aviso de Telegram como máximo una vez por hora por motivo. Si falla la consulta de capacidad, el análisis termina cerrado sin consultar Jev. La capacidad puede cambiar entre esta lectura y el ejecutor; Position Sizer y Position Guard siguen verificando antes de abrir.
 
-Se usa `POST https://api.typesafe.ai/v1/systemone`, Bearer `TYPESAFE_API_KEY`, y el alias oficial `jev-latest`. El cuerpo contiene `model`, `state` y `questions`; la pregunta `choice` contiene `instructions` y `criteria`. Se valida `answers[questionId].type`, `choice`, `probabilities`, `confidence` y el modelo devuelto. Se conserva el nombre concreto del modelo devuelto para auditoría. No se usa un contrato de chat ni un esquema inventado de generación de precios.
+Una consulta que sí procede recibe una instantánea explícita: símbolo, temporalidad, precio y fecha, indicadores, velas y contexto. Los niveles se calculan desde ATR actual, se redondean al tick de Binance y se presentan como opciones numéricas concretas. Nunca se pide al modelo un precio de texto libre. Con apalancamiento dinámico activo, la primera consulta decide dirección y niveles, y una segunda pregunta Choice elige apalancamiento solo si la dirección es LONG o SHORT. Con el flag desactivado se conserva la consulta única anterior. `NO_TRADE` conserva su significado incluso si existe el antiguo flag `JEV_AGGRESSIVE_ENTRY`.
 
-Jev selecciona una opción entre `NO_TRADE`, `LONG` y `SHORT`. Cada opción de operación contiene un par numérico de SL/TP ya calculado. Se ofrecen los niveles de la política existente para cada lado: distancia SL = ATR × slMultiplier (por defecto 1.5); distancia TP = distancia SL × tpMultiplier (por defecto 2). Ambos se ajustan a tickSize real. No se agregaron multiplicadores de riesgo ni políticas nuevas de niveles. Seleccionar LONG/SHORT selecciona también ese par de precios.
+Se validan la identidad de la respuesta, modelo, opciones, confianza y probabilidades, vigencia de datos, drift del precio, niveles y bloqueos operativos. Position Sizer conserva el porcentaje monetario de riesgo del workflow activo (base 2%) y, para propuestas Jev, reserva comisiones de entrada/salida al 0.1% por lado. Position Guard comprueba de nuevo el recibo persistido, dirección, apalancamiento exacto, TP/SL, tick, lote de mercado, mínimo/máximo de cantidad, notional, tramo de apalancamiento de la cuenta (`/fapi/v1/leverageBracket`), comisión taker actual (`/fapi/v1/commissionRate`) y capacidad del portfolio **antes** de cambiar apalancamiento o colocar MARKET. Usa la mayor entre la comisión taker y el colchón del 0.1% por lado. Una comisión o tramo no disponibles bloquean la entrada. El presupuesto de riesgo de la cartera incorpora esas comisiones para las aperturas Jev.
 
-## Punto exacto y flujo
+Las notificaciones distinguen **propuesta de Jev real/Haiku adapter**, **orden confirmada por Binance**, **rechazo** y **cierre**. Una propuesta no equivale a una orden. El aviso de rechazo emitido por Dashboard evita un segundo aviso del mismo rechazo en n8n. Las entregas se guardan por clave de evento idempotente en `notification_deliveries`; el resultado real de Binance se registra en `trade_executions` y `trade_execution_events`.
 
-```mermaid
-flowchart LR
-  R[Risk Guard] --> O[Opportunity Discovery]
-  O --> J[Jev Entry Gate]
-  J --> D[Deterministic Entry Gate / Learning]
-  D --> S[Position Sizer]
-  S --> E[Execute Trade]
-  E --> G[Position Guard / Execution Engine]
-  G --> B[Binance Futures]
-```
+Si el Position Sizer todavía rechaza una propuesta por un cambio de capacidad entre lecturas, `Execute Trade` devuelve `REJECTED` sin llamar a Position Guard. Telegram lo presenta como **operación omitida por capacidad** y limita ese aviso a uno por símbolo y hora, en vez de informar erróneamente una ejecución fallida en Binance.
 
-El nuevo nodo está en la rama positiva de `If: Setup Found`, antes de `Deterministic Entry Gate`. Consulta `POST /internal/jev/evaluate` en Dashboard con el token interno existente. El endpoint es dueño de los flags; un error de comunicación bloquea la entrada. Los endpoints `/internal/*` no se publican por nginx y requieren Bearer incluso dentro de la red.
+## Configuración
 
-Jev tiene autoridad sobre la decisión de entrada y dirección. Puede elegir el lado contrario al selector técnico, incluso con un score menor. En enforce, Discovery entrega un candidato con datos y capacidad operativa aunque su score esté bajo el umbral, su dirección sea NEUTRAL o Learning recomiende bloquearlo. Ranking todavía prioriza el símbolo a analizar; no se consulta todo el universo a Jev en cada ciclo.
+### Referencia de Intelligence
 
-Los scores, ambigüedad y bloqueos estadísticos de Learning son evidencia, no vetos estratégicos. Learning sigue ejecutándose y registrando su recomendación; únicamente sus rechazos SCORE_BELOW_THRESHOLD/LEARNING_HARD_BLOCK con capital explícitamente habilitado pueden quedar como recomendaciones. Un HALT de capital, servicio caído o rechazo desconocido sigue bloqueando. En disabled/observe se mantiene la política de entrada original.
+Jev recibe la recomendación auxiliar de Intelligence **solo con confianza `alta`**. Con confianza `media`, `baja`, ausente o inválida, se excluye `marketContext.intelligenceSignal` completo de ambas consultas al modelo, incluidas sus alertas y ajustes. El scoring técnico también aplica contribución cero en esos casos, para evitar que una recomendación ignorada influya indirectamente por el score. Los datos macro, indicadores, velas, confirmación 4H y controles operativos se conservan.
 
-Cada scan conserva evidencia LONG y SHORT calculada desde las mismas velas. Al elegir Jev, se transmiten los indicadores, contribuciones, score, confirmación 4H y setup del lado seleccionado, y se vuelve a consultar Learning para ese setup. La correlación del portfolio se calcula para ambos lados y se exige la del elegido, sin reutilizar el veto del lado anterior. Se mantienen liquidez, cooldown, posiciones existentes, capital y demás restricciones operativas.
+La referencia alta se identifica como heurística determinista y `reference_only`; no es una respuesta anterior de Jev ni un veto operativo. Jev mantiene la elección independiente entre `NO_TRADE`, `LONG` y `SHORT`. El resultado persistido registra `intelligenceReference` con la política, confianza recibida, aplicación y motivo; Telegram informa si la referencia se aplicó o se ignoró. No requiere nuevas variables de entorno.
 
-Position Sizer conserva multiplicadores de riesgo, capital, margen, apalancamiento y Efficiency Gate, y dimensiona usando la distancia al SL elegido. En modo enforce no cambia a otro símbolo si falla el tamaño: una propuesta no autoriza un símbolo alternativo. El fallback original permanece en disabled/observe.
+| Variable | Uso |
+| --- | --- |
+| `TYPESAFE_API_KEY` | Secreto para Jev real; solo `.env`, nunca en Git ni logs. |
+| `JEV_PROVIDER` | `typesafe-jev` o `typesafe-adapter`. |
+| `JEV_MODEL` | Alias oficial, normalmente `jev-latest`; se guarda el modelo resuelto. |
+| `JEV_ENABLED` | Habilita el gate. |
+| `JEV_DYNAMIC_LEVERAGE_ENABLED` | `true` activa dos consultas Choice: dirección/niveles y luego apalancamiento filtrado. `false` conserva la consulta única anterior. Solo afecta `typesafe-jev`. |
+| `JEV_MAX_LEVERAGE` | Techo adicional entre 1× y 10×; nunca supera el límite absoluto de 10×. |
+| `JEV_LEVERAGE_POLICY_PATH` | Ruta opcional al JSON de política; por defecto `config/jev-leverage-policy.json`. |
+| `JEV_OBSERVE_ONLY` | `false` aplica la decisión; `true` observa y deja el flujo base. |
+| `N8N_TRADING_DISABLED` | `1` impide aperturas desde Execute Trade. |
+| `JEV_TIMEOUT_MS`, `JEV_MAX_DATA_AGE_MS`, `JEV_MAX_PRICE_DRIFT_PCT` | Límites de respuesta y vigencia. |
+| `JEV_ADAPTER_TOKEN`, `JEV_ADAPTER_ANTHROPIC_API_KEY`, `JEV_ADAPTER_MODEL` | Sólo para Haiku adapter. |
+| `JEV_CAPACITY_URL` | Endpoint interno autenticado de Position Guard; por defecto `http://position_guard:3091/portfolio-capacity`. |
+| `EXECUTION_ENGINE_TOKEN` | Credencial interna ya existente para consultar capacidad; permanece fuera de Git. |
 
-`Execute Trade` sigue llamando exclusivamente `POST /executions`. El ID se deriva de la decisión persistida; los reenvíos usan el mismo ID y un máximo de un intento del motor para aperturas Jev. No se reintenta la API Jev. El mecanismo existente de recuperación por clientOrderId se conserva para resolver aperturas cuyo resultado quedó incierto.
+La clave TypeSafe se suministra por Compose a Dashboard. Position Guard recibe el nombre de proveedor para rechazar recibos emitidos bajo un proveedor anterior. Ningún servicio n8n recibe la clave TypeSafe. El workflow publicado debe actualizarse en la misma versión activa; `scripts/patch-jev-capacity-workflow.js` actualiza el snapshot del repositorio y `scripts/publish-active-jev-capacity.js` publica sólo `Execute Trade` y `Build Execution Failure`, tras copia de seguridad de SQLite y con n8n detenido. No se importa un segundo schedule.
 
-Dentro de `ExecutionEngine.openPosition`, inmediatamente después de obtener reglas y precio actuales, `validateJevExecution` consulta la decisión persistida. Comprueba símbolo, dirección, modo, identidad de ejecución, expiración, precios inalterados, tick/min/max y lado respecto del precio actual. Luego continúan los controles existentes de mínimos, capacidad del portfolio y modo de cuenta antes de modificar margen/apalancamiento o enviar MARKET. Una orden ya recuperada de Binance debe completar su protección y persistencia aunque la decisión haya vencido; no se bloquea esa recuperación.
+Verificación local: `npm run test:jev`, `npm run test:execution`, `npm run test:workflow`, `npm run build`. Las pruebas de Jev y del ejecutor usan respuestas simuladas y no envían órdenes. Una llamada autenticada y aislada a TypeSafe puede verificar cuenta/modelo y las preguntas dinámicas sin conectar al ejecutor. Las pruebas de Telegram con entrega real deben usar el endpoint interno y una clave de evento exclusiva; el resultado `SENT` y `message_id` confirman entrega aceptada por Telegram, no lectura humana.
 
-SL/TP siguen llegando como `stopLoss`/`takeProfit` al motor. Éste crea y relee STOP_MARKET/TAKE_PROFIT_MARKET y persiste los precios confirmados con `persistOpenState`. SL Monitor, Trailing Manager, sincronización y cierre no cambian sus reglas.
+## Apalancamiento dinámico
 
-## Datos, vigencia y auditoría
+En el flujo anterior, el preflight ofrecía los valores viables de 1× a 10× en la misma consulta Choice que decidía dirección y niveles. El Position Sizer aplicaba el valor elegido y Position Guard validaba de nuevo antes de abrir. Ahora, con `JEV_DYNAMIC_LEVERAGE_ENABLED=true`, el preflight y las comprobaciones de Binance siguen siendo los mismos, pero Jev elige primero `NO_TRADE`/`LONG`/`SHORT` y SL/TP. Si elige una dirección, una política determinista calcula las opciones de apalancamiento para ese lado y esos niveles. Jev elige entre esas opciones mediante otra pregunta Choice. Ningún rechazo de la política se convierte en una orden. No hay fallback al adaptador.
 
-- `marketDataAt` marca el inicio del scan, conservadoramente antes de todas las consultas. Los indicadores y velas no se rejuvenecen al llamar a Jev.
-- Se vuelve a consultar ticker de Binance con su símbolo/timestamp y exchangeInfo; se rechazan datos futuros o vencidos y desplazamientos mayores al límite configurado.
-- `state` v2 incluye símbolo/ciclo, timestamps, precio/filtros, velas, indicadores, volumen, OI, scores/contribuciones, 4H, macro/inteligencia, riesgo, balance y capacidad ya usados por Aterum. No se envía el objeto de workflow completo ni credenciales.
-- `jev_decisions` conserva request reproducible, opciones numéricas, respuesta validada, modelo efectivo, propuesta, decisión tras validación, motivo y expiración. El ID único ciclo/símbolo se reserva antes de consultar la API. Una evaluación incompleta no se repite automáticamente.
-- Learning registra su recomendación incluso cuando Jev discrepa; los rechazos efectivos de Learning/sizing se registran mediante `/db/rejection` y `/db/scan`. El motor conserva motivo y estado en `trade_executions`/`trade_execution_events`. Una propuesta persistida LONG no significa que haya sido ejecutada: el resultado definitivo se consulta en el motor.
-- Un fallo de DB bloquea la entrada; si no se puede persistir, queda el código genérico en logs del servicio.
-- La migración `database/migrations/20260924_jev.sql` permite preparar tablas; también se crean idempotentemente al usarse. No fue aplicada a una base real.
+La política (`config/jev-leverage-policy.json`) combina probabilidad del lado, confianza independiente y diferencia respecto de la segunda opción. Un band de calidad fija un rango inicial. Los topes más conservadores por ATR %, distancia al SL, R:R neto estimado con comisión taker, score técnico, contexto 4H, macro, régimen, tendencia, RSI, volumen, posiciones abiertas y utilización de los **límites actuales** de cartera reducen ese rango. Cada valor restante debe pasar el mismo cálculo de tamaño/preflight, el tramo de apalancamiento de la cuenta en Binance y una comprobación conservadora: tras pérdida al SL y comisiones, el margen de la posición debe exceder mantenimiento más el colchón configurado. Esa comprobación es un filtro previo, no una predicción exacta del precio de liquidación en margen cruzado; Position Guard sigue siendo la autoridad final.
 
-## Variables
+El riesgo monetario solicitado por el Position Sizer se calcula **sin apalancamiento**. Para una cantidad fija, `riesgo ≈ cantidad × (|entry−SL| + comisiones por unidad)` y `margen ≈ cantidad × entry / leverage`. Si el margen antes restringía la cantidad, un apalancamiento mayor puede permitir un notional mayor, pero la cantidad sigue limitada por el presupuesto monetario, exposición, margen, lotes y Position Guard. El registro de `jev_decisions.result.leveragePolicy` guarda probabilidad, confianza, margen de decisión, ATR %, distancia al SL, R:R neto, utilización de cartera, topes, opciones, selección y proyección. Position Sizer añade apalancamiento aplicado, notional, margen y riesgo estimado; `trade_executions.tradeContext.jev.leveragePolicy` conserva esa telemetría si se llega al ejecutor. Telegram muestra las opciones en la propuesta y el rango, selección, margen y riesgo estimado solo en la confirmación verificada.
 
-| Variable | Valor inicial / propósito |
-|---|---|
-| `TYPESAFE_API_KEY` | Vacía; clave de cuenta con acceso efectivo a Jev, sólo en Dashboard |
-| `JEV_ENABLED` | `false`; habilita evaluación |
-| `JEV_OBSERVE_ONLY` | `true`; registra la propuesta conservando la decisión del bot existente |
-| `JEV_MODEL` | `jev-latest`; alias oficial, modelo resuelto registrado |
-| `JEV_TIMEOUT_MS` | `5000`; presupuesto total validado antes de aceptar la propuesta |
-| `JEV_MAX_DATA_AGE_MS` | `120000`; antigüedad máxima, también comprobada en el motor |
-| `JEV_MAX_PRICE_DRIFT_PCT` | `0.5`; desviación máxima de precio |
-| `JEV_PROVIDER` | `typesafe` para Jev real o `typesafe-adapter` para el adaptador oficial |
-| `JEV_ADAPTER_TOKEN` | Secreto interno entre Dashboard y el sidecar Python |
-| `JEV_ADAPTER_URL` | URL interna; Docker usa `http://typesafe_adapter:8088` |
-| `JEV_ADAPTER_ANTHROPIC_API_KEY` | Credencial de Anthropic exclusiva para el sidecar; puede usar `ANTHROPIC_API_KEY` como fallback |
-| `JEV_ADAPTER_MODEL` | Modelo Anthropic del adaptador; por defecto `claude-haiku-4-5-20251001` |
-| `JEV_ADAPTER_MAX_TOKENS` | Máximo de salida del proveedor; por defecto `512` |
-| `EXECUTION_ENGINE_TOKEN` | Secreto existente, idéntico en Dashboard, n8n y Position Guard |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Destino de notificaciones; ahora también se pasan a Dashboard |
-| `N8N_TRADING_DISABLED` | `1` impide solicitudes de apertura en Execute Trade, incluso con Jev deshabilitado |
-
-Dashboard y Position Guard deben recibir los mismos flags Jev. Observe **no suspende por sí solo el trading original**: para observar sin ninguna apertura, mantener `N8N_TRADING_DISABLED=1` y el workflow de entrada sin activar hasta probarlo manualmente. El chequeo explícito de esta variable se agregó porque existía en Compose pero el nodo no la consultaba.
-
-## Adaptador oficial de TypeSafe
-
-Cuando TypeSafe no admite altas nuevas, `typesafe-adapter/` ejecuta el [System One Adapter oficial](https://github.com/typesafe-ai/system-one-adapter-python) versión 0.2.1. Es un sidecar privado de Python: recibe el mismo `state` y la pregunta Choice ya construidos por Aterum y usa la salida estructurada nativa de Anthropic. El proveedor nunca recibe credenciales de Binance, n8n, Telegram ni la base de datos.
-
-Se ejecuta con `docker compose --profile ai up -d --build typesafe_adapter dashboard position_guard`. El puerto 8088 no se publica al host ni nginx. En el Dashboard se configura `JEV_PROVIDER=typesafe-adapter`; Position Guard recibe el mismo valor para que una propuesta enforce no pueda saltarse su verificación. El adaptador no hace reintentos de proveedor ni correcciones de formato: una respuesta tardía, inválida o un fallo resulta en `NO_TRADE` en el Dashboard. Esto evita duplicar una decisión de entrada.
-
-La salida conserva la forma TypeSafe (`answers`, probabilities y confidence) pero `model` será el nombre de Claude, no `jev-*`. La auditoría registra `answer.provider=typesafe-adapter` y el modelo devuelto. El adaptador es una sustitución temporal de interfaz, no Jev: no aporta sus probabilidades calibradas ni sus garantías de latencia.
-
-## Telegram comprobado
-
-Los nodos `Telegram:*` del workflow principal usan el servicio de entrega persistente. Las propuestas indican `PROPUESTA`, observe/enforce, resultado y motivo, y que no confirman una orden. La notificación de apertura mantiene el requisito VERIFIED + pipelineVerified + persistencia VERIFIED. Los fallos del motor y del workflow comparten la clave del evento; los cierres conservan su propietario único por lifecycle.
-
-La tabla `notification_deliveries` reserva el evento antes de enviar y registra `SENT`, `FAILED` o `UNKNOWN`, message_id y un código de error sin token. Se comprueban tanto el HTTP como `ok` y message_id. Se usa texto plano en los avisos operativos para evitar errores de parseo HTML. También se saneó el error de transporte del bot interactivo; su fallback de formato sólo ocurre tras un rechazo explícito de parsing.
-
-Telegram no tiene una clave de idempotencia de envío. Se eligió entrega como máximo una vez: ante timeout, caída tras reservar o resultado ambiguo, no se reenvía automáticamente. Esto evita duplicados, pero puede requerir revisión manual de un aviso no entregado. El resultado del trading se consulta en Binance/DB independientemente del mensaje.
-
-Comprobado con clientes simulados: NO_TRADE/LONG/SHORT, rechazo por validación/riesgo, apertura confirmada, ejecución fallida y cierre confirmado; HTTP 200 con ok=false, errores de transporte, concurrencia, reenvíos y ausencia de secretos en errores. No se enviaron mensajes reales. Hay entradas locales de Telegram, pero no están identificadas como credenciales de prueba: quedan pendientes permisos efectivos del bot, pertenencia al chat y entrega real en un chat de pruebas autorizado.
-
-## Despliegue y transición a operación
-
-1. Para Jev real, conseguir acceso early access y `TYPESAFE_API_KEY`. Para el adaptador, generar `JEV_ADAPTER_TOKEN`, configurar `JEV_ADAPTER_ANTHROPIC_API_KEY` y elegir `JEV_ADAPTER_MODEL`. Configurar también un chat/bot de pruebas. No se comprobó autenticación, cuota ni una respuesta real de ningún proveedor por falta de credenciales de pruebas.
-2. Preparar las tablas en una DB de staging. Configurar el token interno existente en los tres servicios; usar las plantillas actualizadas sin sobrescribir `.env` productivo.
-3. Configurar `JEV_ENABLED=true`, `JEV_OBSERVE_ONLY=true`, `N8N_TRADING_DISABLED=1`. Para el adaptador, definir `JEV_PROVIDER=typesafe-adapter` en Dashboard y Position Guard, y levantar el perfil `ai`. Construir Dashboard/Position Guard y recrear los servicios afectados. Dashboard, Chart API y n8n comparten namespace: al recrear Dashboard, recrear también Chart API, n8n y nginx según el README.
-4. Importar/actualizar **el workflow existente** con `advanced-ai-trading-bot-v2-clean.workflow.json` sin activarlo ni mantener dos schedules. El script `node scripts/integrate-jev-workflow.js` sólo actualiza snapshots offline, nunca importa ni activa.
-5. Ejecutar manualmente un scan de observación en staging; revisar `jev_decisions`, `notification_deliveries`, latencia, expiraciones y propuestas. Verificar autenticación real de Jev y mensajes en el chat de pruebas. Si el mercado/indicadores carecen de vigencia, se rechaza: no falsear timestamps para continuar.
-6. Antes de operación real, confirmar que todos los controles de cuenta/portfolio, modo Hedge, permisos Binance, protección y cierres funcionan en el entorno destino. Los tests locales no prueban esos permisos ni una ejecución real.
-7. Para que Jev gobierne aperturas: cambiar `JEV_OBSERVE_ONLY=false` **en Dashboard y Position Guard**, conservar `JEV_ENABLED=true`, recrear ambos y los servicios que comparten namespace. Tras verificar la configuración y recibir autorización operativa, poner `N8N_TRADING_DISABLED=0` en n8n y activar un solo workflow principal. Esta implementación no hizo esos pasos.
-8. Para detener nuevas aperturas: `N8N_TRADING_DISABLED=1`. Mantener monitores y Position Guard para las posiciones existentes. Volver a observe invalida propuestas enforce pendientes; no cierra posiciones ni elimina su protección.
-
-## Verificación local
-
-`npm run test:offline` permite reproducir toda la suite sin cargar `.env` y con red bloqueada. Resultado: **28/28 archivos**. La suite específica tiene **33 casos**, todos aprobados. La validación `docker compose --env-file docker.env.example --profile ai config --quiet` pasó sin levantar servicios.
-
-`npm run test:jev` cubre el contrato API, API caída/tardía, niveles inválidos, símbolo/vigencia, controles, observación, registro persistente simulado, entrega Telegram y reenvío idempotente. `npm run check`, `npm run test:workflow` y `npm run test:execution` también se ejecutaron.
-
-Se ejecutaron además todos los archivos `tests/*.test.js`, `position-guard/*.test.js`, los unitarios de Telegram/Position Guard y la simulación de protección. Se bloquearon conexiones de red y carga de `.env` durante estas pruebas. El adaptador tiene dos pruebas Python con un cliente simulado, y su `/healthz` y rechazo HTTP 401 se probaron localmente. Se corrigió un fixture viejo de `position-guard/simulation-test.js` que todavía simulaba cierre directo en lugar del motor verificado. No se construyeron ni levantaron contenedores ni se probó una base MariaDB real. La construcción Docker no se pudo ejecutar porque esta cuenta no tiene permisos sobre `/home/delcon/.docker/buildx/instances`.
-
-## Inventario de archivos entregados
-
-Rutas relativas a `aterum_gui/` (incluye código, configuración, snapshots, pruebas y documentación):
-
-```text
-.env.example
-README.md
-bot-control/infra/.env.example
-bot-control/infra/docker-compose.example.yml
-bot-control/infra/nginx/nginx.conf
-bot-control/workflows/code/build-entry-rejection-v2.js
-bot-control/workflows/code/build-execution-failure-notification-v2.js
-bot-control/workflows/code/build-verified-open-notification-v1.js
-bot-control/workflows/code/position-sizer-v1-efficiency-gate.js
-bot-control/workflows/code/send-telegram-notification-v1.js
-bot-control/workflows/current/advanced-ai-trading-bot-v2-clean.workflow.json
-bot-control/workflows/current/manifest.json
-docker-compose.yml
-docker.env.example
-nginx/nginx.conf
-package.json
-position-guard/execution-engine.js
-position-guard/guard.js
-position-guard/simulation-test.js
-services/opportunity_engine.js
-telegram-control/telegram.js
-tests/telegram_delivery.test.js
-tests/workflow_redesign.test.js
-trade.js
-bot-control/workflows/code/jev-entry-gate.js
-database/migrations/20260924_jev.sql
-docs/architecture/jev-integration.md
-routes/jev.js
-scripts/integrate-jev-workflow.js
-scripts/test-offline.js
-services/jev.js
-services/jev_execution.js
-services/jev_authority.js
-services/telegram_delivery.js
-typesafe-adapter/Dockerfile
-typesafe-adapter/requirements.txt
-typesafe-adapter/service.py
-typesafe-adapter/test_service.py
-tests/jev.test.js
-tests/fixtures/jev_context.js
-tests/jev_integration.test.js
-tests/jev_routes.test.js
-tests/offline.cjs
-```
+La instantánea de KITEUSDT del 27-09-2026 registró `LONG 90%`, confianza `85%`, ATR `2.17%`, SL a `2.17%` y volumen `0.653×`; la política limita por ATR a 7×, por R:R neto a 5× y por volumen a 3×. La reproducción read-only con esa instantánea y los tramos/comisión actuales de Binance produjo **2× y 3×** como opciones. El contexto histórico no conserva `aiVision` ni `riskReduction`, por lo que esta reproducción usa sus valores por defecto; no afirma cuál habría elegido Jev ni que se haya enviado una orden nueva.

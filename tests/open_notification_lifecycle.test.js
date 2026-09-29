@@ -35,6 +35,9 @@ async function run(nodeName, input) {
 
   const opened = await run('Build Trade Alert', {
     success: true, finalStatus: 'VERIFIED', symbol: 'TAOUSDT', positionSide: 'SHORT',
+    leverage: 5, jev: { mode: 'enforce', provider: 'typesafe-jev', model: 'jev-1.13.0',
+      leveragePolicy: { selectedLeverage: 5, allowedChoices: [3, 4, 5, 6, 7],
+        caps: [{ source: 'quality', max: 7 }] } },
     executionId: 'verified-execution', exchangeOrderId: 'market-1',
     exchangeResponse: { stopOrder: { create: { algoId: 'stop-1' } },
       takeProfitOrder: { create: { algoId: 'tp-1' } } },
@@ -69,7 +72,7 @@ async function run(nodeName, input) {
     sizingInfo: { tf4hMultiplier: 1.1, macroSizeMultiplier: 0.6,
       regimeMultiplier: 1.1, scoreMultiplier: 1.5, regime: 'TRENDING' }
   });
-  assert(opened.text.includes('✅ TRADE ABIERTO'));
+  assert(opened.text.includes('✅ ORDEN CONFIRMADA POR BINANCE'));
   assert(opened.text.includes('↓ Persistencia ✅ VERIFIED'));
   assert(opened.text.includes('━━━ ¿POR QUÉ SE APROBÓ? ━━━'));
   assert(opened.text.includes('━━━ PIPELINE DE DECISIÓN ━━━'));
@@ -83,6 +86,10 @@ async function run(nodeName, input) {
   assert(opened.text.includes('MARKET        ✅ market-1'));
   assert(opened.text.includes('━━━ PRECIOS ━━━'));
   assert(opened.text.includes('━━━ POSICIÓN Y RIESGO ━━━'));
+  assert(opened.text.includes('Jev seleccionó   5x'));
+  assert(opened.text.includes('Rango permitido  3x–7x'));
+  assert(opened.text.includes('Margen ahorrado  80%'));
+  assert(opened.text.includes('Riesgo al SL'));
   assert(opened.text.includes('━━━ CUENTA · PREFLIGHT REAL ━━━'));
   assert(opened.text.includes('━━━ INDICADORES ━━━'));
   assert(opened.text.length <= 4096, `premium notification is ${opened.text.length} chars`);

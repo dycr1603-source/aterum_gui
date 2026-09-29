@@ -62,8 +62,9 @@ try {
   console.log('[EntryRejectionV2] telemetry:', error.message);
 }
 
-const text = [
-  'ENTRY REJECTED',
+const text = d.jevBlocked ? '' : [
+  '⛔ OPERACIÓN RECHAZADA',
+  d.jev?.provider === 'typesafe-jev' ? 'Jev real' : d.jev?.provider === 'typesafe-adapter' ? 'Haiku adapter' : 'Flujo original',
   '',
   `${d.symbol || 'N/D'} ${d.direction || 'NEUTRAL'}`,
   `Primary reason: ${clean(primary, 100)}`,

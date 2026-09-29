@@ -6,9 +6,10 @@ const knowledge = require('./knowledge');
 const { createCopilot } = require('./copilot');
 const { getHealth } = require('./health');
 const { recentExecutionErrors, workflowMetadata } = require('./n8n-readonly');
+const { readCurrentGuiTunnel } = require('./tunnel');
 
 const VIEWER_COMMANDS = new Set([
-  'start', 'help', 'status', 'balance', 'positions', 'performance', 'research', 'learning',
+  'start', 'help', 'status', 'tunnel', 'balance', 'positions', 'performance', 'research', 'learning',
   'health', 'logs', 'news', 'ai', 'context', 'trade', 'timeline', 'history', 'changes', 'why', 'evidence',
   'ask', 'guide', 'tutorial', 'menu', 'new', 'explain'
 ]);
@@ -102,6 +103,26 @@ function createCommands(deps) {
       '',
       f.bold('Servicios'),
       ...health.services.map(service => `${statusIcon(service.ok)} ${f.escape(service.name)}${service.ok ? '' : ` · ${f.escape(service.error)}`}`)
+    ].join('\n');
+  }
+
+  async function tunnel() {
+    const current = readCurrentGuiTunnel(config.guiTunnelStateFile);
+    if (!current) {
+      return [
+        '🌐 GUI PÚBLICO', '',
+        '🟡 El enlace de ngrok no está disponible en este momento.',
+        '', 'El servicio puede estar iniciando o el túnel se desconectó. Vuelve a consultar en unos segundos.'
+      ].join('\n');
+    }
+    return [
+      '🌐 GUI PÚBLICO', '',
+      '🟢 Estado: activo',
+      '🔗 URL actual:',
+      current.url,
+      `🕒 Verificado: ${f.date(current.updatedAt)}`,
+      ...(current.browserConfirmationRequired ? ['', 'ℹ️ Primera visita: ngrok puede mostrar «Visit Site». Confírmalo una vez; recordará este navegador durante 7 días.'] : []),
+      '', '🔐 El acceso solicita las credenciales habituales de Aterum.'
     ].join('\n');
   }
 
@@ -564,7 +585,7 @@ function createCommands(deps) {
   }
 
   const handlers = {
-    status, balance, positions, performance, research, learning, health, logs, news, ai, context,
+    status, tunnel, balance, positions, performance, research, learning, health, logs, news, ai, context,
     trade: tradeDecision, timeline: timelineDecision, why, evidence, history, changes,
     simulate, simulator, scan, 'rebuild-report': rebuildReport, rebuild_report: rebuildReport,
     users, role, enable: args => enableUser(args, true), disable: args => enableUser(args, false),

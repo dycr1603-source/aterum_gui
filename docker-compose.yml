@@ -76,13 +76,17 @@ services:
       BINANCE_API_KEY: ${BINANCE_API_KEY:-}
       BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
       EXECUTION_ENGINE_TOKEN: ${EXECUTION_ENGINE_TOKEN:?set EXECUTION_ENGINE_TOKEN in .env}
+      RESEARCH_AI_AUDIT_TOKEN: ${RESEARCH_AI_AUDIT_TOKEN:?set RESEARCH_AI_AUDIT_TOKEN in .env}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
       JEV_ENABLED: ${JEV_ENABLED:-false}
       JEV_OBSERVE_ONLY: ${JEV_OBSERVE_ONLY:-true}
-      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe}
+      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe-jev}
       JEV_MODEL: ${JEV_MODEL:-jev-latest}
+      JEV_DYNAMIC_LEVERAGE_ENABLED: ${JEV_DYNAMIC_LEVERAGE_ENABLED:-true}
+      JEV_MAX_LEVERAGE: ${JEV_MAX_LEVERAGE:-10}
+      JEV_LEVERAGE_POLICY_PATH: ${JEV_LEVERAGE_POLICY_PATH:-/app/config/jev-leverage-policy.json}
       JEV_ADAPTER_URL: ${JEV_ADAPTER_URL:-http://typesafe_adapter:8088}
       JEV_ADAPTER_TOKEN: ${JEV_ADAPTER_TOKEN:-}
       JEV_TIMEOUT_MS: ${JEV_TIMEOUT_MS:-5000}
@@ -91,7 +95,6 @@ services:
       PORTFOLIO_MAX_RISK_PCT: ${PORTFOLIO_MAX_RISK_PCT:-5}
       PORTFOLIO_MAX_MARGIN_USAGE_PCT: ${PORTFOLIO_MAX_MARGIN_USAGE_PCT:-90}
       PORTFOLIO_MIN_FREE_MARGIN_PCT: ${PORTFOLIO_MIN_FREE_MARGIN_PCT:-10}
-      JEV_AGGRESSIVE_ENTRY: ${JEV_AGGRESSIVE_ENTRY:-false}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_ASSISTANT_MODEL: ${OPENAI_ASSISTANT_MODEL:-gpt-5-mini}
       N8N_SQLITE_DB: /n8n-data/database.sqlite
@@ -192,6 +195,7 @@ services:
       INTERNAL_N8N_BASE: http://127.0.0.1:5678
       EXECUTION_ENGINE_URL: http://position_guard:3091/executions
       EXECUTION_ENGINE_TOKEN: ${EXECUTION_ENGINE_TOKEN:?set EXECUTION_ENGINE_TOKEN in .env}
+      RESEARCH_AI_AUDIT_TOKEN: ${RESEARCH_AI_AUDIT_TOKEN:?set RESEARCH_AI_AUDIT_TOKEN in .env}
       BINANCE_API_KEY: ${BINANCE_API_KEY:-}
       BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -227,7 +231,7 @@ services:
       POSITION_GUARD_BINANCE_API_SECRET: ${POSITION_GUARD_BINANCE_API_SECRET:-${BINANCE_API_SECRET:-}}
       JEV_ENABLED: ${JEV_ENABLED:-false}
       JEV_OBSERVE_ONLY: ${JEV_OBSERVE_ONLY:-true}
-      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe}
+      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe-jev}
       JEV_ADAPTER_TOKEN: ${JEV_ADAPTER_TOKEN:-}
       JEV_MAX_DATA_AGE_MS: ${JEV_MAX_DATA_AGE_MS:-120000}
       JEV_MAX_PRICE_DRIFT_PCT: ${JEV_MAX_PRICE_DRIFT_PCT:-0.5}
@@ -278,7 +282,7 @@ services:
       ANTHROPIC_API_KEY: ${JEV_ADAPTER_ANTHROPIC_API_KEY:-${ANTHROPIC_API_KEY:-}}
       JEV_ADAPTER_TOKEN: ${JEV_ADAPTER_TOKEN:-}
       JEV_ADAPTER_MODEL: ${JEV_ADAPTER_MODEL:-claude-haiku-4-5-20251001}
-      JEV_ADAPTER_MAX_TOKENS: ${JEV_ADAPTER_MAX_TOKENS:-512}
+      JEV_ADAPTER_MAX_TOKENS: ${JEV_ADAPTER_MAX_TOKENS:-2048}
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/healthz', timeout=3)"]
       interval: 30s
@@ -309,6 +313,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
       N8N_SQLITE_DB: /n8n-data/database.sqlite
+      ATERUM_TUNNEL_STATE_FILE: /run/aterum-gui-tunnel-state/current.json
       N8N_TRADING_WORKFLOW_ID: ${N8N_TRADING_WORKFLOW_ID:-Cz4TfvaVAygWGRJm}
       TELEGRAM_ANTHROPIC_API_KEY: ${TELEGRAM_ANTHROPIC_API_KEY:-}
       TELEGRAM_CLAUDE_MODEL: ${TELEGRAM_CLAUDE_MODEL:-claude-haiku-4-5-20251001}
@@ -318,6 +323,7 @@ services:
       TELEGRAM_CHANGELOG_PATH: /app/bot-control/CHANGELOG.md
     volumes:
       - n8n_data:/n8n-data:ro
+      - /var/lib/aterum-gui-tunnel:/run/aterum-gui-tunnel-state:ro
       - ./telegram-control:/app/telegram-control:ro
       - ./bot-control/CHANGELOG.md:/app/bot-control/CHANGELOG.md:ro
     depends_on:

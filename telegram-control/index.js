@@ -10,7 +10,7 @@ const { createCommands } = require('./commands');
 const knowledge = require('./knowledge');
 
 const KNOWN_COMMANDS = new Set([
-  'start','help','guide','tutorial','menu','new','status','balance','positions','performance','research','learning',
+  'start','help','guide','tutorial','menu','new','status','tunnel','balance','positions','performance','research','learning',
   'health','logs','news','ai','context','ask','trade','timeline','evidence','why','history','changes','simulate','simulator','scan','rebuild-report',
   'rebuild_report','users','role','enable','disable'
 ]);
@@ -72,6 +72,7 @@ function mention(actor) {
 function directSources(command) {
   const map = {
     status: ['mysql:ping', 'redis:PING', 'external:Binance', 'external:Telegram'],
+    tunnel: ['systemd:aterum-gui-tunnel-state'],
     health: ['mysql:ping', 'redis:PING', 'external:Binance', 'external:Telegram'],
     logs: ['mysql:events', 'n8n-sqlite:execution_entity'],
     scan: ['mysql:scan_events'], simulator: ['n8n-sqlite:workflow_entity'],
@@ -148,6 +149,7 @@ async function main() {
     let response = '';
     let result = 'ok';
     let errorText = null;
+    const plainTunnelText = parsed.command === 'tunnel';
     try {
       if (!context.enabled) throw new Error('Usuario deshabilitado');
       if (parsed.command === 'ask') {
@@ -158,22 +160,26 @@ async function main() {
       }
       if (!commands.allowed(context.role, parsed.command)) throw new Error(`Permiso insuficiente para /${parsed.command}`);
       response = await commands.execute(parsed.command, parsed.args, context);
-      response = `${mention(actor)}\n\n${response}`;
-      const replyMarkup = keyboardFor(parsed.command, parsed.args);
+      const displayName = actor.username ? `@${actor.username}` : actor.displayName;
+      response = `${plainTunnelText ? displayName : mention(actor)}\n\n${response}`;
+      const replyMarkup = keyboardFor(parsed.command, parsed.args, response);
       if (parsed.source === 'callback' && actor.messageId) {
-        await telegram.edit(actor.chatId, actor.messageId, response, replyMarkup);
+        await telegram.edit(actor.chatId, actor.messageId, response, replyMarkup, { parseMode: plainTunnelText ? false : 'MarkdownV2' });
       } else {
-        await telegram.send(actor.chatId, response, { replyTo: actor.messageId, replyMarkup, menu: false });
+        await telegram.send(actor.chatId, response, { replyTo: actor.messageId, replyMarkup, menu: false, parseMode: plainTunnelText ? false : 'MarkdownV2' });
       }
       runtime.lastUpdateAt = new Date().toISOString();
       if (parsed.command !== 'ask') await audit.recordLocalRoute(actor.userId, parsed.command, Date.now() - started, response);
     } catch (error) {
       result = /Permiso insuficiente|deshabilitado/i.test(error.message) ? 'denied' : 'error';
       errorText = error.message;
-      response = `${mention(actor)}\n\n🔴 *ERROR*\n\n${f.escape(error.message || error)}`;
-      const replyMarkup = keyboardFor(parsed.command, parsed.args);
-      if (parsed.source === 'callback' && actor.messageId) await telegram.edit(actor.chatId, actor.messageId, response, replyMarkup).catch(() => null);
-      else await telegram.send(actor.chatId, response, { replyTo: actor.messageId, replyMarkup, menu: false }).catch(() => null);
+      const displayName = actor.username ? `@${actor.username}` : actor.displayName;
+      response = plainTunnelText
+        ? `${displayName}\n\n🔴 ERROR\n\n${String(error.message || error).replace(/[\r\n]+/g, ' ')}`
+        : `${mention(actor)}\n\n🔴 *ERROR*\n\n${f.escape(error.message || error)}`;
+      const replyMarkup = keyboardFor(parsed.command, parsed.args, response);
+      if (parsed.source === 'callback' && actor.messageId) await telegram.edit(actor.chatId, actor.messageId, response, replyMarkup, { parseMode: plainTunnelText ? false : 'MarkdownV2' }).catch(() => null);
+      else await telegram.send(actor.chatId, response, { replyTo: actor.messageId, replyMarkup, menu: false, parseMode: plainTunnelText ? false : 'MarkdownV2' }).catch(() => null);
       runtime.lastError = error.message;
     }
     const endpointsUsed = [...new Set([...api.consumeTrace(), ...directSources(parsed.command)])];

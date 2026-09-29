@@ -1,6 +1,10 @@
 'use strict';
 const { createHash } = require('crypto');
 const { chosenContext, operationalBlockers } = require('./jev_authority');
+const { assessCapacity } = require('./jev_capacity');
+const { evaluateLeverageChoices } = require('./jev_leverage_policy');
+const { BinanceFutures } = require('../position-guard/binance');
+const { intelligenceReference, marketContextForJev } = require('./intelligence_reference');
 const ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 const positive = n => typeof n === 'number' && Number.isFinite(n) && n > 0;
 function config(env = process.env) {
@@ -9,10 +13,18 @@ function config(env = process.env) {
     if (!Number.isFinite(n) || n < min || n > max) throw new Error('JEV_INVALID_CONFIG');
     return n;
   };
+  const provider = env.JEV_PROVIDER || 'typesafe-jev';
+  if (!['typesafe-jev', 'typesafe-adapter'].includes(provider)) throw new Error('JEV_INVALID_PROVIDER');
+  const maxLeverage = setting('JEV_MAX_LEVERAGE', 10, 1, 10);
+  if (!Number.isInteger(maxLeverage)) throw new Error('JEV_INVALID_CONFIG');
   return { enabled: env.JEV_ENABLED === 'true', observe: env.JEV_OBSERVE_ONLY !== 'false',
-    provider: env.JEV_PROVIDER || 'typesafe', apiKey: env.TYPESAFE_API_KEY,
-    model: env.JEV_MODEL || 'jev-latest', adapterUrl: env.JEV_ADAPTER_URL || 'http://typesafe_adapter:8088',
-    adapterToken: env.JEV_ADAPTER_TOKEN || '',
+    provider, apiKey: env.TYPESAFE_API_KEY, model: env.JEV_MODEL || 'jev-latest',
+    dynamicLeverageEnabled: env.JEV_DYNAMIC_LEVERAGE_ENABLED === 'true' && provider === 'typesafe-jev',
+    maxLeverage,
+    binanceApiKey: env.BINANCE_API_KEY || '', binanceApiSecret: env.BINANCE_API_SECRET || '',
+    adapterUrl: env.JEV_ADAPTER_URL || 'http://typesafe_adapter:8088', adapterToken: env.JEV_ADAPTER_TOKEN || '',
+    capacityUrl: env.JEV_CAPACITY_URL || 'http://position_guard:3091/portfolio-capacity',
+    executionToken: env.EXECUTION_ENGINE_TOKEN || '',
     timeoutMs: setting('JEV_TIMEOUT_MS', 5000, 100, 15000),
     maxAgeMs: setting('JEV_MAX_DATA_AGE_MS', 120000, 1000, 300000),
     maxDriftPct: setting('JEV_MAX_PRICE_DRIFT_PCT', 0.5, 0, 2) };
@@ -34,102 +46,194 @@ function validateLevels(p, entry, filter) {
   }
 }
 function options(d, entry, filter) {
-  const atr = d.indicators?.atr, slMultiplier = d.slMultiplier ?? 1.5, tpMultiplier = d.tpMultiplier ?? 2;
-  if (![atr, slMultiplier, tpMultiplier].every(positive)) throw new Error('JEV_INVALID_LEVELS');
-  const tick = Number(filter.tickSize);
-  if (!positive(tick)) throw new Error('JEV_INVALID_PRICE_FILTER');
+  const atr = Number(d.indicators?.atr), tick = Number(filter.tickSize);
+  if (!positive(atr) || !positive(tick)) throw new Error('JEV_INVALID_LEVELS');
   const round = n => Number((Math.round(n / tick) * tick).toFixed(12));
-  return Object.fromEntries(['LONG', 'SHORT'].map(direction => {
+  const candidates = {};
+  for (const direction of ['LONG', 'SHORT']) {
     const sign = direction === 'LONG' ? 1 : -1;
-    const p = { direction, sl: round(entry - sign * atr * slMultiplier), tp: round(entry + sign * atr * slMultiplier * tpMultiplier) };
-    validateLevels(p, entry, filter);
-    return [direction, p];
-  }));
+    const make = (kind, multipliers) => Object.fromEntries(multipliers.map((multiplier, index) =>
+      [`${kind}${index + 1}`, round(entry + sign * atr * multiplier * (kind === 'tp' ? 1 : -1))]));
+    const sl = make('sl', [1, 1.5, 2]), tp = make('tp', [1.5, 2, 3]);
+    for (const stop of Object.values(sl)) for (const target of Object.values(tp))
+      validateLevels({ direction, sl: stop, tp: target }, entry, filter);
+    if (new Set(Object.values(sl)).size !== 3 || new Set(Object.values(tp)).size !== 3) throw new Error('JEV_INVALID_LEVELS');
+    candidates[direction] = { sl, tp };
+  }
+  return candidates;
 }
 function requestId(d) {
   if (!/^[\w-]{1,100}$/.test(d.opportunityCycleId || '') || !/^[A-Z0-9_]{3,24}$/.test(d.symbol || '')) throw new Error('JEV_INVALID_IDENTITY');
-  return createHash('sha256').update(`jev-v2:${d.opportunityCycleId}:${d.symbol}`).digest('hex');
+  return createHash('sha256').update(`jev-v3:${d.opportunityCycleId}:${d.symbol}`).digest('hex');
 }
-// Explicit context selection: never send workflow credentials or the raw input.
-function stateFor(d, market, levels) {
-  return { schemaVersion: 'aterum-jev-v2', symbol: d.symbol, cycleId: d.opportunityCycleId,
-    marketDataAt: d.marketDataAt, market, levels,
-    indicators: d.indicators, candles: d.candles, marketContext: d.marketContext,
-    technicalScore: d.technicalScore, finalScore: d.finalScore, threshold: d.dynamicThreshold,
-    longScore: d.longScore, shortScore: d.shortScore, baselineDirection: d.direction,
-    directionalEvidence: d.directionalEvidence, directionalRisk: d.directionalRisk, learningEvidence: d.learning,
-    aiResult: d.aiResult, aiVision: d.aiVision, setupLabel: d.setupLabel, policyVersion: d.policyVersion,
-    slMultiplier: d.slMultiplier, tpMultiplier: d.tpMultiplier, riskReduction: d.riskReduction,
-    leverageOverride: d.leverageOverride, learningDecision: d.learningDecision,
-    tf4h: d.tf4h, contributionTable: d.contributionTable, baselineBlockers: d.hardBlockers,
-    operationalBlockers: operationalBlockers(d),
-    volume24h: d.volume24h, priceChangePct: d.priceChangePct, openInterest: d.openInterest,
-    riskDecision: d.riskDecision, portfolioCapacity: d.portfolioCapacity,
-    balance: d.balance, availableBalance: d.availableBalance, openCount: d.openCount, openSymbols: d.openSymbols };
+function stateFor(d, market, candidates) {
+  return { schemaVersion: 'aterum-jev-v3', symbol: d.symbol, cycleId: d.opportunityCycleId,
+    timeframe: d.timeframe || '1h',
+    timestamp: d.marketDataAt, market, candidates, indicators: d.indicators, candles: d.candles,
+    marketContext: marketContextForJev(d.marketContext), directionalEvidence: d.directionalEvidence,
+    directionalRisk: d.directionalRisk, tf4h: d.tf4h, volume24h: d.volume24h,
+    priceChangePct: d.priceChangePct, openInterest: d.openInterest,
+    operationalBlockers: operationalBlockers(d), riskDecision: d.riskDecision,
+    portfolioCapacity: d.portfolioCapacity };
+}
+function choiceAnswer(body, key, criteria) {
+  const a = body.answers?.[key], keys = Object.keys(criteria);
+  if (a?.type !== 'choice' || !keys.includes(a.choice) || !Number.isFinite(a.confidence) ||
+      a.confidence < 0 || a.confidence > 1 || !a.probabilities ||
+      Object.keys(a.probabilities).sort().join() !== [...keys].sort().join() ||
+      keys.some(k => !Number.isFinite(a.probabilities[k]) || a.probabilities[k] < 0 || a.probabilities[k] > 1) ||
+      Math.abs(keys.reduce((sum, k) => sum + a.probabilities[k], 0) - 1) > 0.001 ||
+      keys.some(k => a.probabilities[k] > a.probabilities[a.choice])) throw new Error('JEV_INVALID_RESPONSE');
+  return a;
 }
 async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now } = {}) {
-  const id = requestId(d), started = now();
-  const result = { id, symbol: d.symbol, mode: cfg.observe ? 'observe' : 'enforce', decision: 'NO_TRADE',
-    proposedDecision: 'NO_TRADE', reason: null, marketDataAt: d.marketDataAt, expiresAt: d.marketDataAt + cfg.maxAgeMs };
+  const id = requestId(d);
+  const result = { id, symbol: d.symbol, provider: cfg.provider, mode: cfg.observe ? 'observe' : 'enforce',
+    decision: 'NO_TRADE', proposedDecision: 'NO_TRADE', reason: null,
+    marketDataAt: d.marketDataAt, expiresAt: d.marketDataAt + cfg.maxAgeMs,
+    intelligenceReference: intelligenceReference(d.marketContext?.intelligenceSignal),
+    validations: { marketFresh: false, symbolTrading: false, candidatesValid: false,
+      capacityChecked: false, riskAllowed: false } };
   try {
     fresh(d.marketDataAt, now(), cfg.maxAgeMs);
+    result.validations.marketFresh = true;
+    if (operationalBlockers(d).length || d.passRisk === false || d.riskDecision?.allowed === false ||
+        d.portfolioCapacity?.allowed === false)
+      throw new Error('JEV_RISK_REJECTED');
     if (!adapterEnabled(cfg) && !cfg.apiKey) throw new Error('JEV_NOT_CONFIGURED');
     if (adapterEnabled(cfg) && !cfg.adapterToken) throw new Error('JEV_ADAPTER_NOT_CONFIGURED');
+    if (!cfg.executionToken) throw new Error('JEV_CAPACITY_UNAVAILABLE');
+    let capacity;
+    try {
+      const response = await fetchImpl(cfg.capacityUrl, { headers: { authorization: `Bearer ${cfg.executionToken}` },
+        signal: AbortSignal.timeout(cfg.timeoutMs) });
+      if (!response.ok) throw new Error('capacity');
+      capacity = await response.json();
+      fresh(Date.parse(capacity.checkedAt), now(), cfg.maxAgeMs);
+    } catch (_) { throw new Error('JEV_CAPACITY_UNAVAILABLE'); }
+    result.validations.capacityChecked = true;
     const get = async url => {
       const r = await fetchImpl(url, { signal: AbortSignal.timeout(cfg.timeoutMs) });
       if (!r.ok) throw new Error('JEV_MARKET_UNAVAILABLE');
       return r.json();
     };
     const [ticker, info] = await Promise.all([
-      get(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${d.symbol}`),
-      get('https://fapi.binance.com/fapi/v1/exchangeInfo')
+      get(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${d.symbol}`), get('https://fapi.binance.com/fapi/v1/exchangeInfo')
     ]);
     const symbol = info.symbols?.find(s => s.symbol === d.symbol && s.status === 'TRADING');
     const filter = symbol?.filters?.find(f => f.filterType === 'PRICE_FILTER');
     if (ticker.symbol !== d.symbol || !filter) throw new Error('JEV_SYMBOL_MISMATCH');
+    result.validations.symbolTrading = true;
     const entry = Number(ticker.price);
     fresh(Number(ticker.time), now(), cfg.maxAgeMs);
     if (!positive(d.indicators?.currentPrice) || Math.abs(entry / d.indicators.currentPrice - 1) * 100 > cfg.maxDriftPct) throw new Error('JEV_PRICE_DRIFT');
-    const levels = options(d, entry, filter);
-    const state = stateFor(d, { entry, timestamp: ticker.time, priceFilter: filter }, levels);
-    const questionId = `entry_${id}`;
-    const request = { model: cfg.model, state, questions: { [questionId]: { type: 'choice',
-      instructions: 'You own the entry decision and direction. Use only two entry gates: (1) EMA trend alignment for the selected side, and (2) momentum confirmation from RSI or volume. When both gates align and operational constraints permit, select LONG or SHORT; use NO_TRADE only when either gate is absent or the selected side fails an operational constraint. Other metrics are context, not strategic vetoes. Each trading option includes fixed numeric TP and SL. This is a proposal, not an executed order.',
-      criteria: { NO_TRADE: 'Do not open a position.', LONG: levels.LONG, SHORT: levels.SHORT } } } };
-    result.request = request;
-    const response = await fetchImpl(adapterEnabled(cfg) ? `${cfg.adapterUrl}/v1/systemone` : ENDPOINT, { method: 'POST', headers: {
-      authorization: `Bearer ${adapterEnabled(cfg) ? cfg.adapterToken : cfg.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify(request), signal: AbortSignal.timeout(cfg.timeoutMs) });
-    if (!response.ok) throw new Error(adapterEnabled(cfg) ? 'JEV_ADAPTER_UNAVAILABLE' : 'JEV_API_UNAVAILABLE');
-    const body = await response.json();
-    fresh(d.marketDataAt, now(), cfg.maxAgeMs);
-    if (now() - started > cfg.timeoutMs) throw new Error('JEV_TIMEOUT');
-    const a = body.answers?.[questionId];
-    const keys = ['NO_TRADE', 'LONG', 'SHORT'];
-    if (typeof body.model !== 'string' || (!adapterEnabled(cfg) && !body.model.startsWith('jev-')) || a?.type !== 'choice' || !keys.includes(a.choice) ||
-        !Number.isFinite(a.confidence) || a.confidence < 0 || a.confidence > 1 ||
-        Object.keys(a.probabilities || {}).sort().join() !== [...keys].sort().join() ||
-        keys.some(k => !Number.isFinite(a.probabilities[k]) || a.probabilities[k] < 0 || a.probabilities[k] > 1) ||
-        Math.abs(keys.reduce((sum,k) => sum + a.probabilities[k], 0) - 1) > 0.001 ||
-        keys.some(k => a.probabilities[k] > a.probabilities[a.choice])) throw new Error('JEV_INVALID_RESPONSE');
-    result.answer = { provider: cfg.provider, model: body.model, ...a };
-    let choice = a.choice;
-    const aggressive = process.env.JEV_AGGRESSIVE_ENTRY === 'true';
-    const direction = ['LONG', 'SHORT'].includes(d.direction) ? d.direction : null;
-    const contributions = Object.fromEntries((d.directionalEvidence?.[direction]?.contributions || []).map(item => [item.component, Number(item.value || 0)]));
-    const twoGates = contributions.trend_1h > 0 && (contributions.momentum_rsi > 0 || contributions.volume_quality > 0);
-    if (aggressive && choice === 'NO_TRADE' && direction && twoGates) {
-      choice = direction;
-      result.answer.aggressiveOverride = true;
+    const candidates = options(d, entry, filter);
+    result.validations.candidatesValid = true;
+    const preflight = assessCapacity(d, entry, symbol, candidates, capacity);
+    result.preflight = { allowed: preflight.allowed, blockedSides: preflight.blockedSides,
+      allowedSides: Object.keys(preflight.sides), metrics: preflight.metrics || null };
+    if (!preflight.allowed) { result.reason = preflight.reason; return result; }
+    let leverageMarket;
+    if (cfg.dynamicLeverageEnabled) {
+      if (!cfg.binanceApiKey || !cfg.binanceApiSecret) throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE');
+      const binance = new BinanceFutures({ apiKey: cfg.binanceApiKey, apiSecret: cfg.binanceApiSecret, fetchImpl });
+      let rawBrackets, commission;
+      try { [rawBrackets, commission] = await Promise.all([
+        binance.leverageBracket(d.symbol), binance.commissionRate(d.symbol)
+      ]); } catch (_) { throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE'); }
+      const bracketRow = (Array.isArray(rawBrackets) ? rawBrackets : [rawBrackets]).find(row => row.symbol === d.symbol);
+      const coefficient = Number(bracketRow?.notionalCoef || 1);
+      leverageMarket = { brackets: bracketRow?.brackets?.map(row => ({ ...row,
+        notionalFloor: Number(row.notionalFloor) * coefficient,
+        notionalCap: Number(row.notionalCap) * coefficient })),
+      feeRate: Number(commission?.takerCommissionRate) };
+      if (!Number.isFinite(leverageMarket.feeRate) || leverageMarket.feeRate < 0 ||
+          !Array.isArray(leverageMarket.brackets) || !leverageMarket.brackets.length)
+        throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE');
     }
-    result.proposedDecision = choice;
-    if (choice === 'NO_TRADE') { result.reason = 'JEV_NO_TRADE'; return result; }
-    result.proposal = { ...levels[choice], entry, priceFilter: filter };
+    const available = Object.fromEntries(Object.entries(preflight.sides).map(([side, sideOptions]) =>
+      [side, { sl: sideOptions.sl, tp: sideOptions.tp }]));
+    const state = stateFor({ ...d, portfolioCapacity: capacity },
+      { entry, timestamp: Number(ticker.time), priceFilter: filter }, available);
+    const prefix = `entry_${id}`;
+    const choice = (instructions, criteria) => ({ type: 'choice', instructions, criteria });
+    const directionCriteria = { NO_TRADE: 'Do not open a position.' };
+    for (const side of Object.keys(available)) directionCriteria[side] = `Propose a ${side.toLowerCase()} position within the available account capacity.`;
+    const referenceInstructions = state.marketContext?.intelligenceSignal
+      ? ' Intelligence is a high-confidence deterministic heuristic reference, not a prior Jev decision or an operational veto. Assess it alongside the market evidence and decide independently.' : '';
+    const questions = { [prefix]: choice('Decide independently whether to open no position, LONG, or SHORT from this market snapshot. NO_TRADE is fully valid. Only capacity-feasible sides are offered.' + referenceInstructions, directionCriteria) };
+    for (const side of Object.keys(available)) {
+      if (!cfg.dynamicLeverageEnabled) questions[`${prefix}_${side}_leverage`] = choice(`If ${side} is selected, choose among the account-feasible leverage values. No value is preferred.`,
+        Object.fromEntries(preflight.sides[side].leverage.filter(n => n <= cfg.maxLeverage).map(n => [`x${n}`, `${n}x leverage`])));
+      for (const kind of ['sl', 'tp'])
+        questions[`${prefix}_${side}_${kind}`] = choice(`If ${side} is selected, choose one ${kind === 'sl' ? 'stop loss' : 'take profit'} candidate.`,
+          Object.fromEntries(Object.entries(available[side][kind]).map(([key, price]) => [key, `${side} ${kind.toUpperCase()} price ${price}`])));
+    }
+    const request = { model: cfg.model, state, questions };
+    result.request = request;
+    const ask = async payload => {
+      const modelStarted = now();
+      const response = await fetchImpl(adapterEnabled(cfg) ? `${cfg.adapterUrl}/v1/systemone` : ENDPOINT, {
+        method: 'POST', headers: { authorization: `Bearer ${adapterEnabled(cfg) ? cfg.adapterToken : cfg.apiKey}`,
+          'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(cfg.timeoutMs) });
+      if (!response.ok) throw new Error(adapterEnabled(cfg) ? 'JEV_ADAPTER_UNAVAILABLE' : 'JEV_API_UNAVAILABLE');
+      const body = await response.json();
+      fresh(d.marketDataAt, now(), cfg.maxAgeMs);
+      if (now() - modelStarted > cfg.timeoutMs) throw new Error('JEV_TIMEOUT');
+      if (typeof body.model !== 'string' || (!adapterEnabled(cfg) && !body.model.startsWith('jev-')))
+        throw new Error('JEV_INVALID_RESPONSE');
+      return body;
+    };
+    const body = await ask(request);
+    const direction = choiceAnswer(body, prefix, questions[prefix].criteria);
+    result.answer = { provider: cfg.provider, model: body.model, ...direction };
+    result.model = body.model;
+    result.usage = body.usage && { input_tokens: Number(body.usage.input_tokens || 0), output_tokens: Number(body.usage.output_tokens || 0) };
+    result.proposedDecision = direction.choice;
+    if (direction.choice === 'NO_TRADE') { result.reason = 'JEV_NO_TRADE'; return result; }
+    const stopAnswer = choiceAnswer(body, `${prefix}_${direction.choice}_sl`, questions[`${prefix}_${direction.choice}_sl`].criteria);
+    const targetAnswer = choiceAnswer(body, `${prefix}_${direction.choice}_tp`, questions[`${prefix}_${direction.choice}_tp`].criteria);
+    let leverageAnswer;
+    if (cfg.dynamicLeverageEnabled) {
+      const policy = evaluateLeverageChoices({ decision: direction, d, side: direction.choice, entry,
+        stop: available[direction.choice].sl[stopAnswer.choice],
+        target: available[direction.choice].tp[targetAnswer.choice], capacity, symbol,
+        brackets: leverageMarket.brackets, feeRate: leverageMarket.feeRate, maxLeverage: cfg.maxLeverage });
+      policy.allowedChoices = policy.allowedChoices.filter(n => preflight.sides[direction.choice].leverage.includes(n));
+      result.leveragePolicy = policy;
+      if (!policy.allowedChoices.length) { result.reason = 'JEV_NO_FEASIBLE_LEVERAGE'; return result; }
+      const leverageKey = `${prefix}_${direction.choice}_leverage`;
+      const leverageCriteria = Object.fromEntries(policy.allowedChoices.map(n => [`x${n}`, `${n}x leverage`]));
+      const leverageRequest = { model: cfg.model,
+        state: { ...state, selectedDirection: direction.choice, directionProbability: policy.metrics.probability,
+          directionConfidence: policy.metrics.confidence, decisionMargin: policy.metrics.decisionMargin,
+          selectedStop: available[direction.choice].sl[stopAnswer.choice],
+          selectedTarget: available[direction.choice].tp[targetAnswer.choice],
+          leveragePolicy: { allowedChoices: policy.allowedChoices, caps: policy.caps,
+            metrics: policy.metrics } },
+        questions: { [leverageKey]: choice('Choose leverage from these risk-approved values. Risk budget is fixed; leverage only changes required margin. No value is preferred.', leverageCriteria) } };
+      result.leverageRequest = leverageRequest;
+      const second = await ask(leverageRequest);
+      if (second.model !== body.model) throw new Error('JEV_MODEL_CHANGED');
+      leverageAnswer = choiceAnswer(second, leverageKey, leverageCriteria);
+      result.usage = { input_tokens: Number(body.usage?.input_tokens || 0) + Number(second.usage?.input_tokens || 0),
+        output_tokens: Number(body.usage?.output_tokens || 0) + Number(second.usage?.output_tokens || 0) };
+      policy.selectedLeverage = Number(leverageAnswer.choice.slice(1));
+      policy.selectedProjection = policy.projections[policy.selectedLeverage];
+      delete policy.projections;
+    } else {
+      leverageAnswer = choiceAnswer(body, `${prefix}_${direction.choice}_leverage`, questions[`${prefix}_${direction.choice}_leverage`].criteria);
+    }
+    const leverage = Number(leverageAnswer.choice.slice(1));
+    result.selections = { leverage: leverageAnswer, stop: stopAnswer, target: targetAnswer };
+    result.proposal = { direction: direction.choice, leverage, entry,
+      sl: available[direction.choice].sl[stopAnswer.choice], tp: available[direction.choice].tp[targetAnswer.choice],
+      priceFilter: filter };
     validateLevels(result.proposal, entry, filter);
-    if (d.passRisk === false || d.riskDecision?.allowed === false || d.portfolioCapacity?.allowed === false) throw new Error('JEV_RISK_REJECTED');
-    result.context = chosenContext(d, choice);
-    result.decision = choice;
-    result.reason = result.answer.aggressiveOverride ? 'JEV_AGGRESSIVE_TWO_GATE' : 'JEV_PROPOSAL_VALID';
+    result.context = chosenContext(d, direction.choice);
+    result.validations.riskAllowed = true;
+    result.decision = direction.choice;
+    result.reason = 'JEV_PROPOSAL_VALID';
     return result;
   } catch (error) {
     result.reason = /^JEV_[A-Z_]+$/.test(error.message) ? error.message : 'JEV_API_UNAVAILABLE';

@@ -51,6 +51,19 @@ const snapshot = {
   }
 };
 const scored = engine.scoreSnapshot(snapshot);
+assert.strictEqual(scored.contributions.find(item => item.component === 'intelligence').value, 0,
+  'medium confidence Intelligence does not affect the score sent to Jev');
+for (const confidence of ['baja', 'media', undefined]) {
+  const ignored = engine.scoreSnapshot({ ...snapshot, marketContext: { ...snapshot.marketContext,
+    intelligenceSignal: { signal: 'NO OPERAR', confidence, scoreAdjustment: { ifLong: -10, ifShort: -10 } } } });
+  assert.strictEqual(ignored.contributions.find(item => item.component === 'intelligence').value, 0);
+  assert.strictEqual(ignored.longScore, scored.longScore);
+  assert.strictEqual(ignored.shortScore, scored.shortScore);
+}
+const high = engine.scoreSnapshot({ ...snapshot, marketContext: { ...snapshot.marketContext,
+  intelligenceSignal: { signal: 'NO OPERAR', confidence: 'alta', scoreAdjustment: { ifLong: -10, ifShort: -10 } } } });
+assert.strictEqual(high.contributions.find(item => item.component === 'intelligence').value, -5,
+  'high confidence remains a bounded reference');
 assert.strictEqual(scored.direction, 'LONG');
 assert(scored.score >= 65, 'aligned setup clears fixed threshold');
 assert(scored.score < 100, 'ordinary aligned setup preserves ranking headroom');
