@@ -13,6 +13,8 @@ Desde `/home/<usuario>/projects/aterum/aterum_gui`:
 
 El instalador no arranca ni detiene contenedores. Instala el comando `~/.local/bin/aterum`, la unidad `aterum-stack@<usuario>.service` y la condición de bloqueo del túnel. Requiere Node 22 en `/usr/bin/node`, systemd, Docker y Compose. Configura un permiso sudo limitado a iniciar/detener el túnel de ese usuario. Reemplaza el arranque mediante una unidad antigua `aterum-stack.service` deshabilitándola, sin detenerla durante la instalación.
 
+También puede ejecutarse como root: obtiene el usuario de la ruta `/home/<usuario>/projects/aterum/aterum_gui` y crea el comando/estado bajo ese usuario. Los comandos cotidianos deben ejecutarse como ese usuario, no como root. Las rutas `/ruta/...` de los ejemplos deben sustituirse por archivos realmente transferidos; el instalador no descarga un parche de la PC original.
+
 Si detecta una instalación ya operativa, registra `ACTIVE`. Una PC nueva se registra `STOPPED` y bloqueada. La tarea de Windows debe iniciar WSL y dejar el arranque a systemd; no debe ejecutar otro `docker compose up` directamente.
 
 ## Comandos
@@ -87,3 +89,15 @@ Una carpeta `~/.local/state/aterum-control/lock` evita comandos simultáneos. Si
 `npm run test:host-control` comprueba el orden del apagado, bloqueo tras reinicio, retiro, constancia entre hosts, rechazo de tareas pendientes y cierre no limpio, fallo del túnel, reversión de arranque parcial, preservación del arranque ordinario y drenaje del ejecutor. Los comandos mutantes se prueban con Docker/systemd simulados: no detienen el trading actual ni envían órdenes.
 
 Se instaló el control en la PC original de `delcon` sin reiniciar sus contenedores. El comando real `status` confirmó `ACTIVE`, nueve servicios saludables y ningún bloqueo. La lectura real del estado de n8n/MariaDB funcionó. Pasaron el build, las pruebas de ejecución y los 37 archivos de pruebas offline (incluida esta nueva suite), la validación de Compose y de las unidades systemd. Se construyó la imagen actualizada del Dashboard para su siguiente arranque. No se ejecutaron `stop`, `migrate`, `start` ni un reinicio de Windows contra producción.
+
+### Primer retiro real: 29 de septiembre de 2026
+
+El usuario ejecutó `migrate`. El proceso esperó indefinidamente al adaptador Python: su proceso PID 1 no manejaba SIGTERM. Se le envió SIGINT, que Python sí maneja; el apagado continuó sin reactivar trading ni monitores. El controlador ahora muestra pasos de progreso y envía SIGINT al adaptador antes del stop grupal. `typesafe-adapter/service.py` maneja SIGTERM/SIGINT y espera sus handlers antes de salir; un contenedor de prueba aislado y sin red terminó con código 0 al recibir el stop normal de Docker.
+
+El chequeo de drenaje detectó también una solicitud `OPEN_POSITION` de ARBUSDT del 25 de septiembre, `061f14b5-bf1a-d35d-c580-9a87575cce08`, todavía marcada EXECUTING sin respuesta ni recibo de Binance. Se inició solo MariaDB para auditarla. La [consulta por identificador](https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Query-Order) respondió -2013, el historial devuelto desde su fecha contenía una orden de otro identificador y no había trades locales vinculados a esa ejecución. No se interpretó un -2013 aislado como evidencia suficiente: se contrastó el historial completo de esa ventana.
+
+`scripts/reconcile-stale-open.js` realizó esas consultas exclusivamente GET y, con `--apply`, registró FAILED y un evento de auditoría dentro de una transacción. No llamó al ejecutor ni envió/canceló órdenes. Se conservó la posición ARBUSDT posterior, vinculada a otra ejecución.
+
+El controlador permite repetir la comprobación con un contenedor efímero que solo lee SQLite/MariaDB cuando Dashboard ya está detenido. Tras esta corrección se repitió `migrate`: drenaje workflows=0/executions=0, nueve servicios detenidos, ngrok inactivo, `RETIRED`, bloqueo persistente y `migrationReady=true`. La constancia quedó en `/home/delcon/.local/state/aterum-control/handoff.json`. MariaDB también quedó detenida al terminar. No se reinició Windows.
+
+La constancia certifica el retiro local; **todavía faltan los respaldos finales y su restauración en la PC nueva**.

@@ -82,7 +82,11 @@ class HostController {
   }
   async snapshot() {
     const ids = await this.compose(['ps', '--quiet', 'dashboard']);
-    if (!ids.trim()) throw new Error('DASHBOARD_REQUIRED_FOR_DRAIN_CHECK');
+    if (!ids.trim()) {
+      // Recovery after a partial shutdown: run only a read-only DB/SQLite query,
+      // never start the Dashboard server or its schedules/dependencies.
+      return JSON.parse(await this.compose(['run', '--rm', '--no-deps', '--entrypoint', 'node', 'dashboard', '-e', SNAPSHOT_CODE]));
+    }
     return JSON.parse(await this.run('docker', ['exec', ids.trim(), 'node', '-e', SNAPSHOT_CODE]));
   }
   async status() {
@@ -92,6 +96,7 @@ class HostController {
     this.log(JSON.stringify(result, null, 2)); return result;
   }
   async stop({ retire = false, shutdown = false } = {}) {
+    this.log(retire ? '[Aterum] Retirando esta PC para migración…' : '[Aterum] Iniciando apagado…');
     await this.compose(['config', '--quiet']);
     // Preflight privileges before changing persistent state.
     const load = await this.run('systemctl', ['show', '--property=LoadState', '--value', `aterum-gui-tunnel@${this.user}.service`]);
@@ -104,6 +109,7 @@ class HostController {
       requiresHandoff: previous?.requiresHandoff === true });
     const errors = [];
     const attempt = async fn => { try { return await fn(); } catch (error) { errors.push(error.message); return null; } };
+    this.log('[Aterum] Deteniendo ngrok…');
     await attempt(() => this.tunnel('stop'));
     const remainingTunnel = await attempt(() => this.inspectTunnel());
     if (remainingTunnel) errors.push('EXTERNAL_NGROK_TUNNEL_STILL_RUNNING');
@@ -111,23 +117,38 @@ class HostController {
     const running = new Set(before.filter(c => c.running || c.restarting || c.paused).map(c => c.service));
     // Stop producers while the executor and databases still remain available.
     const stopService = async service => {
-      if (running.has(service)) await this.compose(['stop', '--timeout', '-1', service]);
+      if (running.has(service)) {
+        this.log(`[Aterum] Deteniendo ${service}; esperando sus operaciones en curso…`);
+        await this.compose(['stop', '--timeout', '-1', service]);
+        this.log(`[Aterum] ${service} detenido.`);
+      }
     };
     await attempt(() => stopService('telegram_control'));
     await attempt(() => stopService('n8n'));
     await attempt(() => stopService('position_guard'));
     let drain = null;
-    if (running.has('dashboard')) drain = await attempt(() => this.snapshot());
+    this.log('[Aterum] Comprobando ejecuciones pendientes…');
+    if (running.has('dashboard') || running.has('mysql')) drain = await attempt(() => this.snapshot());
     else if (previous?.migrationReady) drain = { workflows: 0, executions: 0 };
     else errors.push('DRAIN_NOT_VERIFIED: start and reconcile before declaring migration ready');
     if (drain && (drain.workflows || drain.executions)) errors.push('PENDING_WORKFLOWS_OR_EXECUTIONS');
+    if (drain) this.log(`[Aterum] Pendientes: workflows=${drain.workflows}, ejecuciones=${drain.executions}.`);
     const writers = await attempt(() => this.containers());
     for (const service of ['n8n', 'position_guard']) {
       const c = writers?.find(c => c.service === service);
       if (c && (c.running || c.restarting || c.paused || ![0, 143].includes(c.exitCode))) errors.push(`UNCLEAN_SHUTDOWN: ${service}`);
     }
     // Stops the whole Compose project, including optional services; does not remove volumes.
+    // Older Python images running as PID 1 ignore default SIGTERM. SIGINT is handled
+    // by Python and lets serve_forever unwind; it is not a forced SIGKILL.
+    if (running.has('typesafe_adapter')) await attempt(async () => {
+      this.log('[Aterum] Deteniendo adaptador Python con SIGINT…');
+      const id = await this.compose(['ps', '--quiet', 'typesafe_adapter']);
+      if (id.trim()) await this.run('docker', ['kill', '--signal=SIGINT', id.trim()]);
+    });
+    this.log('[Aterum] Deteniendo GUI, adaptador y proxy…');
     await attempt(() => this.compose(['stop', '--timeout', '-1', 'nginx', 'aterum_gui', 'typesafe_adapter', 'dashboard']));
+    this.log('[Aterum] Deteniendo Redis y MariaDB; conservando los volúmenes…');
     await attempt(() => this.compose(['stop', '--timeout', '-1', 'redis', 'mysql']));
     await attempt(() => this.compose(['stop', '--timeout', '-1']));
     const after = await attempt(() => this.containers());
@@ -175,16 +196,21 @@ class HostController {
     this.save({ mode: 'STARTING', migrationReady: false, requiresHandoff: previous?.requiresHandoff === true });
     // Inhibit remains until core services are healthy, preventing premature ngrok announcements.
     try {
+      this.log('[Aterum] Iniciando MariaDB y Redis…');
       await this.compose(['up', '-d', 'mysql', 'redis']);
       await this.healthy(['mysql', 'redis']);
+      this.log('[Aterum] Iniciando GUI, Chart API, adaptador y Position Guard…');
       await this.compose(['up', '-d', 'dashboard', 'aterum_gui', 'typesafe_adapter', 'position_guard']);
       await this.healthy(['dashboard', 'aterum_gui', 'typesafe_adapter', 'position_guard']);
       // Executor reconciles before schedules and Telegram consumer are resumed.
+      this.log('[Aterum] Iniciando n8n…');
       await this.compose(['up', '-d', 'n8n']);
       await this.healthy(['n8n']);
+      this.log('[Aterum] Iniciando Telegram y proxy…');
       await this.compose(['up', '-d', 'telegram_control', 'nginx']);
       await this.healthy(['telegram_control', 'nginx']);
       fs.rmSync(this.inhibitFile, { force: true });
+      this.log('[Aterum] Iniciando túnel ngrok…');
       await this.tunnel('start');
       this.save({ mode: 'ACTIVE', migrationReady: false, startedAt: this.now() });
       this.log('Aterum activo. Se conservaron las banderas y workflows existentes.');

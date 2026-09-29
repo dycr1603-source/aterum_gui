@@ -9,6 +9,7 @@ import asyncio
 import hmac
 import json
 import os
+import signal
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -139,5 +140,26 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "ADAPTER_UNAVAILABLE"})
 
 
+def serve(host="0.0.0.0", port=8088):
+    server = ThreadingHTTPServer((host, port), Handler)
+    server.daemon_threads = False
+    stopping = False
+
+    def stop(_signal, _frame):
+        nonlocal stopping
+        if not stopping:
+            stopping = True
+            raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8088), Handler).serve_forever()
+    serve()

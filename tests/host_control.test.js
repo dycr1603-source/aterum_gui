@@ -26,8 +26,19 @@ function fixture(t, { running = true, drain = { workflows: 0, executions: 0 }, u
     if (args[0] === 'inspect') return [...states].map(([service,s]) => JSON.stringify({Running:s.running,
       Restarting:false,Paused:false,ExitCode:s.exitCode,Health:{Status:badHealth?'unhealthy':s.health}})+'|'+service).join('\n');
     if (args[0] === 'exec') return JSON.stringify(drain);
+    if (args.includes('run')) return JSON.stringify(drain);
     if (args.includes('config')) return '';
-    if (args.includes('ps')) return args.includes('dashboard') ? (states.get('dashboard').running ? 'dashboard-id' : '') : SERVICES.map(s=>s+'-id').join('\n');
+    if (args.includes('ps')) {
+      const service=args.find(a=>SERVICES.includes(a));
+      return service ? (states.get(service).running ? service+'-id' : '') : SERVICES.map(s=>s+'-id').join('\n');
+    }
+    if(args[0]==='kill'){
+      assert(args.includes('--signal=SIGINT'));
+      const service=SERVICES.find(s=>args.at(-1)===s+'-id');
+      assert.equal(service,'typesafe_adapter');
+      states.set(service,{running:false,exitCode:130,health:'healthy'});
+      return '';
+    }
     const action = args.indexOf('stop') >= 0 ? 'stop' : args.indexOf('up') >= 0 ? 'up' : null;
     if (action) {
       let selected = args.slice(args.indexOf(action)+1).filter(s=>SERVICES.includes(s));
@@ -70,6 +81,15 @@ test('retired and stopped boot is a no-op and repeated stop remains safe', async
   await controller.start({boot:true});
   assert.equal(calls.length,n);
   assert.equal((await controller.stop({retire:true})).migrationReady,true);
+});
+
+test('partial shutdown can recheck storage without restarting Dashboard or trading',async t=>{
+ const {controller,states,calls}=fixture(t,{running:false});
+ states.set('mysql',{running:true,exitCode:0,health:'healthy'});
+ controller.save({mode:'RETIRED',migrationReady:false});
+ assert.equal((await controller.stop({retire:true})).migrationReady,true);
+ assert(calls.some(c=>c.includes('run')&&c.includes('--no-deps')&&c.includes('-e')));
+ assert(!calls.some(c=>c.includes('up')));
 });
 
 test('pending workflow or executor prevents a migration receipt while still stopping services', async t => {
