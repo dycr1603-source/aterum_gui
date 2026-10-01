@@ -2,6 +2,7 @@
 const { deliver } = require('../services/telegram_delivery');
 
 const { normalizePosition, isStop, isTakeProfit, triggerPrice } = require('./binance');
+const { readOpenTime } = require('./open-time');
 
 function json(value) { return JSON.stringify(value ?? null); }
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -178,15 +179,19 @@ class PositionGuard {
   async adoptPosition(position, stops, takeProfits) {
     const sl = selectedPrice(stops, position.side, 'STOP');
     const tp = selectedPrice(takeProfits, position.side, 'TP');
+    let openedAt = null;
+    try { openedAt = await readOpenTime(this.binance, position); }
+    catch (error) { console.warn(`[Position Guard] open time unavailable for ${position.symbol} ${position.side}`); }
+    const safeOpenedAt = openedAt ? new Date(openedAt) : new Date();
     const [result] = await this.db.execute(`INSERT INTO trades
       (symbol,direction,status,entry_price,initial_sl_price,sl_price,tp_price,qty,leverage,trailing_stage,opened_at)
-      VALUES (?,?, 'OPEN',?,?,?,?,?,?,'INITIAL',NOW())`, [position.symbol, position.side, position.entryPrice, sl, sl, tp,
-      position.qty, position.leverage]);
+      VALUES (?,?, 'OPEN',?,?,?,?,?,?,'INITIAL',?)`, [position.symbol, position.side, position.entryPrice, sl, sl, tp,
+      position.qty, position.leverage, safeOpenedAt]);
     const expected = { id: result.insertId, symbol: position.symbol, direction: position.side, status: 'OPEN',
       entry_price: position.entryPrice, initial_sl_price: sl, sl_price: sl, tp_price: tp, qty: position.qty,
-      leverage: position.leverage, trailing_stage: 'INITIAL', opened_at: new Date(), updated_at: new Date() };
+      leverage: position.leverage, trailing_stage: 'INITIAL', opened_at: safeOpenedAt, updated_at: new Date() };
     await this.event({ eventType: 'POSITION_ADOPTED_FROM_BINANCE', severity: 'CRITICAL', symbol: position.symbol,
-      positionSide: position.side, expected: { dbPosition: null }, actual: { position, sl, tp },
+      positionSide: position.side, expected: { dbPosition: null }, actual: { position, sl, tp, openTimeSource: openedAt ? 'BINANCE_USER_TRADES' : 'UNVERIFIED' },
       action: 'CREATE_LOCAL_POSITION', actionStatus: 'SUCCESS' });
     await this.alert(`adopted:${position.symbol}:${position.side}`,
       `🚨 ATERUM SYNC\n${position.symbol} ${position.side} existed on Binance without local state. Local state was created from Binance (qty ${position.qty}, SL ${sl ?? 'missing'}, TP ${tp ?? 'missing'}).`, true);
