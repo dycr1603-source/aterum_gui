@@ -1,5 +1,13 @@
 .git
 .env
+.env.*
+.local
+bot-control/private
+bot-control/workflows/raw
+*.sqlite
+*.sqlite3
+*.db
+*.patch
 node_modules
 npm-debug.log
 trades.json

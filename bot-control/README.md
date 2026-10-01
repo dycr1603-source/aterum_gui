@@ -17,7 +17,7 @@ Esta carpeta es el punto de entrada versionado para entender, desplegar y operar
 ## Estado controlado
 
 - GUI y Dashboard API: codigo en la raiz del repositorio.
-- Workflows activos: inventario en [`workflows/current/manifest.json`](./workflows/current/manifest.json).
+- Definiciones versionadas: inventario en [`workflows/current/manifest.json`](./workflows/current/manifest.json). El estado publicado se comprueba en el n8n local.
 - Esquema base: [`infra/database/schema.sql`](./infra/database/schema.sql).
 - Topologia: [`architecture/README.md`](./architecture/README.md).
 - Incidentes y auditorias: [`docs/README.md`](./docs/README.md).
@@ -26,6 +26,10 @@ Esta carpeta es el punto de entrada versionado para entender, desplegar y operar
 ## Regla de seguridad
 
 Este directorio nunca debe contener `.env`, tokens, passwords, claves API, credenciales n8n cifradas ni bases SQLite de produccion. Los workflows versionados son snapshots sanitizados y requieren reasignar credenciales al importarlos.
+
+## Instalar en el n8n local
+
+Con `N8N_TRADING_DISABLED=1` y n8n/Telegram detenidos, ejecuta `npm run workflows:sync -- --publish` después de cada `git pull`. El instalador asigna la credencial Telegram local, detecta cambios en el editor, evita duplicados y verifica las versiones guardada y publicada. Guarda su registro privado en `.local/workflow-sync.json`. Para importar sin publicar, omite `--publish`. Consulta [cambio de PC](../docs/operations/pc-handoff.md) antes de iniciar consumidores.
 
 ## Actualizar el control center
 

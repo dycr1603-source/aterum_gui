@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-25T05:39:58.307Z",
-  "source": "Jev integration, offline snapshots (activation unchanged)",
+  "generatedAt": "2026-10-01T02:42:39.227Z",
+  "source": "Repository workflow definitions; hashes refreshed after local deployment audit",
   "sanitized": true,
   "workflows": [
     {
@@ -9,12 +9,12 @@
       "activeAtExport": false,
       "nodeCount": 31,
       "filename": "advanced-ai-trading-bot-v2-clean.workflow.json",
-      "sha256": "5b94b2585524ce6906c78143638ff37adfa620ea50520970dabe0d70d0b90063"
+      "sha256": "fc27566fce38589b1b304768e7a2db25886326c1091143dcff7e9a0c24363d0e"
     },
     {
       "id": "RecommendationReviewEngine",
       "name": "Recommendation Review Engine",
-      "activeAtExport": true,
+      "activeAtExport": false,
       "nodeCount": 2,
       "filename": "recommendation-review-engine.workflow.json",
       "sha256": "14695d7a3b5c574f5940138b5049f433cefbd390647fba1f2937ca6c0c885f58"
@@ -22,10 +22,10 @@
     {
       "id": "ZYhtV8yWXjNukrW4",
       "name": "SL Monitor",
-      "activeAtExport": true,
+      "activeAtExport": false,
       "nodeCount": 14,
       "filename": "sl-monitor.workflow.json",
-      "sha256": "c5a8f86dd43780215fcc15478cf3a53633126ed4fa6477ee4bfe5c67d1e76db0"
+      "sha256": "7b1808000cbb046933139103e123c59cd4086f3fb02e80244c2457059908a343"
     },
     {
       "id": "telemetryPersistenceTest",
@@ -46,10 +46,10 @@
     {
       "id": "q32UEjoj5wNiBHil",
       "name": "Trailing Manager",
-      "activeAtExport": true,
+      "activeAtExport": false,
       "nodeCount": 4,
       "filename": "trailing-manager.workflow.json",
-      "sha256": "b0bb610e0c66ca51889aefb704a044478bc05dba61dfeb85b7160ff05ae49da6"
+      "sha256": "aaf04505d56b7d121809b19e2991fa4d466ec078d781ae1c3abb17449e2c7925"
     }
   ]
 }

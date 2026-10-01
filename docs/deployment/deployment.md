@@ -1,5 +1,7 @@
 # Despliegue
 
+Para la instalación independiente actual y la sincronización repetible de workflows tras `git pull`, usa [instalaciones independientes y cambio de PC](../operations/pc-handoff.md). Las validaciones históricas de esta página describen una instalación anterior.
+
 ## Telegram Copilot
 
 El sidecar usa `aterum-dashboard:local` y monta sus fuentes read-only. El control de coste y latencia depende únicamente de estas variables:

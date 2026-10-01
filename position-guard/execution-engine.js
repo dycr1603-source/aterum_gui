@@ -277,7 +277,7 @@ class ExecutionEngine {
   async removeFinalizedMonitorState(close) {
     const response = await fetch(`${this.config.n8nBase}/webhook/sl-monitor-delete`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ symbol: close.symbol, executionId: close.executionId }),
+      body: JSON.stringify({ symbol: close.symbol, positionSide: close.positionSide, executionId: close.executionId }),
       signal: AbortSignal.timeout(5000)
     });
     if (!response.ok) throw new Error(`Finalized-close SL Monitor cleanup failed (HTTP ${response.status})`);
@@ -986,7 +986,7 @@ class ExecutionEngine {
     const [monitorResponse, dashboardResponse] = await Promise.all([
       fetch(`${this.config.n8nBase}/webhook/sl-monitor-delete`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ symbol: request.symbol, executionId: request.executionId }),
+        body: JSON.stringify({ symbol: request.symbol, positionSide: request.positionSide, executionId: request.executionId }),
         signal: AbortSignal.timeout(5000)
       }),
       fetch(`${this.config.dashboardBase}/trade/${request.symbol}?reason=${reason}${exitPrice ? `&exitPrice=${exitPrice}` : ''}`, {

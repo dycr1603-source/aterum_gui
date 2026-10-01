@@ -133,6 +133,25 @@ test('explicit start resumes normal stopped PC, after core health and before tun
   assert(calls.at(-2).includes('start')); // tunnel command, followed by active state check
 });
 
+test('aterum start reserves the Git turn before starting services, including on a retired host', async t => {
+  const { controller, calls } = fixture(t, { running: false });
+  controller.save({ mode: 'RETIRED', migrationReady: true });
+  controller.inhibit();
+  controller.gitControl = { claim: async hostId => { calls.push(['git', 'claim', hostId]); } };
+  await controller.start();
+  const claim = calls.findIndex(call => call[0] === 'git' && call[1] === 'claim');
+  const firstUp = calls.findIndex(call => call.includes('up'));
+  assert(claim >= 0 && firstUp > claim);
+  assert.equal(controller.state().mode, 'ACTIVE');
+});
+
+test('Git ownership rejection prevents aterum start from launching consumers', async t => {
+  const { controller, calls } = fixture(t, { running: false });
+  controller.gitControl = { claim: async () => { throw new Error('OTHER_PC_ACTIVE'); } };
+  await assert.rejects(controller.start(), /OTHER_PC_ACTIVE/);
+  assert(!calls.some(call => call.includes('up')));
+});
+
 test('fresh PC requires handoff; different-host valid receipt enables explicit takeover', async t => {
   const {controller,directory}=fixture(t,{running:false});
   await assert.rejects(controller.start(),/FIRST_START_REQUIRES/);

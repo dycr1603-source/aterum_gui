@@ -288,8 +288,9 @@ try{
 }
 
 // ── Procesar todas las posiciones EN PARALELO ─────────────────────────────────
-const results=await Promise.all(Object.keys(positions).map(async(symbol)=>{
-  const pos=positions[symbol];
+const results=await Promise.all(Object.keys(positions).map(async(key)=>{
+  const pos=positions[key];
+  const symbol=pos.symbol||key.split(':')[0];
   const{positionSide,side,stage}=pos;
   const slPrice=Number(pos.slPrice),entryPrice=Number(pos.entryPrice),initialSL=Number(pos.initialSL),qty=Number(pos.qty);
 

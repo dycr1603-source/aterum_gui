@@ -1,6 +1,6 @@
 # Control de Aterum y cambio de PC
 
-El control opera sobre el Compose existente, con perfiles `trading`, `ai` y `aux`. No cambia `.env`, límites de riesgo, workflows ni órdenes de Binance. El estado de control vive **fuera del repositorio**, en `~/.local/state/aterum-control/`, con permisos restrictivos. No copies `host.json` ni `inhibited` a otra PC: son el estado de este host.
+El control opera sobre el Compose existente, con perfiles `trading`, `ai` y `aux`. No cambia `.env`, límites de riesgo, workflows ni órdenes de Binance. El estado de control vive **fuera del repositorio**, en `~/.local/state/aterum-control/`, con permisos restrictivos. Cada PC conserva sus propios volúmenes, base de datos, historial, n8n y `N8N_ENCRYPTION_KEY`; no se copian desde la otra PC.
 
 ## Cambio automático mediante Git (vigente)
 
@@ -12,7 +12,18 @@ Inicialización: actualizar el código en la PC que está actualmente activa y e
 
 No se fuerza la toma de control tras suspensión, caída de energía o pérdida de red: Git puede seguir indicando ACTIVE; primero comprobar y detener la PC anterior. No es un lease renovable ni puede detener una PC que alguien arranque directamente con Docker. Protege los cambios cooperativos que usan este comando. No garantiza sincronización de bases ni reconciliación entre instalaciones con datos distintos.
 
-Las instrucciones con transferencia manual de handoff abajo describen el mecanismo anterior y las pruebas históricas; el comando instalado actualizado usa Git automáticamente.
+La rama `main` distribuye código y definiciones de workflows sin secretos. La rama separada `aterum-host-control` contiene solamente la reserva de turno; `aterum start` ejecuta `gitControl.claim()` antes de iniciar cualquier servicio y `aterum migrate` publica la liberación después del apagado verificado.
+
+## Workflows locales después de cada git pull
+
+Mantén `N8N_TRADING_DISABLED=1` durante la preparación. La `.env` y `.local/workflow-sync.json` son locales e ignorados por Git. `N8N_ENCRYPTION_KEY` y las credenciales deben permanecer en cada PC; `RESEARCH_ANTHROPIC_API_KEY` es opcional porque los nodos de investigación usan `ANTHROPIC_API_KEY` como alternativa.
+
+```bash
+docker compose --profile trading --profile ai --profile aux stop n8n telegram_control
+npm run workflows:sync -- --publish
+```
+
+El instalador importa/actualiza SL Monitor, Trailing Manager, Recommendation Review Engine y el bot principal; asigna la credencial Telegram de este n8n, evita duplicados, rechaza cambios locales no gestionados y comprueba tanto la versión guardada como la publicada. Requiere n8n detenido para tener un único escritor de SQLite. Sin `--publish` guarda los workflows sin activarlos. No inicia servicios ni quita el bloqueo de nuevas entradas.
 
 ## Instalar en cada PC
 
@@ -25,7 +36,7 @@ Desde `/home/<usuario>/projects/aterum/aterum_gui`:
 
 El instalador no arranca ni detiene contenedores. Instala el comando `~/.local/bin/aterum`, la unidad `aterum-stack@<usuario>.service` y la condición de bloqueo del túnel. Requiere Node 22 en `/usr/bin/node`, systemd, Docker y Compose. Configura un permiso sudo limitado a iniciar/detener el túnel de ese usuario. Reemplaza el arranque mediante una unidad antigua `aterum-stack.service` deshabilitándola, sin detenerla durante la instalación.
 
-También puede ejecutarse como root: obtiene el usuario de la ruta `/home/<usuario>/projects/aterum/aterum_gui` y crea el comando/estado bajo ese usuario. Los comandos cotidianos deben ejecutarse como ese usuario, no como root. Las rutas `/ruta/...` de los ejemplos deben sustituirse por archivos realmente transferidos; el instalador no descarga un parche de la PC original.
+También puede ejecutarse como root: obtiene el usuario de la ruta `/home/<usuario>/projects/aterum/aterum_gui` y crea el comando/estado bajo ese usuario. Los comandos cotidianos deben ejecutarse como ese usuario, no como root.
 
 Si detecta una instalación ya operativa, registra `ACTIVE`. Una PC nueva se registra `STOPPED` y bloqueada. La tarea de Windows debe iniciar WSL y dejar el arranque a systemd; no debe ejecutar otro `docker compose up` directamente.
 
@@ -41,7 +52,7 @@ Si detecta una instalación ya operativa, registra `ACTIVE`. Una PC nueva se reg
 # Reanudar explícitamente esta PC tras un stop normal.
 ~/.local/bin/aterum start
 
-# Detener y retirar esta PC para transferir la instalación a otra.
+# Detener y retirar esta PC para ceder el turno a otra.
 ~/.local/bin/aterum migrate
 ```
 
@@ -51,36 +62,28 @@ Puede usarse `aterum` sin ruta si `~/.local/bin` está en PATH. Sin instalador, 
 
 Position Guard espera las solicitudes HTTP, scans, operaciones de ejecución y persistencia en curso antes de cerrar su conexión a MariaDB. Las señales repetidas no repiten el cierre. Este comportamiento y el plazo nuevo de n8n entran en vigor cuando esos contenedores utilicen el código/Compose actualizado; instalar el comando no reinicia sus procesos.
 
-Un `stop` normal permite `start`. Una PC `RETIRED` rechaza `start` hasta una reactivación explícita. El bloqueo persiste entre reinicios y evita el arranque por estas unidades. Un operador que ejecute Docker directamente puede eludirlo: no constituye un bloqueo distribuido sobre Binance.
+Un `stop` normal permite `start`. Una PC `RETIRED` puede volver a arrancar solamente si `gitControl.claim()` confirma que el turno está libre; una reserva de la otra PC bloquea el arranque. El bloqueo local persiste entre reinicios y evita el arranque por estas unidades. Un operador que ejecute Docker directamente puede eludirlo: no constituye un bloqueo distribuido sobre Binance.
 
 ## Cambiar de PC
 
-1. Prepara/restaura inicialmente la nueva PC con ejecución y consumidores bloqueados. Transfiere este código y construye las imágenes actualizadas.
-2. En la PC original ejecuta `aterum migrate`. Solo continúa si termina correctamente y `aterum status` indica `migrationReady: true`, `RETIRED` y ningún contenedor activo.
-3. Con todo detenido, genera los respaldos finales consistentes de MariaDB, n8n, Dashboard, Redis y `.env`, y transfiérelos cifrados. El comando de control **no crea ni transfiere esos respaldos**.
-4. Transfiere también `~/.local/state/aterum-control/handoff.json`. Es una constancia sin secretos; no transfieras los otros archivos de estado del host.
-5. Restaura los datos finales en la PC nueva conservando `N8N_ENCRYPTION_KEY`, permisos e IDs. Confirma que la PC original siga detenida. En la nueva:
-
-   ```bash
-   cd /home/saitama/projects/aterum/aterum_gui
-   ./scripts/install-host-control.sh
-   ~/.local/bin/aterum start --handoff /ruta/al/handoff.json
-   ~/.local/bin/aterum status
-   ```
+1. Actualiza ambas PCs desde `main`. En la PC de destino, configura las credenciales y la clave de n8n locales, construye la imagen Dashboard y sincroniza los workflows con `N8N_TRADING_DISABLED=1`. Confirma que sus consumidores siguen detenidos.
+2. En la PC activa, ejecuta `aterum migrate`. Continúa solo si `aterum status` indica `migrationReady: true`, `RETIRED` y ningún contenedor activo. La liberación del turno debe haberse publicado en `aterum-host-control`.
+3. En la PC de destino, confirma que Binance no tiene una posición sin STOP nativo y ejecuta `aterum start`. El comando reserva el turno en `aterum-host-control` antes de iniciar servicios. Luego comprueba `aterum status`, los logs de n8n y Position Guard y que haya un solo consumidor Telegram.
+4. Mantén `N8N_TRADING_DISABLED=1` hasta completar la comprobación en vivo. Para permitir nuevas entradas después, cambia esa variable **solo en la PC activa** y reinicia n8n.
 
 El arranque verifica salud de MariaDB/Redis, luego Dashboard/Chart/adapter/Position Guard, después n8n, Telegram/nginx y finalmente solicita el arranque del túnel. Si falla, intenta detener la instalación parcial y deja el bloqueo. Los workflows mantienen sus flags y horarios reales: `start` puede activar trading en producción.
 
-La constancia no es un lease ni una prueba remota en tiempo real. No impide que alguien reactive después la PC original. Es responsabilidad del cambio de PC mantener una sola instalación operativa. Los SL/TP ya colocados en Binance no se cancelan; mientras Aterum está detenido no se ejecutan los monitores ni el trailing local.
+No se transfieren volúmenes, bases de datos, historial, `.env` ni `handoff.json`. Position Guard consulta las posiciones y órdenes abiertas en Binance y adopta en la base local las posiciones que no estén en su historial; con STOP nativo puede publicar su estado a SL Monitor para que Trailing Manager continúe. Si falta el STOP nativo, la configuración actual alerta sin colocar una orden durante la preparación. Los SL/TP ya colocados en Binance no se cancelan; mientras Aterum está detenido no se ejecutan los monitores ni el trailing local.
 
 ## Volver a la PC original
 
-Primero detén/retira la otra PC y sincroniza su estado final. Solo entonces:
+Primero retira la PC activa y confirma que el turno quedó libre. Después actualiza código y workflows en la PC de destino:
 
 ```bash
-~/.local/bin/aterum start --reactivate
+~/.local/bin/aterum start
 ```
 
-`--first-install` permite registrar explícitamente una instalación independiente existente sin una constancia de otra PC. No usarlo para omitir el cambio controlado de una misma cuenta.
+Con coordinación Git vigente, `--handoff`, `--first-install` y `--reactivate` no sustituyen la reserva de turno en `aterum-host-control`.
 
 ## Arranque de Windows y logs
 
@@ -112,4 +115,4 @@ El chequeo de drenaje detectó también una solicitud `OPEN_POSITION` de ARBUSDT
 
 El controlador permite repetir la comprobación con un contenedor efímero que solo lee SQLite/MariaDB cuando Dashboard ya está detenido. Tras esta corrección se repitió `migrate`: drenaje workflows=0/executions=0, nueve servicios detenidos, ngrok inactivo, `RETIRED`, bloqueo persistente y `migrationReady=true`. La constancia quedó en `/home/delcon/.local/state/aterum-control/handoff.json`. MariaDB también quedó detenida al terminar. No se reinició Windows.
 
-La constancia certifica el retiro local; **todavía faltan los respaldos finales y su restauración en la PC nueva**.
+Ese retiro es un antecedente histórico. El procedimiento vigente conserva instalaciones y claves independientes y usa la rama `aterum-host-control` para el cambio de turno.
