@@ -12,7 +12,7 @@ const knowledge = require('./knowledge');
 const KNOWN_COMMANDS = new Set([
   'start','help','guide','tutorial','menu','new','status','tunnel','balance','positions','performance','research','learning',
   'health','logs','news','ai','context','ask','trade','timeline','evidence','why','history','changes','simulate','simulator','scan','rebuild-report',
-  'rebuild_report','users','role','enable','disable'
+  'rebuild_report','users','role','enable','disable','shutdown_at','shutdown_status','shutdown_cancel'
 ]);
 
 function identity(update) {

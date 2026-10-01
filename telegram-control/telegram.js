@@ -110,7 +110,9 @@ class TelegramClient {
       why: 'Explicar decisión por símbolo', history: 'Historial por símbolo', changes: 'Cambios del sistema',
       trade: 'Decisión completa por ID', timeline: 'Timeline de una decisión', evidence: 'Evidencia por símbolo',
       simulate: 'Simulación read-only (moderator)', scan: 'Scans persistidos (moderator)',
-      rebuild_report: 'Recomponer reporte (moderator)', users: 'Usuarios y roles (admin)'
+      rebuild_report: 'Recomponer reporte (moderator)', users: 'Usuarios y roles (admin)',
+      shutdown_at: 'Schedule controlled PC shutdown (admin)',
+      shutdown_status: 'Show scheduled shutdown (admin)', shutdown_cancel: 'Cancel shutdown (admin)'
     };
     return this.call('setMyCommands', {
       commands: Object.entries(descriptions).map(([command, description]) => ({ command, description }))

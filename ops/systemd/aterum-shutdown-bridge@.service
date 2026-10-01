@@ -1,0 +1,15 @@
+[Unit]
+Description=Aterum Windows shutdown scheduler bridge (%i)
+After=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/projects/aterum/aterum_gui
+ExecStart=/usr/bin/node /home/%i/projects/aterum/aterum_gui/scripts/aterum-shutdown-bridge.js
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

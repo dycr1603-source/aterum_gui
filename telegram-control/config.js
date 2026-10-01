@@ -14,6 +14,8 @@ module.exports = {
   token: String(process.env.TELEGRAM_BOT_TOKEN || '').trim(),
   allowedChatIds: new Set([...list(process.env.TELEGRAM_ALLOWED_CHAT_IDS), primaryChatId].filter(Boolean)),
   allowedUserIds: new Set(list(process.env.TELEGRAM_ALLOWED_USER_IDS)),
+  shutdownAllowedUserIds: new Set(list(process.env.TELEGRAM_SHUTDOWN_ALLOWED_USER_IDS)),
+  shutdownSocket: process.env.ATERUM_SHUTDOWN_SOCKET || '/run/aterum-shutdown/bridge.sock',
   dashboardBase: String(process.env.INTERNAL_DASHBOARD_BASE || 'http://dashboard:3001').replace(/\/$/, ''),
   n8nBase: String(process.env.INTERNAL_N8N_BASE || 'http://dashboard:5678').replace(/\/$/, ''),
   port: Number(process.env.TELEGRAM_CONTROL_PORT || 3090),

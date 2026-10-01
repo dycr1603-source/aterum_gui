@@ -7,6 +7,7 @@ const { createCopilot } = require('./copilot');
 const { getHealth } = require('./health');
 const { recentExecutionErrors, workflowMetadata } = require('./n8n-readonly');
 const { readCurrentGuiTunnel } = require('./tunnel');
+const shutdown = require('./shutdown');
 
 const VIEWER_COMMANDS = new Set([
   'start', 'help', 'status', 'tunnel', 'balance', 'positions', 'performance', 'research', 'learning',
@@ -14,7 +15,7 @@ const VIEWER_COMMANDS = new Set([
   'ask', 'guide', 'tutorial', 'menu', 'new', 'explain'
 ]);
 const MODERATOR_COMMANDS = new Set([...VIEWER_COMMANDS, 'simulate', 'simulator', 'scan', 'rebuild-report', 'rebuild_report']);
-const ADMIN_COMMANDS = new Set([...MODERATOR_COMMANDS, 'users', 'role', 'enable', 'disable']);
+const ADMIN_COMMANDS = new Set([...MODERATOR_COMMANDS, 'users', 'role', 'enable', 'disable', 'shutdown_at', 'shutdown_status', 'shutdown_cancel']);
 
 function commandAllowed(role, command) {
   const normalizedRole = String(role || 'viewer').toLowerCase();
@@ -591,6 +592,21 @@ function createCommands(deps) {
     users, role, enable: args => enableUser(args, true), disable: args => enableUser(args, false),
     ask, help, start, guide, tutorial, menu: start, new: whatsNew, explain
   };
+
+  async function shutdownCommand(mode, args, context) {
+    if (context.chatType !== 'private' || !config.shutdownAllowedUserIds?.has(String(context.userId || '')))
+      throw new Error('Shutdown commands require an explicitly allowed admin in a private chat');
+    const time = args[0];
+    if (mode === 'schedule' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time || '')))
+      throw new Error('Use /shutdown_at HH:MM (Windows local time)');
+    const result = await shutdown.request(config.shutdownSocket, mode, mode === 'schedule' ? { time } : {});
+    if (mode === 'schedule') return `⏰ ${f.bold('CONTROLLED SHUTDOWN SCHEDULED')}\n\n${field('Windows local time', result.nextRunTime)}\n${f.escape('Windows will run aterum migrate and will shut down only if the migration succeeds.')}\n${f.escape('Cancel: /shutdown_cancel')}`;
+    if (mode === 'cancel') return `🛑 ${f.bold('SHUTDOWN CANCELLED')}\n\n${f.escape(result.cancelled ? 'The scheduled task was removed.' : 'No task was scheduled.')}`;
+    return `⏰ ${f.bold('SHUTDOWN STATUS')}\n\n${f.escape(result.scheduled ? `Next run: ${result.nextRunTime}` : 'No shutdown scheduled.')}`;
+  }
+  handlers.shutdown_at = (args, context) => shutdownCommand('schedule', args, context);
+  handlers.shutdown_status = (args, context) => shutdownCommand('status', args, context);
+  handlers.shutdown_cancel = (args, context) => shutdownCommand('cancel', args, context);
 
   async function execute(command, args = [], context = {}) {
     const normalized = String(command || '').replace(/^\//, '').split('@')[0].toLowerCase();
