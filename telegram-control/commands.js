@@ -602,7 +602,7 @@ function createCommands(deps) {
     if (mode === 'schedule' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time || '')))
       throw new Error('Use /shutdown_at HH:MM (Windows local time)');
     const result = await shutdown.request(config.shutdownSocket, mode, mode === 'schedule' ? { time } : {});
-    if (mode === 'schedule') return `⏰ ${f.bold('CONTROLLED SHUTDOWN SCHEDULED')}\n\n${field('Windows local time', result.nextRunTime)}\n${f.escape('Windows will run aterum migrate and will shut down only if the migration succeeds.')}\n${f.escape('Cancel: /shutdown_cancel')}`;
+    if (mode === 'schedule') return `⏰ ${f.bold('CONTROLLED SHUTDOWN SCHEDULED')}\n\n${field('When', `${result.day === 'tomorrow' ? 'Tomorrow' : 'Today'} at ${result.localTime || time} (Windows local time)`)}\n${field('Date', result.nextRunTime)}\n${f.escape('Windows will run aterum migrate and will shut down only if the migration succeeds.')}\n${f.escape('Cancel: /shutdown_cancel')}`;
     if (mode === 'cancel') return `🛑 ${f.bold('SHUTDOWN CANCELLED')}\n\n${f.escape(result.cancelled ? 'The scheduled task was removed.' : 'No task was scheduled.')}`;
     return `⏰ ${f.bold('SHUTDOWN STATUS')}\n\n${f.escape(result.scheduled ? `Next run: ${result.nextRunTime}` : 'No shutdown scheduled.')}`;
   }

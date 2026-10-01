@@ -31,14 +31,17 @@ if ($Mode -eq 'Schedule') {
       $ControlScript -notmatch '^/home/[a-z_][a-z0-9_-]*/projects/aterum/aterum_gui/scripts/aterum-control\.js$') { throw 'INVALID_HOST_CONFIG' }
   $parts = $Time.Split(':')
   $at = [DateTime]::Today.AddHours([int]$parts[0]).AddMinutes([int]$parts[1])
-  if ($at -le (Get-Date).AddMinutes(2)) { $at = $at.AddDays(1) }
+  $now = Get-Date
+  if ($at -le $now.AddMinutes(2) -and $at -ge $now.AddMinutes(-2)) { throw 'TIME_TOO_SOON: choose a time at least 3 minutes from now' }
+  if ($at -lt $now) { $at = $at.AddDays(1) }
+  $day = if ($at.Date -gt $now.Date) { 'tomorrow' } else { 'today' }
   $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -Mode Execute -Distro ' + $Distro + ' -LinuxUser ' + $LinuxUser + ' -ControlScript ' + $ControlScript
   $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
   $trigger = New-ScheduledTaskTrigger -Once -At $at
   $settings = New-ScheduledTaskSettingsSet -WakeToRun:$false -StartWhenAvailable:$false
   $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
   Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
-  Write-Result @{scheduled=$true; nextRunTime=$at.ToString('o')}
+  Write-Result @{scheduled=$true; nextRunTime=$at.ToString('o'); day=$day; localTime=$at.ToString('HH:mm')}
   exit 0
 }
 if ($Mode -eq 'Execute') {

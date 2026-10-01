@@ -22,7 +22,7 @@ docker compose --profile trading --profile ai --profile aux up -d --no-deps --fo
 
 La configuración del bot exige un administrador incluido explícitamente en la lista. Programar y cancelar requieren **chat privado**; consultar el estado también funciona en un grupo autorizado:
 
-- `/shutdown_at 23:30`: una sola vez, a la próxima hora 23:30 de la zona horaria local de Windows. Si faltan menos de dos minutos, programa mañana.
+- `/shutdown_at 23:30`: una sola vez, a la próxima hora 23:30 de la zona horaria local de Windows. Si faltan menos de dos minutos, rechaza la solicitud; elige una hora al menos tres minutos después. Una hora que pasó hace más de dos minutos se programa para mañana y el bot indica explícitamente el día.
 - `/shutdown_status`: muestra la próxima tarea y el resultado anterior.
 - `/shutdown_cancel`: elimina la tarea pendiente. No detiene una migración que ya empezó.
 

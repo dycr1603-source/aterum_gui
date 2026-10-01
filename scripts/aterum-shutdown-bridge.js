@@ -33,7 +33,7 @@ function createServer(config, action = windowsAction) {
         const mode={ '/schedule':'Schedule','/status':'Status','/cancel':'Cancel' }[req.url];
         const result=await action(mode,input.time,config);
         respond(200,{ok:true,...result});
-      } catch(error) { respond(400,{ok:false,error:/INVALID_TIME/.test(error.message)?'INVALID_TIME':'WINDOWS_SCHEDULER_UNAVAILABLE'}); }
+      } catch(error) { respond(400,{ok:false,error:/INVALID_TIME/.test(error.message)?'INVALID_TIME':/TIME_TOO_SOON/.test(error.message)?'TIME_TOO_SOON':'WINDOWS_SCHEDULER_UNAVAILABLE'}); }
     });
   });
 }
