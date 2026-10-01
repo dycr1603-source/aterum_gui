@@ -16,6 +16,14 @@ El instalador copia el ejecutor PowerShell a `%LOCALAPPDATA%\\Aterum`, guarda la
 
 En `.env` local, configura `TELEGRAM_SHUTDOWN_ALLOWED_USER_IDS` con el ID numérico de los administradores autorizados. Es una lista separada por comas. Además deben tener rol `admin` en el bot. Mantén la lista vacía si no quieres habilitar esta función. Reconstruye/recrea solo `telegram_control` para aplicar el cambio de `.env` y el montaje de Compose; no es necesario reiniciar Windows.
 
+Para autorizar un operador nuevo en chat privado, añade su ID numérico en cada PC por separado:
+
+```bash
+node scripts/allow-telegram-operator.js <TELEGRAM_USER_ID>
+```
+
+El comando modifica únicamente el `.env` local y conserva los IDs existentes. Agrega el operador a los chats privados permitidos, a los administradores del bot y al control de apagado. No subas `.env` a Git. Si esa PC está activa, recrea `telegram_control` con el comando siguiente; si está detenida para un cambio de PC, espera a `aterum start` para evitar dos consumidores del mismo bot.
+
 ```bash
 docker compose --profile trading --profile ai --profile aux up -d --no-deps --force-recreate telegram_control
 ```
