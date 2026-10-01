@@ -594,8 +594,10 @@ function createCommands(deps) {
   };
 
   async function shutdownCommand(mode, args, context) {
-    if (context.chatType !== 'private' || !config.shutdownAllowedUserIds?.has(String(context.userId || '')))
-      throw new Error('Shutdown commands require an explicitly allowed admin in a private chat');
+    if (!config.shutdownAllowedUserIds?.has(String(context.userId || '')))
+      throw new Error('Shutdown commands require an explicitly allowed admin');
+    if (mode !== 'status' && context.chatType !== 'private')
+      throw new Error('Schedule and cancel require a private chat with the bot');
     const time = args[0];
     if (mode === 'schedule' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(time || '')))
       throw new Error('Use /shutdown_at HH:MM (Windows local time)');

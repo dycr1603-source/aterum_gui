@@ -20,7 +20,7 @@ En `.env` local, configura `TELEGRAM_SHUTDOWN_ALLOWED_USER_IDS` con el ID numér
 docker compose --profile trading --profile ai --profile aux up -d --no-deps --force-recreate telegram_control
 ```
 
-La configuración del bot solo acepta estos comandos en **chat privado** y para un administrador incluido explícitamente en la lista:
+La configuración del bot exige un administrador incluido explícitamente en la lista. Programar y cancelar requieren **chat privado**; consultar el estado también funciona en un grupo autorizado:
 
 - `/shutdown_at 23:30`: una sola vez, a la próxima hora 23:30 de la zona horaria local de Windows. Si faltan menos de dos minutos, programa mañana.
 - `/shutdown_status`: muestra la próxima tarea y el resultado anterior.

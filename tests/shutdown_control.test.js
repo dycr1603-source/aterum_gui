@@ -25,9 +25,12 @@ test('Telegram shutdown requires private admin and allowlisted user, then reques
   const commands=createCommands({config:{shutdownSocket:'/safe/socket',shutdownAllowedUserIds:new Set(['7'])},api:{},audit:{},telegram:{}});
   assert.equal(commandAllowed('viewer','shutdown_at'),false);
   await assert.rejects(commands.execute('shutdown_at',['23:30'],{role:'admin',chatType:'supergroup',userId:'7'}),/private/);
+  await assert.rejects(commands.execute('shutdown_cancel',[],{role:'admin',chatType:'supergroup',userId:'7'}),/private/);
   await assert.rejects(commands.execute('shutdown_at',['23:30'],{role:'admin',chatType:'private',userId:'8'}),/allowed/);
   assert.equal(called,0);
   const result=await commands.execute('shutdown_at',['23:30'],{role:'admin',chatType:'private',userId:'7'});
   assert.match(result,/CONTROLLED SHUTDOWN/);assert.equal(called,1);
+  shutdown.request=async()=>({scheduled:false});
+  assert.match(await commands.execute('shutdown_status',[],{role:'admin',chatType:'supergroup',userId:'7'}),/No shutdown scheduled/);
  }finally{shutdown.request=before}
 });
