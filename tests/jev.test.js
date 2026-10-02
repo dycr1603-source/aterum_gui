@@ -305,3 +305,15 @@ test('NO_TRADE is never overridden by an aggressive-entry legacy flag', async ()
     else process.env.JEV_AGGRESSIVE_ENTRY = previous;
   }
 });
+
+test('quality policy skips TypeSafe with low volume and rejects fees before acceptance', async () => {
+ const d={...input(),indicators:{currentPrice:100,atr:2,ema21:100,volRatio:0.4}};
+ const m=mock('LONG');
+ const rejected=await evaluate(d,{cfg:{...cfg,entryQualityEnabled:true},now:()=>now,...m});
+ assert.equal(rejected.reason,'JEV_LOW_VOLUME');
+ assert.equal(m.calls.some(c=>c.url.includes('typesafe.ai')),false);
+ d.indicators.volRatio=1;
+ const result=await evaluate(d,{cfg:{...cfg,entryQualityEnabled:true},now:()=>now,...mock('LONG')});
+ assert.equal(result.reason,'JEV_NET_REWARD_RISK');
+ assert.equal(result.decision,'NO_TRADE');
+});

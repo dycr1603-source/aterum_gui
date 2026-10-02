@@ -5,6 +5,7 @@ const { assessCapacity } = require('./jev_capacity');
 const { evaluateLeverageChoices } = require('./jev_leverage_policy');
 const { BinanceFutures } = require('../position-guard/binance');
 const { intelligenceReference, marketContextForJev } = require('./intelligence_reference');
+const entryQuality = require('./jev_entry_quality');
 const ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 const positive = n => typeof n === 'number' && Number.isFinite(n) && n > 0;
 function config(env = process.env) {
@@ -20,7 +21,7 @@ function config(env = process.env) {
   return { enabled: env.JEV_ENABLED === 'true', observe: env.JEV_OBSERVE_ONLY !== 'false',
     provider, apiKey: env.TYPESAFE_API_KEY, model: env.JEV_MODEL || 'jev-latest',
     dynamicLeverageEnabled: env.JEV_DYNAMIC_LEVERAGE_ENABLED === 'true' && provider === 'typesafe-jev',
-    maxLeverage,
+    maxLeverage, entryQualityEnabled: env.JEV_ENTRY_QUALITY_ENABLED === 'true',
     binanceApiKey: env.BINANCE_API_KEY || '', binanceApiSecret: env.BINANCE_API_SECRET || '',
     adapterUrl: env.JEV_ADAPTER_URL || 'http://typesafe_adapter:8088', adapterToken: env.JEV_ADAPTER_TOKEN || '',
     capacityUrl: env.JEV_CAPACITY_URL || 'http://position_guard:3091/portfolio-capacity',
@@ -133,6 +134,12 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     result.preflight = { allowed: preflight.allowed, blockedSides: preflight.blockedSides,
       allowedSides: Object.keys(preflight.sides), metrics: preflight.metrics || null };
     if (!preflight.allowed) { result.reason = preflight.reason; return result; }
+    if (cfg.entryQualityEnabled) {
+      result.entryQuality = entryQuality.screen(d, capacity, entry);
+      if (!result.entryQuality.allowed) { result.reason = result.entryQuality.reasons[0]; return result; }
+      for (const side of result.entryQuality.blockedSides) delete preflight.sides[side];
+      if (!Object.keys(preflight.sides).length) { result.reason = 'JEV_EXTENDED_ENTRY'; return result; }
+    }
     let leverageMarket;
     if (cfg.dynamicLeverageEnabled) {
       if (!cfg.binanceApiKey || !cfg.binanceApiSecret) throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE');
@@ -155,13 +162,14 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
       [side, { sl: sideOptions.sl, tp: sideOptions.tp }]));
     const state = stateFor({ ...d, portfolioCapacity: capacity },
       { entry, timestamp: Number(ticker.time), priceFilter: filter }, available);
+    if (cfg.entryQualityEnabled) state.entryQuality = result.entryQuality;
     const prefix = `entry_${id}`;
     const choice = (instructions, criteria) => ({ type: 'choice', instructions, criteria });
     const directionCriteria = { NO_TRADE: 'Do not open a position.' };
     for (const side of Object.keys(available)) directionCriteria[side] = `Propose a ${side.toLowerCase()} position within the available account capacity.`;
     const referenceInstructions = state.marketContext?.intelligenceSignal
       ? ' Intelligence is a high-confidence deterministic heuristic reference, not a prior Jev decision or an operational veto. Assess it alongside the market evidence and decide independently.' : '';
-    const questions = { [prefix]: choice('Decide independently whether to open no position, LONG, or SHORT from this market snapshot. NO_TRADE is fully valid. Only capacity-feasible sides are offered.' + referenceInstructions, directionCriteria) };
+    const questions = { [prefix]: choice('Decide independently whether to open no position, LONG, or SHORT from this market snapshot. NO_TRADE is fully valid. Only capacity-feasible sides are offered. Evaluate entry timing, exhaustion, volume and reversal risk, not just trend direction. Prefer NO_TRADE when a timely setup is unsupported. Scores and your option probabilities are not calibrated probabilities of profit; do not chase losses.' + referenceInstructions, directionCriteria) };
     for (const side of Object.keys(available)) {
       if (!cfg.dynamicLeverageEnabled) questions[`${prefix}_${side}_leverage`] = choice(`If ${side} is selected, choose among the account-feasible leverage values. No value is preferred.`,
         Object.fromEntries(preflight.sides[side].leverage.filter(n => n <= cfg.maxLeverage).map(n => [`x${n}`, `${n}x leverage`])));
@@ -193,6 +201,12 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     if (direction.choice === 'NO_TRADE') { result.reason = 'JEV_NO_TRADE'; return result; }
     const stopAnswer = choiceAnswer(body, `${prefix}_${direction.choice}_sl`, questions[`${prefix}_${direction.choice}_sl`].criteria);
     const targetAnswer = choiceAnswer(body, `${prefix}_${direction.choice}_tp`, questions[`${prefix}_${direction.choice}_tp`].criteria);
+    if (cfg.entryQualityEnabled) {
+      result.entryQuality.selection = entryQuality.validateSelection(direction, entry,
+        available[direction.choice].sl[stopAnswer.choice], available[direction.choice].tp[targetAnswer.choice],
+        leverageMarket?.feeRate);
+      if (!result.entryQuality.selection.allowed) { result.reason = result.entryQuality.selection.reasons[0]; return result; }
+    }
     let leverageAnswer;
     if (cfg.dynamicLeverageEnabled) {
       const policy = evaluateLeverageChoices({ decision: direction, d, side: direction.choice, entry,

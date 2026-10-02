@@ -47,7 +47,10 @@ router.post('/internal/jev/evaluate', internal, async (req, res) => {
     const skippedBeforeModel = !result.request;
     const status = skippedBeforeModel ? '⏸ ANÁLISIS JEV OMITIDO'
       : result.decision === 'NO_TRADE' ? '⛔ OPERACIÓN RECHAZADA' : '🧠 PROPUESTA DE OPERACIÓN';
-    const reasonLabels = { JEV_NO_FEASIBLE_POSITION: 'ninguna combinación viable de dirección, apalancamiento y stop loss',
+    const reasonLabels = { JEV_POSITION_LIMIT: 'límite preventivo de dos posiciones abiertas',
+      JEV_LOW_VOLUME: 'volumen de vela insuficiente (menos de 0.8×)',
+      JEV_QUALITY_DATA_MISSING: 'faltan datos para validar la calidad de entrada',
+      JEV_EXTENDED_ENTRY: 'precio demasiado extendido para entrar', JEV_NO_FEASIBLE_POSITION: 'ninguna combinación viable de dirección, apalancamiento y stop loss',
       JEV_CAPACITY_UNAVAILABLE: 'no se pudo validar el margen y riesgo actual',
       JEV_RISK_REJECTED: 'los controles de riesgo impiden abrir otra posición' };
     const eventKey = skippedBeforeModel ? `jev-preflight:${cfg.provider}:${result.reason}:${Math.floor(Date.now() / 3600000)}`
@@ -71,6 +74,7 @@ router.post('/internal/jev/evaluate', internal, async (req, res) => {
         `Reglas: EMA ${trend} · ${momentum}`,
         result.intelligenceReference?.receivedConfidence
           ? `Intelligence: ${result.intelligenceReference.applied ? 'referencia aplicada' : 'ignorada'} (confianza ${result.intelligenceReference.receivedConfidence})` : '',
+        result.entryQuality?.selection ? `Calidad: R:R neto ${result.entryQuality.selection.netRewardRisk.toFixed(2)} · confianza ${result.entryQuality.selection.confidence}` : '',
         `Resultado tras validación: ${result.decision}`, `Motivo: ${result.reason}`,
         'No confirma una orden en Binance.', `Decision ID: ${id}`];
     await deliver({ db: shared.db, eventKey, token: process.env.TELEGRAM_BOT_TOKEN,
