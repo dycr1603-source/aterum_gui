@@ -15,12 +15,13 @@ const audit = { update_id: '427', user_id: '1254740120', chat_id: '1254740120',
 const delivery = { event_key: 'a'.repeat(64), status: 'SENT', message_id: '321',
   chat_id: '-1003222176229', message_text: 'Orden confirmada',
   created_at: '2026-10-01 00:00:00.000', updated_at: '2026-10-01 00:00:00.000' };
-const snapshot = { schema: 'aterum-telegram-history-v1', audit: [audit], deliveries: [delivery] };
+const snapshot = { schema: 'aterum-telegram-history-v1', sourceHost: 'a'.repeat(64),
+  audit: [audit], deliveries: [delivery] };
 
 function fakeDb() {
-  const audits = new Map(), deliveries = new Map();
+  const audits = new Map(), deliveries = new Map(), syncedDeliveries = new Map();
   return {
-    audits, deliveries,
+    audits, deliveries, syncedDeliveries,
     async query(sql) {
       if (sql.includes('SELECT') && sql.includes('FROM telegram_audit')) return [[...audits.values()]];
       if (sql.includes('SELECT') && sql.includes('FROM notification_deliveries')) return [[...deliveries.values()]];
@@ -31,9 +32,9 @@ function fakeDb() {
         const key = String(values[0]); if (audits.has(key)) return [{ affectedRows: 0 }];
         audits.set(key, { ...audit, update_id: key }); return [{ affectedRows: 1 }];
       }
-      if (sql.startsWith('INSERT IGNORE INTO notification_deliveries')) {
-        const key = String(values[0]); if (deliveries.has(key)) return [{ affectedRows: 0 }];
-        deliveries.set(key, { ...delivery, event_key: key }); return [{ affectedRows: 1 }];
+      if (sql.startsWith('INSERT IGNORE INTO telegram_synced_deliveries')) {
+        const key = String(values[0]) + ':' + String(values[1]); if (syncedDeliveries.has(key)) return [{ affectedRows: 0 }];
+        syncedDeliveries.set(key, { ...delivery, event_key: key }); return [{ affectedRows: 1 }];
       }
       return [{ affectedRows: 1 }];
     },
@@ -47,7 +48,8 @@ test('import merges audit and delivery IDs idempotently without re-sending Teleg
   assert.deepEqual(await transfer(db, 'import', snapshot), { auditAdded: 0, deliveriesAdded: 0 });
   const exported = await transfer(db, 'export');
   assert.equal(exported.audit[0].request_text, 'Soy Saitama');
-  assert.equal(exported.deliveries[0].message_text, 'Orden confirmada');
+  assert.equal(exported.deliveries.length, 0); // Imported history does not alter the active sender ledger.
+  assert.equal(db.syncedDeliveries.size, 1);
 });
 
 test('Git handoff contains only authenticated ciphertext and a second host imports it once', async t => {
@@ -61,7 +63,7 @@ test('Git handoff contains only authenticated ciphertext and a second host impor
     directory: path.join(dir, hostId), hostId,
     compose: async () => 'dashboard-id', transfer: transferFn });
   const source = make('a'.repeat(64), async (_, mode) => {
-    assert.equal(mode, 'export'); return snapshot;
+    assert.equal(mode, 'export'); return { ...snapshot, sourceHost: undefined };
   });
   let imports = 0;
   const target = make('b'.repeat(64), async (_, mode, body) => {

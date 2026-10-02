@@ -112,6 +112,7 @@ class TelegramHistorySync {
     const recipients = await this.registeredRecipients();
     const snapshot = await this.transfer(await this.container(), 'export');
     if (snapshot.schema !== 'aterum-telegram-history-v1') throw new Error('INVALID_TELEGRAM_SNAPSHOT');
+    snapshot.sourceHost = this.hostId;
     fs.mkdirSync(this.directory, { recursive: true, mode: 0o700 });
     const temp = `${this.pendingFile}.${process.pid}`;
     fs.writeFileSync(temp, seal(snapshot, recipients), { mode: 0o600, flag: 'wx' });
@@ -189,6 +190,7 @@ class TelegramHistorySync {
       const totals = { snapshots: files.length, auditAdded: 0, deliveriesAdded: 0 };
       for (const name of files) {
         const snapshot = open(fs.readFileSync(path.join(snapshotDir, name), 'utf8'), this.privateKey(), this.hostId);
+        if (snapshot.sourceHost !== name.slice(0, 64)) throw new Error('TELEGRAM_SYNC_SOURCE_MISMATCH');
         const imported = await this.transfer(container, 'import', JSON.stringify(snapshot));
         totals.auditAdded += imported.auditAdded;
         totals.deliveriesAdded += imported.deliveriesAdded;

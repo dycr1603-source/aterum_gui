@@ -27,6 +27,13 @@ async function ensureTables(db) {
   ) ENGINE=InnoDB`);
   await db.query('ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS chat_id BIGINT NULL');
   await db.query('ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS message_text TEXT NULL');
+  await db.query(`CREATE TABLE IF NOT EXISTS telegram_synced_deliveries (
+    source_host CHAR(64) NOT NULL, event_key VARCHAR(64) NOT NULL,
+    status VARCHAR(24) NOT NULL, message_id BIGINT NULL, error_code VARCHAR(80) NULL,
+    chat_id BIGINT NULL, message_text TEXT NULL,
+    created_at DATETIME(3) NULL, updated_at DATETIME(3) NULL,
+    PRIMARY KEY (source_host,event_key)
+  ) ENGINE=InnoDB`);
 }
 
 async function transfer(db, mode, snapshot) {
@@ -37,6 +44,7 @@ async function transfer(db, mode, snapshot) {
     return { schema: 'aterum-telegram-history-v1', audit, deliveries };
   }
   if (mode !== 'import' || snapshot?.schema !== 'aterum-telegram-history-v1'
+      || !/^[0-9a-f]{64}$/.test(String(snapshot.sourceHost || ''))
       || !Array.isArray(snapshot.audit) || !Array.isArray(snapshot.deliveries)) throw new Error('INVALID_TELEGRAM_SNAPSHOT');
   if (snapshot.audit.length > 100000 || snapshot.deliveries.length > 100000) throw new Error('TELEGRAM_SNAPSHOT_TOO_LARGE');
   let auditAdded = 0, deliveriesAdded = 0;
@@ -55,14 +63,15 @@ async function transfer(db, mode, snapshot) {
     }
     for (const row of snapshot.deliveries) {
       if (!/^[0-9a-f]{64}$/.test(String(row.event_key || ''))) throw new Error('INVALID_DELIVERY_ROW');
-      const [result] = await db.execute(`INSERT IGNORE INTO notification_deliveries (${DELIVERY_COLUMNS.join(',')})
-        VALUES (${DELIVERY_COLUMNS.map(() => '?').join(',')})`, DELIVERY_COLUMNS.map(key => row[key] ?? null));
+      const [result] = await db.execute(`INSERT IGNORE INTO telegram_synced_deliveries (source_host,${DELIVERY_COLUMNS.join(',')})
+        VALUES (${['source_host',...DELIVERY_COLUMNS].map(() => '?').join(',')})`,
+      [snapshot.sourceHost, ...DELIVERY_COLUMNS.map(key => row[key] ?? null)]);
       deliveriesAdded += result.affectedRows;
-      if (!result.affectedRows) await db.execute(`UPDATE notification_deliveries SET
+      if (!result.affectedRows) await db.execute(`UPDATE telegram_synced_deliveries SET
         status=IF(status='SENT',status,IF(?='SENT','SENT',status)),
         message_id=COALESCE(message_id,?),chat_id=COALESCE(chat_id,?),message_text=COALESCE(message_text,?)
-        WHERE event_key=?`, [row.status, row.message_id ?? null, row.chat_id ?? null,
-        row.message_text ?? null, row.event_key]);
+        WHERE source_host=? AND event_key=?`, [row.status, row.message_id ?? null, row.chat_id ?? null,
+        row.message_text ?? null, snapshot.sourceHost, row.event_key]);
     }
     await db.commit();
   } catch (error) { await db.rollback(); throw error; }
