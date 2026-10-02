@@ -32,6 +32,8 @@ git ls-remote --heads origin aterum-telegram-history
 
 Continúa solo si `aterum status` indica `RETIRED`, `migrationReady: true`, ningún contenedor en marcha, y la rama cifrada existe. En Delcon:
 
+Delcon rechazará el arranque si falta la instantánea de Saitama; la existencia de la rama con claves públicas no basta.
+
 ```bash
 cd /home/delcon/projects/aterum/aterum_gui
 git pull --ff-only origin main

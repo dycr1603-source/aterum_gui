@@ -72,6 +72,7 @@ test('Git handoff contains only authenticated ciphertext and a second host impor
   });
   await source.register();
   await target.register();
+  await assert.rejects(target.pull({ requireOtherHost: true }), /SOURCE_SNAPSHOT_MISSING/);
   await source.capture();
   await source.publish();
   const ciphertext = execFileSync('git', ['--git-dir', bare, 'show',
@@ -79,7 +80,7 @@ test('Git handoff contains only authenticated ciphertext and a second host impor
   assert.doesNotMatch(ciphertext, /Soy Saitama|Orden confirmada/);
   assert.deepEqual(open(ciphertext, target.privateKey(), target.hostId), snapshot);
   assert.throws(() => open(ciphertext, source.privateKey(), target.hostId));
-  assert.deepEqual(await target.pull(), { snapshots: 1, auditAdded: 1, deliveriesAdded: 1 });
+  assert.deepEqual(await target.pull({ requireOtherHost: true }), { snapshots: 1, auditAdded: 1, deliveriesAdded: 1 });
   assert.deepEqual(await target.pull(), { snapshots: 1, auditAdded: 0, deliveriesAdded: 0 });
   assert.equal(imports, 2);
   assert.equal(fs.existsSync(source.pendingFile), false);

@@ -224,7 +224,8 @@ class HostController {
       await this.healthy(['dashboard', 'aterum_gui', 'typesafe_adapter', 'position_guard']);
       if (this.telegramSync) {
         this.log('[Aterum] Importando historial cifrado de Telegram antes de iniciar el bot…');
-        const synced = await this.telegramSync.pull();
+        const synced = await this.telegramSync.pull({ requireOtherHost: previous?.mode === 'RETIRED'
+          || previous?.requiresHandoff === true });
         this.syncImportCompleted = true;
         this.log(`[Aterum] Historial: ${synced.snapshots} instantáneas, ${synced.auditAdded} consultas y ${synced.deliveriesAdded} entregas nuevas.`);
       }

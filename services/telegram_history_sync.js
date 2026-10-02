@@ -180,13 +180,15 @@ class TelegramHistorySync {
     fs.rmSync(this.pendingFile, { force: true });
     return true;
   }
-  async pull() {
+  async pull({ requireOtherHost = false } = {}) {
     await this.register();
     const container = await this.container();
     const result = await this.repository(async (dir, exists) => {
       if (!exists) return { snapshots: 0, auditAdded: 0, deliveriesAdded: 0 };
       const snapshotDir = path.join(dir, 'snapshots');
       const files = fs.existsSync(snapshotDir) ? fs.readdirSync(snapshotDir).filter(name => /^[0-9a-f]{64}\.enc$/.test(name)) : [];
+      if (requireOtherHost && !files.some(name => name.slice(0, 64) !== this.hostId))
+        throw new Error('TELEGRAM_SYNC_SOURCE_SNAPSHOT_MISSING');
       const totals = { snapshots: files.length, auditAdded: 0, deliveriesAdded: 0 };
       for (const name of files) {
         const snapshot = open(fs.readFileSync(path.join(snapshotDir, name), 'utf8'), this.privateKey(), this.hostId);
