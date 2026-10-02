@@ -108,9 +108,12 @@ class TelegramHistorySync {
     return id;
   }
   async capture() {
+    const snapshot = await this.transfer(await this.container(), 'export');
+    return this.stage(snapshot);
+  }
+  async stage(snapshot) {
     await this.register();
     const recipients = await this.registeredRecipients();
-    const snapshot = await this.transfer(await this.container(), 'export');
     if (snapshot.schema !== 'aterum-telegram-history-v1') throw new Error('INVALID_TELEGRAM_SNAPSHOT');
     snapshot.sourceHost = this.hostId;
     fs.mkdirSync(this.directory, { recursive: true, mode: 0o700 });

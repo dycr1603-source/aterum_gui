@@ -34,6 +34,17 @@ Continúa solo si `aterum status` indica `RETIRED`, `migrationReady: true`, ning
 
 Delcon rechazará el arranque si falta la instantánea de Saitama; la existencia de la rama con claves públicas no basta.
 
+Si Saitama ya ejecutó `migrate` con una versión anterior y quedó `RETIRED` sin publicar la instantánea, no hace falta reactivar trading. Actualiza el código en Saitama y, con todos sus contenedores detenidos, ejecuta:
+
+```bash
+cd /home/saitama/projects/aterum/aterum_gui
+git pull --ff-only origin main
+node scripts/publish-stopped-telegram-history.js
+aterum status
+```
+
+Este comando exige el bloqueo `RETIRED`, registra la clave pública de Saitama, arranca **solo MariaDB** y un cliente temporal de lectura, publica el historial cifrado y vuelve a detener MariaDB. Si falla, no arranca n8n, Telegram ni trading; revisa la salida y no inicies Delcon hasta ver la instantánea de Saitama en la rama.
+
 ```bash
 cd /home/delcon/projects/aterum/aterum_gui
 git pull --ff-only origin main
