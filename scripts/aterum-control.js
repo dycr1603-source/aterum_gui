@@ -10,6 +10,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { stateDirectory } = require('../services/host_control_state');
 const { GitControl } = require('../services/host_control_git');
+const { TelegramHistorySync } = require('../services/telegram_history_sync');
 const exec = promisify(execFile);
 const ROOT = path.resolve(__dirname, '..');
 const PROFILES = ['--profile', 'trading', '--profile', 'ai', '--profile', 'aux'];
@@ -51,8 +52,9 @@ async function defaultRun(command, args) {
 
 class HostController {
   constructor({ directory = stateDirectory(), run = defaultRun, hostId = hostnameId(), user = os.userInfo().username,
-    sleep = delay, now = () => new Date().toISOString(), log = console.log, inspectTunnel = publicTunnelRemaining, gitControl = null } = {}) {
-    Object.assign(this, { directory, run, hostId, user, sleep, now, log, inspectTunnel, gitControl });
+    sleep = delay, now = () => new Date().toISOString(), log = console.log, inspectTunnel = publicTunnelRemaining,
+    gitControl = null, telegramSync = null } = {}) {
+    Object.assign(this, { directory, run, hostId, user, sleep, now, log, inspectTunnel, gitControl, telegramSync });
     this.stateFile = path.join(directory, 'host.json');
     this.inhibitFile = path.join(directory, 'inhibited');
   }
@@ -96,7 +98,7 @@ class HostController {
       migrationReady: state?.migrationReady === true, containers: await this.containers() };
     this.log(JSON.stringify(result, null, 2)); return result;
   }
-  async stop({ retire = false, shutdown = false } = {}) {
+  async stop({ retire = false, shutdown = false, skipSync = false } = {}) {
     this.log(retire ? '[Aterum] Retirando esta PC para migración…' : '[Aterum] Iniciando apagado…');
     await this.compose(['config', '--quiet']);
     // Preflight privileges before changing persistent state.
@@ -127,6 +129,10 @@ class HostController {
     await attempt(() => stopService('telegram_control'));
     await attempt(() => stopService('n8n'));
     await attempt(() => stopService('position_guard'));
+    if (this.telegramSync && !skipSync && running.has('dashboard')) {
+      this.log('[Aterum] Cifrando historial local de Telegram…');
+      await attempt(() => this.telegramSync.capture());
+    }
     let drain = null;
     this.log('[Aterum] Comprobando ejecuciones pendientes…');
     if (running.has('dashboard') || running.has('mysql')) drain = await attempt(() => this.snapshot());
@@ -158,6 +164,10 @@ class HostController {
       const c = after?.find(c => c.service === service);
       if (c && ![0, 143].includes(c.exitCode)) errors.push(`UNCLEAN_STORAGE_SHUTDOWN: ${service}`);
     }
+    if (this.telegramSync && !skipSync && (running.has('dashboard') || fs.existsSync(this.telegramSync.pendingFile))) {
+      this.log('[Aterum] Publicando historial cifrado de Telegram…');
+      await attempt(() => this.telegramSync.publish());
+    } else if (this.telegramSync && !skipSync && retire && !previous?.migrationReady) errors.push('TELEGRAM_SYNC_SNAPSHOT_MISSING');
     const migrationReady = errors.length === 0 && drain?.workflows === 0 && drain?.executions === 0;
     const state = { mode: retire || previous?.mode === 'RETIRED' ? 'RETIRED' : 'STOPPED', migrationReady, drain, errors,
       stoppedAt: this.now(), services: after || [], requiresHandoff: previous?.requiresHandoff === true };
@@ -212,6 +222,12 @@ class HostController {
       this.log('[Aterum] Iniciando GUI, Chart API, adaptador y Position Guard…');
       await this.compose(['up', '-d', 'dashboard', 'aterum_gui', 'typesafe_adapter', 'position_guard']);
       await this.healthy(['dashboard', 'aterum_gui', 'typesafe_adapter', 'position_guard']);
+      if (this.telegramSync) {
+        this.log('[Aterum] Importando historial cifrado de Telegram antes de iniciar el bot…');
+        const synced = await this.telegramSync.pull();
+        this.syncImportCompleted = true;
+        this.log(`[Aterum] Historial: ${synced.snapshots} instantáneas, ${synced.auditAdded} consultas y ${synced.deliveriesAdded} entregas nuevas.`);
+      }
       // Executor reconciles before schedules and Telegram consumer are resumed.
       this.log('[Aterum] Iniciando n8n…');
       await this.compose(['up', '-d', 'n8n']);
@@ -226,7 +242,9 @@ class HostController {
       this.log('Aterum activo. Se conservaron las banderas y workflows existentes.');
     } catch (error) {
       this.log('Falló el arranque; deteniendo servicios para evitar una instalación parcial.');
-      try { await this.stop({ retire: previous?.mode === 'RETIRED' }); } catch (_) {}
+      try { await this.stop({ retire: previous?.mode === 'RETIRED', skipSync: !this.syncImportCompleted }); } catch (_) {}
+      if (!this.syncImportCompleted) this.save({ ...this.state(), migrationReady: false,
+        startupError: 'STARTUP_INCOMPLETE_BEFORE_SYNC' });
       throw error;
     }
   }
@@ -247,6 +265,8 @@ async function main(argv = process.argv.slice(2)) {
   }
   const controller = new HostController({ gitControl: new GitControl({ root: ROOT }) });
   if (command === 'status') { await controller.status(); return 0; }
+  controller.telegramSync = new TelegramHistorySync({ root: ROOT, directory: controller.directory,
+    hostId: controller.hostId, compose: args => controller.compose(args) });
   fs.mkdirSync(controller.directory, { recursive: true, mode: 0o700 });
   const lock = path.join(controller.directory, 'lock');
   try { fs.mkdirSync(lock, { mode: 0o700 }); } catch (_) { throw new Error('CONTROL_BUSY: another command or stale lock; check before removing'); }

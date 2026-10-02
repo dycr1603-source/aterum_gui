@@ -482,6 +482,7 @@ CREATE TABLE IF NOT EXISTS telegram_audit (
   group_name VARCHAR(255) NULL,
   chat_id BIGINT NOT NULL,
   command VARCHAR(64) NOT NULL,
+  request_text TEXT NULL,
   response MEDIUMTEXT NULL,
   duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
   result VARCHAR(32) NOT NULL,

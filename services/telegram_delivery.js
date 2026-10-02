@@ -7,13 +7,17 @@ async function ensureTable(db) {
   await db.execute(`CREATE TABLE IF NOT EXISTS notification_deliveries (
     event_key VARCHAR(64) PRIMARY KEY, status VARCHAR(24) NOT NULL,
     message_id BIGINT NULL, error_code VARCHAR(80) NULL,
+    chat_id BIGINT NULL, message_text TEXT NULL,
     created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3), updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3)
   ) ENGINE=InnoDB`);
+  await db.execute('ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS chat_id BIGINT NULL');
+  await db.execute('ALTER TABLE notification_deliveries ADD COLUMN IF NOT EXISTS message_text TEXT NULL');
 }
 async function deliver({ db, eventKey, text, token, chatId, fetchImpl = fetch, parseMode }) {
   await ensureTable(db);
   const key = createHash('sha256').update(String(eventKey)).digest('hex');
-  try { await db.execute('INSERT INTO notification_deliveries (event_key,status) VALUES (?,?)', [key, 'UNKNOWN']); }
+  try { await db.execute('INSERT INTO notification_deliveries (event_key,status,chat_id,message_text) VALUES (?,?,?,?)',
+    [key, 'UNKNOWN', chatId || null, typeof text === 'string' ? text.slice(0, 4096) : null]); }
   catch (error) { if (error.code === 'ER_DUP_ENTRY') return { status: 'DUPLICATE', sent: false }; throw error; }
   let status = 'FAILED', errorCode = null, messageId = null;
   try {

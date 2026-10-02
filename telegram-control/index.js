@@ -127,7 +127,9 @@ async function main() {
     if (!chatAuthorized(config, actor)) {
       const response = '⛔ Acceso no autorizado para este chat\.';
       await telegram.send(actor.chatId, response, { menu: false, replyTo: actor.messageId }).catch(() => null);
-      await audit.record({ updateId: update.update_id, ...actor, command: parsed.command, response, durationMs: Date.now() - started, result: 'unauthorized', errors: 'chat_not_allowed' });
+      await audit.record({ updateId: update.update_id, ...actor, command: parsed.command,
+        requestText: update.message?.text || update.callback_query?.data || null,
+        response, durationMs: Date.now() - started, result: 'unauthorized', errors: 'chat_not_allowed' });
       return;
     }
 
@@ -185,17 +187,21 @@ async function main() {
     const endpointsUsed = [...new Set([...api.consumeTrace(), ...directSources(parsed.command)])];
     await audit.record({
       updateId: update.update_id, ...actor, role: context.role, command: parsed.command,
+      requestText: update.message?.text || update.callback_query?.data || null,
       response, durationMs: Date.now() - started, result, endpointsUsed, errors: errorText
     });
   }
 
   let stopping = false;
+  let finishPoll;
+  const pollFinished = new Promise(resolve => { finishPoll = resolve; });
   const stop = async signal => {
     if (stopping) return;
     stopping = true;
     runtime.ready = false;
     console.log(`[Telegram Control] ${signal}, stopping`);
-    server.close();
+    await new Promise(resolve => server.close(resolve));
+    await pollFinished;
     await audit.close().catch(() => {});
     process.exit(0);
   };
@@ -206,6 +212,7 @@ async function main() {
   while (!stopping) {
     try {
       const updates = await telegram.getUpdates(offset);
+      if (stopping) break;
       runtime.lastPollAt = Date.now();
       runtime.lastError = null;
       for (const update of updates) {
@@ -218,6 +225,7 @@ async function main() {
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
+  finishPoll();
 }
 
 if (require.main === module) {

@@ -6,6 +6,7 @@ const { createHash } = require('crypto');
 const decisions=new Map(), deliveries=new Map();
 const db={execute:async(sql,p=[])=>{
   if(sql.startsWith('CREATE TABLE')) return [{}];
+  if(sql.startsWith('ALTER TABLE notification_deliveries')) return [{}];
   if(sql.startsWith('INSERT INTO jev_decisions')) {
     if(decisions.has(p[0])) throw Object.assign(new Error('duplicate'),{code:'ER_DUP_ENTRY'});
     decisions.set(p[0],null);return [{}];

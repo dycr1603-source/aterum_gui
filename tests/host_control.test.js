@@ -133,6 +133,27 @@ test('explicit start resumes normal stopped PC, after core health and before tun
   assert(calls.at(-2).includes('start')); // tunnel command, followed by active state check
 });
 
+test('Telegram history is published before releasing the host and imported before n8n starts', async t => {
+  const {controller,calls,directory}=fixture(t);
+  const events=[];
+  controller.gitControl={release:async()=>events.push('release'),claim:async()=>events.push('claim')};
+  controller.telegramSync={pendingFile:path.join(directory,'pending'),
+    capture:async()=>{events.push('capture');fs.writeFileSync(path.join(directory,'pending'),'encrypted');},
+    publish:async()=>{events.push('publish');fs.rmSync(path.join(directory,'pending'));},
+    pull:async()=>{events.push('pull');return {snapshots:1,auditAdded:1,deliveriesAdded:1};}};
+  await controller.stop({retire:true});
+  assert(events.indexOf('capture')<events.indexOf('publish'));
+  assert(events.indexOf('publish')<events.indexOf('release'));
+  calls.length=0;events.length=0;
+  const compose=controller.compose.bind(controller);
+  controller.compose=async args=>{if(args[0]==='up'&&args.includes('n8n'))events.push('n8n');return compose(args);};
+  await controller.start();
+  assert(events.indexOf('claim')<events.indexOf('pull'));
+  assert(events.indexOf('pull')<events.indexOf('n8n'));
+  assert(calls.findIndex(c=>c.includes('up')&&c.includes('dashboard'))
+    <calls.findIndex(c=>c.includes('up')&&c.includes('n8n')));
+});
+
 test('aterum start reserves the Git turn before starting services, including on a retired host', async t => {
   const { controller, calls } = fixture(t, { running: false });
   controller.save({ mode: 'RETIRED', migrationReady: true });

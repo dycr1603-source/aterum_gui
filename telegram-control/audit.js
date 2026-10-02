@@ -17,6 +17,7 @@ class AuditStore {
       group_name VARCHAR(255) NULL,
       chat_id BIGINT NOT NULL,
       command VARCHAR(64) NOT NULL,
+      request_text TEXT NULL,
       response MEDIUMTEXT NULL,
       duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
       result VARCHAR(32) NOT NULL,
@@ -29,6 +30,7 @@ class AuditStore {
       INDEX idx_telegram_audit_result_date (result, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
     const auditColumns = [
+      `ALTER TABLE telegram_audit ADD COLUMN IF NOT EXISTS request_text TEXT NULL AFTER command`,
       `ALTER TABLE telegram_audit ADD COLUMN IF NOT EXISTS role VARCHAR(16) NULL AFTER username`,
       `ALTER TABLE telegram_audit ADD COLUMN IF NOT EXISTS group_name VARCHAR(255) NULL AFTER role`,
       `ALTER TABLE telegram_audit ADD COLUMN IF NOT EXISTS endpoints_used JSON NULL AFTER result`,
@@ -112,9 +114,9 @@ class AuditStore {
 
   async record(entry) {
     await this.pool.execute(`INSERT INTO telegram_audit
-      (update_id,user_id,username,role,group_name,chat_id,command,response,duration_ms,result,endpoints_used,errors,ip)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-      ON DUPLICATE KEY UPDATE response=VALUES(response),duration_ms=VALUES(duration_ms),result=VALUES(result),
+      (update_id,user_id,username,role,group_name,chat_id,command,request_text,response,duration_ms,result,endpoints_used,errors,ip)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON DUPLICATE KEY UPDATE request_text=VALUES(request_text),response=VALUES(response),duration_ms=VALUES(duration_ms),result=VALUES(result),
         role=VALUES(role),group_name=VALUES(group_name),endpoints_used=VALUES(endpoints_used),errors=VALUES(errors)`, [
       entry.updateId ?? null,
       entry.userId ?? null,
@@ -123,6 +125,7 @@ class AuditStore {
       entry.groupName || null,
       entry.chatId,
       String(entry.command || 'unknown').slice(0, 64),
+      entry.requestText ? String(entry.requestText).slice(0, 4000) : null,
       String(entry.response || '').slice(0, 30000),
       Math.max(0, Math.round(entry.durationMs || 0)),
       String(entry.result || 'ok').slice(0, 32),
