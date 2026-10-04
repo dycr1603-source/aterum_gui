@@ -1,0 +1,173 @@
+"use strict";
+const { levels, size } = require("./risk"),
+  { filtersFor } = require("../jev_capacity");
+function levelOptions(d, entry, filter) {
+  const out = {};
+  for (const direction of d.strategy.directions) {
+    const sl = {},
+      tp = {};
+    for (const [i, scale] of [0.8, 1, 1.2].entries()) {
+      const x = levels({
+        bars: d.strategy.recentCandles,
+        entry,
+        side: direction,
+        atr: d.indicators.atr,
+        stopAtr: 1.5 * scale,
+        targetAtr: 3 * scale,
+        tick: Number(filter.tickSize),
+      });
+      sl[`sl${i + 1}`] = Number(x.stop.toFixed(12));
+      tp[`tp${i + 1}`] = Number(x.target.toFixed(12));
+    }
+    out[direction] = { sl, tp };
+  }
+  return out;
+}
+function projections({
+  d,
+  side,
+  entry,
+  stop,
+  target,
+  capacity,
+  symbol,
+  brackets,
+  feeRate,
+  maxLeverage = 10,
+}) {
+  const p = d.strategy.riskPolicy,
+    rules = filtersFor(symbol),
+    equity = Number(capacity.account.equity);
+  const risk = Math.min(
+    equity * p.riskFraction,
+    Number(capacity.risk.remainingRiskAmount),
+    equity * p.maxPortfolioRisk - Number(capacity.risk.openRiskAmount),
+  );
+  const maxNotional = Math.min(
+    Number(capacity.exposure.remaining),
+    (equity * Number(capacity.limits.maxSymbolExposurePct)) / 100 -
+      Number(capacity.exposure.bySymbol[d.symbol] || 0),
+    (equity * Number(capacity.limits.maxDirectionExposurePct)) / 100 -
+      Number(capacity.exposure.direction[side] || 0),
+  );
+  const marginCap = Math.min(
+    equity * (p.maxMarginFractionPerPosition ?? 0.9),
+    equity * (p.maxTotalMarginFraction ?? 0.9) - Number(capacity.account.marginUsed ?? 0),
+  );
+  const result = {};
+  for (let leverage = p.minLeverage ?? 1; leverage <= Math.min(maxLeverage, p.maxLeverage ?? 10); leverage++) {
+    try {
+      let s = size({
+        entry,
+        stop,
+        target,
+        side,
+        allowedRisk: risk,
+        availableMargin: Number(capacity.capacity.remainingMargin),
+        leverage,
+        feeRate: Math.max(feeRate, p.feeRate),
+        slippageBps: p.slippageBps,
+        fundingReserve: p.fundingReserve,
+        ...rules,
+        maxQty: Math.min(rules.maxQty, maxNotional / entry, marginCap * leverage / entry),
+      });
+      const bracket = brackets?.find(
+        (b) =>
+          Number(b.notionalFloor) <= s.notional &&
+          s.notional < Number(b.notionalCap),
+      );
+      if (!bracket || leverage > Number(bracket.initialLeverage)) continue;
+      s = size({
+        entry,
+        stop,
+        target,
+        side,
+        allowedRisk: risk,
+        availableMargin: Number(capacity.capacity.remainingMargin),
+        leverage,
+        feeRate: Math.max(feeRate, p.feeRate),
+        slippageBps: p.slippageBps,
+        fundingReserve: p.fundingReserve,
+        ...rules,
+        maxQty: Math.min(rules.maxQty, maxNotional / entry, marginCap * leverage / entry),
+        maintenanceRate: Number(bracket.maintMarginRatio),
+      });
+      if (
+        rules.lotStep &&
+        Math.abs(
+          s.quantity / rules.lotStep - Math.round(s.quantity / rules.lotStep),
+        ) > 1e-6
+      )
+        continue;
+      result[leverage] = s;
+    } catch {
+      /* An infeasible leverage is simply not offered. */
+    }
+  }
+  return {
+    policyVersion: "two-indicator-v1",
+    allowedChoices: Object.keys(result).map(Number),
+    projections: result,
+    caps: [],
+    metrics: {
+      riskBudgetUsd: risk,
+      confidenceCalibration:
+        "UNPROVEN; confidence does not increase monetary risk",
+    },
+  };
+}
+function preflight(d, entry, symbol, candidates, capacity) {
+  if (
+    capacity?.allowed !== true ||
+    !Array.isArray(capacity.positions) ||
+    capacity.positions.length >= d.strategy.riskPolicy.maxPositions ||
+    capacity.positions.some((p) => p.symbol === d.symbol)
+  )
+    return {
+      allowed: false,
+      reason: "JEV_RISK_REJECTED",
+      sides: {},
+      blockedSides: ["LONG", "SHORT"],
+    };
+  return {
+    allowed: true,
+    sides: Object.fromEntries(
+      Object.entries(candidates).map(([side, options]) => [
+        side,
+        { ...options, leverage: Array.from({ length: (d.strategy.riskPolicy.maxLeverage ?? 10) - (d.strategy.riskPolicy.minLeverage ?? 1) + 1 }, (_, i) => i + (d.strategy.riskPolicy.minLeverage ?? 1)) },
+      ]),
+    ),
+    blockedSides: ["LONG", "SHORT"].filter((s) => !candidates[s]),
+  };
+}
+function state(d, market, candidates, capacity) {
+  const [a, b] = d.strategy.indicators;
+  return {
+    schemaVersion: "aterum-two-indicator-v1",
+    symbol: d.symbol,
+    price: market.entry,
+    timeframe: d.timeframe,
+    timestamp: d.marketDataAt,
+    market,
+    candidates,
+    indicator_1: a.name,
+    indicator_1_value: a.value,
+    indicator_1_signal: a.signal,
+    indicator_2: b.name,
+    indicator_2_value: b.value,
+    indicator_2_signal: b.signal,
+    contextualVolatility: d.indicators.atr,
+    recentCandles: d.strategy.recentCandles,
+    volume: d.strategy.volume,
+    higherTimeframeTrend: d.strategy.higherTimeframeTrend,
+    currentPositions: capacity.positions,
+    portfolioExposure: capacity.exposure,
+    correlationExposure: d.strategy.correlationExposure,
+    availableMargin: capacity.capacity.remainingMargin,
+    feesEstimate: d.strategy.riskPolicy.feeRate,
+    funding: d.strategy.funding,
+    recentSystemPerformance: d.strategy.recentSystemPerformance,
+    marketRegime: d.strategy.regime,
+  };
+}
+module.exports = { levelOptions, projections, preflight, state };

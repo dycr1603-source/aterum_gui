@@ -6,6 +6,7 @@ const { evaluateLeverageChoices } = require('./jev_leverage_policy');
 const { BinanceFutures } = require('../position-guard/binance');
 const { intelligenceReference, marketContextForJev } = require('./intelligence_reference');
 const entryQuality = require('./jev_entry_quality');
+const simpleStrategy = require('./strategy/jev_policy');
 const ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 const positive = n => typeof n === 'number' && Number.isFinite(n) && n > 0;
 function config(env = process.env) {
@@ -88,6 +89,7 @@ function choiceAnswer(body, key, criteria) {
   return a;
 }
 async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now } = {}) {
+  const simple = d.strategy?.version === 'two-indicator-v1';
   const id = requestId(d);
   const result = { id, symbol: d.symbol, provider: cfg.provider, mode: cfg.observe ? 'observe' : 'enforce',
     decision: 'NO_TRADE', proposedDecision: 'NO_TRADE', reason: null,
@@ -128,20 +130,20 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     const entry = Number(ticker.price);
     fresh(Number(ticker.time), now(), cfg.maxAgeMs);
     if (!positive(d.indicators?.currentPrice) || Math.abs(entry / d.indicators.currentPrice - 1) * 100 > cfg.maxDriftPct) throw new Error('JEV_PRICE_DRIFT');
-    const candidates = options(d, entry, filter);
+    const candidates = simple ? simpleStrategy.levelOptions(d, entry, filter) : options(d, entry, filter);
     result.validations.candidatesValid = true;
-    const preflight = assessCapacity(d, entry, symbol, candidates, capacity);
+    const preflight = simple ? simpleStrategy.preflight(d, entry, symbol, candidates, capacity) : assessCapacity(d, entry, symbol, candidates, capacity);
     result.preflight = { allowed: preflight.allowed, blockedSides: preflight.blockedSides,
       allowedSides: Object.keys(preflight.sides), metrics: preflight.metrics || null };
     if (!preflight.allowed) { result.reason = preflight.reason; return result; }
-    if (cfg.entryQualityEnabled) {
+    if (!simple && cfg.entryQualityEnabled) {
       result.entryQuality = entryQuality.screen(d, capacity, entry);
       if (!result.entryQuality.allowed) { result.reason = result.entryQuality.reasons[0]; return result; }
       for (const side of result.entryQuality.blockedSides) delete preflight.sides[side];
       if (!Object.keys(preflight.sides).length) { result.reason = 'JEV_EXTENDED_ENTRY'; return result; }
     }
     let leverageMarket;
-    if (cfg.dynamicLeverageEnabled) {
+    if (simple || cfg.dynamicLeverageEnabled) {
       if (!cfg.binanceApiKey || !cfg.binanceApiSecret) throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE');
       const binance = new BinanceFutures({ apiKey: cfg.binanceApiKey, apiSecret: cfg.binanceApiSecret, fetchImpl });
       let rawBrackets, commission;
@@ -160,9 +162,9 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     }
     const available = Object.fromEntries(Object.entries(preflight.sides).map(([side, sideOptions]) =>
       [side, { sl: sideOptions.sl, tp: sideOptions.tp }]));
-    const state = stateFor({ ...d, portfolioCapacity: capacity },
-      { entry, timestamp: Number(ticker.time), priceFilter: filter }, available);
-    if (cfg.entryQualityEnabled) state.entryQuality = result.entryQuality;
+    const market = { entry, timestamp: Number(ticker.time), priceFilter: filter };
+    const state = simple ? simpleStrategy.state(d, market, available, capacity) : stateFor({ ...d, portfolioCapacity: capacity }, market, available);
+    if (!simple && cfg.entryQualityEnabled) state.entryQuality = result.entryQuality;
     const prefix = `entry_${id}`;
     const choice = (instructions, criteria) => ({ type: 'choice', instructions, criteria });
     const directionCriteria = { NO_TRADE: 'Do not open a position.' };
@@ -170,8 +172,17 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     const referenceInstructions = state.marketContext?.intelligenceSignal
       ? ' Intelligence is a high-confidence deterministic heuristic reference, not a prior Jev decision or an operational veto. Assess it alongside the market evidence and decide independently.' : '';
     const questions = { [prefix]: choice('Decide independently whether to open no position, LONG, or SHORT from this market snapshot. NO_TRADE is fully valid. Only capacity-feasible sides are offered. Evaluate entry timing, exhaustion, volume and reversal risk, not just trend direction. Prefer NO_TRADE when a timely setup is unsupported. Scores and your option probabilities are not calibrated probabilities of profit; do not chase losses.' + referenceInstructions, directionCriteria) };
+    if (simple) questions[`${prefix}_reason`] = choice('Choose the primary explanation for your decision. For NO_TRADE, explain missing edge, account exposure or uncertainty. This describes your choice and does not add another technical indicator.', {
+      TREND_CONTINUATION: 'Trend continuation is the primary hypothesis for this opportunity.',
+      BREAKOUT: 'The observed price structure supports a breakout hypothesis.',
+      REVERSION: 'The observed price structure supports a mean-reversion hypothesis.',
+      INSUFFICIENT_EDGE: 'The two signals do not offer enough expected net edge in this context.',
+      EXPOSURE_RISK: 'Current positions or exposure make this opportunity unattractive.',
+      UNCERTAIN_CONTEXT: 'The market context is too uncertain for a new position.'
+    });
+    if (simple) questions[`${prefix}_regime`] = choice('Classify current market context; this is explanatory context, not an additional technical veto.', Object.fromEntries(['TRENDING','RANGE','BREAKOUT','HIGH_VOLATILITY','UNCERTAIN'].map(r => [r,r])));
     for (const side of Object.keys(available)) {
-      if (!cfg.dynamicLeverageEnabled) questions[`${prefix}_${side}_leverage`] = choice(`If ${side} is selected, choose among the account-feasible leverage values. No value is preferred.`,
+      if (!simple && !cfg.dynamicLeverageEnabled) questions[`${prefix}_${side}_leverage`] = choice(`If ${side} is selected, choose among the account-feasible leverage values. No value is preferred.`,
         Object.fromEntries(preflight.sides[side].leverage.filter(n => n <= cfg.maxLeverage).map(n => [`x${n}`, `${n}x leverage`])));
       for (const kind of ['sl', 'tp'])
         questions[`${prefix}_${side}_${kind}`] = choice(`If ${side} is selected, choose one ${kind === 'sl' ? 'stop loss' : 'take profit'} candidate.`,
@@ -196,20 +207,27 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     const direction = choiceAnswer(body, prefix, questions[prefix].criteria);
     result.answer = { provider: cfg.provider, model: body.model, ...direction };
     result.model = body.model;
+    if (simple) result.market_regime = choiceAnswer(body, `${prefix}_regime`, questions[`${prefix}_regime`].criteria).choice;
     result.usage = body.usage && { input_tokens: Number(body.usage.input_tokens || 0), output_tokens: Number(body.usage.output_tokens || 0) };
     result.proposedDecision = direction.choice;
+    if (simple) {
+      result.confidence = direction.confidence * 100;
+      const reasonAnswer = choiceAnswer(body, `${prefix}_reason`, questions[`${prefix}_reason`].criteria);
+      result.explanation = questions[`${prefix}_reason`].criteria[reasonAnswer.choice];
+      result.explanationCode = reasonAnswer.choice;
+    }
     if (direction.choice === 'NO_TRADE') { result.reason = 'JEV_NO_TRADE'; return result; }
     const stopAnswer = choiceAnswer(body, `${prefix}_${direction.choice}_sl`, questions[`${prefix}_${direction.choice}_sl`].criteria);
     const targetAnswer = choiceAnswer(body, `${prefix}_${direction.choice}_tp`, questions[`${prefix}_${direction.choice}_tp`].criteria);
-    if (cfg.entryQualityEnabled) {
+    if (!simple && cfg.entryQualityEnabled) {
       result.entryQuality.selection = entryQuality.validateSelection(direction, entry,
         available[direction.choice].sl[stopAnswer.choice], available[direction.choice].tp[targetAnswer.choice],
         leverageMarket?.feeRate);
       if (!result.entryQuality.selection.allowed) { result.reason = result.entryQuality.selection.reasons[0]; return result; }
     }
     let leverageAnswer;
-    if (cfg.dynamicLeverageEnabled) {
-      const policy = evaluateLeverageChoices({ decision: direction, d, side: direction.choice, entry,
+    if (simple || cfg.dynamicLeverageEnabled) {
+      const policy = (simple ? simpleStrategy.projections : evaluateLeverageChoices)({ decision: direction, d, side: direction.choice, entry,
         stop: available[direction.choice].sl[stopAnswer.choice],
         target: available[direction.choice].tp[targetAnswer.choice], capacity, symbol,
         brackets: leverageMarket.brackets, feeRate: leverageMarket.feeRate, maxLeverage: cfg.maxLeverage });
@@ -244,13 +262,21 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
       sl: available[direction.choice].sl[stopAnswer.choice], tp: available[direction.choice].tp[targetAnswer.choice],
       priceFilter: filter };
     validateLevels(result.proposal, entry, filter);
-    result.context = chosenContext(d, direction.choice);
+    result.context = simple ? { strategy: d.strategy, indicators: d.indicators, direction: direction.choice } : chosenContext(d, direction.choice);
+    if (simple) {
+      result.strategy = d.strategy;
+      result.confidence = direction.confidence * 100;
+      result.contextualRegime = d.strategy.regime;
+      result.risk = result.leveragePolicy.selectedProjection;
+      // Explanation is the model's validated reason choice, not an inferred win probability.
+    }
     result.validations.riskAllowed = true;
     result.decision = direction.choice;
     result.reason = 'JEV_PROPOSAL_VALID';
     return result;
   } catch (error) {
-    result.reason = /^JEV_[A-Z_]+$/.test(error.message) ? error.message : 'JEV_API_UNAVAILABLE';
+    result.reason = /^JEV_[A-Z_]+$/.test(error.message) ? error.message
+      : simple && ['INVALID_STRUCTURE', 'INVALID_LEVELS', 'INVALID_MARKET_DATA'].includes(error.message) ? `JEV_${error.message}` : 'JEV_API_UNAVAILABLE';
     return result;
   }
 }

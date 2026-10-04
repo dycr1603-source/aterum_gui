@@ -87,6 +87,11 @@ app.use(require('./routes/simulator'));
 app.use(require('./routes/knowledge'));
 app.use(require('./routes/opportunities'));
 app.use(require('./routes/jev'));
+app.use(require('./routes/strategy'));
+app.get('/strategy-performance', requireAuth, (_req,res) => {
+  res.setHeader('Cache-Control','no-store');
+  res.send(require('./views/strategy').getStrategyHTML());
+});
 app.use(require('./routes/cb'));
 app.use('/', cooldownRoutes);
 

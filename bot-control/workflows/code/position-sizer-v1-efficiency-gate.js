@@ -1,3 +1,4 @@
+if ($input.first().json.strategyV2 === true) return [$input.first()];
 const d = $input.first().json;
 const DASHBOARD = process.env.INTERNAL_DASHBOARD_BASE || 'http://127.0.0.1:3001';
 const { symbol, direction, indicators, aiResult, balance, availableBalance, openCount, openSymbols, candles, intelAdjFinal, portfolioCapacity } = d;

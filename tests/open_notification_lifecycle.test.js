@@ -73,25 +73,14 @@ async function run(nodeName, input) {
       regimeMultiplier: 1.1, scoreMultiplier: 1.5, regime: 'TRENDING' }
   });
   assert(opened.text.includes('✅ ORDEN CONFIRMADA POR BINANCE'));
-  assert(opened.text.includes('↓ Persistencia ✅ VERIFIED'));
-  assert(opened.text.includes('━━━ ¿POR QUÉ SE APROBÓ? ━━━'));
-  assert(opened.text.includes('━━━ PIPELINE DE DECISIÓN ━━━'));
-  assert(opened.text.includes('━━━ PUNTUACIÓN REAL ━━━'));
-  assert(opened.text.includes('Technical Composite  100.00/100'));
-  assert(opened.text.includes('[████████░░] 78.0'));
-  assert(opened.text.includes('[█████████░] 93.0'));
-  assert(opened.text.includes('↓ Learning aplicado  -2.16'));
-  assert(opened.text.includes('Intelligence NO OPERAR · IGNORADO (baja)'));
-  assert(opened.text.includes('Macro BEARISH  +8.00'));
-  assert(opened.text.includes('MARKET        ✅ market-1'));
-  assert(opened.text.includes('━━━ PRECIOS ━━━'));
-  assert(opened.text.includes('━━━ POSICIÓN Y RIESGO ━━━'));
-  assert(opened.text.includes('Jev seleccionó   5x'));
-  assert(opened.text.includes('Rango permitido  3x–7x'));
-  assert(opened.text.includes('Margen ahorrado  80%'));
-  assert(opened.text.includes('Riesgo al SL'));
-  assert(opened.text.includes('━━━ CUENTA · PREFLIGHT REAL ━━━'));
-  assert(opened.text.includes('━━━ INDICADORES ━━━'));
+  for (const text of ['busca aprovechar una bajada', '¿POR QUÉ SE APROBÓ?',
+    'Entrada confirmada: 201,12', 'Stop loss (SL)', 'Take profit (TP)',
+    'Pérdida estimada al SL', 'antes de costes', 'ni pérdidas máximas',
+    'CUENTA ANTES DE ABRIR', 'Orden de entrada: market-1', 'Jev seleccionó: 5×']) {
+    assert(opened.text.includes(text), `Missing explanation: ${text}`);
+  }
+  assert(!opened.text.includes('NaN'));
+  assert(!opened.text.includes('Max loss/gain'));
   assert(opened.text.length <= 4096, `premium notification is ${opened.text.length} chars`);
   assert(!opened.text.includes('999'), 'projected execution value leaked into verified notification');
 
@@ -106,7 +95,7 @@ async function run(nodeName, input) {
     rejectionReason: { code: 'DIRECTION_EXPOSURE_LIMIT', direction: 'SHORT', current: 400.3756, maximum: 400 },
     portfolioCapacity: { account: { equity: 203.7178 } }
   });
-  assert(rejected.telegramText.includes('❌ TRADE RECHAZADO'));
+  assert(rejected.telegramText.includes('⛔ OPERACIÓN RECHAZADA'));
   assert(rejected.telegramText.includes('DIRECTION_EXPOSURE_LIMIT'));
   assert(rejected.telegramText.includes('Binance'));
   assert.equal(rejected.notificationStatus, 'PENDING_SEND');
@@ -122,6 +111,21 @@ async function run(nodeName, input) {
     failureCategory: 'VERIFICATION_FAILURE', error: 'read-back timeout'
   });
   assert(unverified.telegramText.includes('⚠ VERIFICACIÓN FALLIDA'));
+  assert(unverified.telegramText.includes('podría existir una orden'));
+  const suppressed = await run('Build Execution Failure', { failureCategory: 'PRE_EXECUTION_CAPACITY', failureNotificationSent: true });
+  assert.equal(suppressed.telegramText, null);
+
+  const persistence = await run('Build Execution Failure', {
+    symbol: 'BTCUSDT', executionId: 'persistence-failure',
+    failureCategory: 'PERSISTENCE_FAILURE', verificationResult: { exchangeVerified: true }
+  });
+  assert(persistence.telegramText.includes('La operación fue confirmada en Binance'));
+  assert(persistence.telegramText.includes('conciliar el registro local'));
+  assert(!persistence.telegramText.includes('No se envió ninguna orden'));
+  const suppressedTransient = await run('Build Execution Failure', {
+    failureCategory: 'PRE_EXECUTION_CAPACITY', failureNotificationSuppressed: true
+  });
+  assert.equal(suppressedTransient.telegramText, null);
 
   const engineNotified = await run('Build Execution Failure', {
     symbol: 'DOTUSDT', executionId: 'engine-notified', finalStatus: 'FAILED',

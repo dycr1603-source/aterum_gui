@@ -549,8 +549,8 @@ async function getCapitalStatus(balanceInput, candidate = {}) {
   const sessionStreakRecent = latestMatchingAgeHours(rows, row => hourBucket(row.opened_at) === session) <= streakCooldown;
   const reasons = [];
   if (balance > 0 && dailyPct <= -configNum(config, 'daily_loss_limit_pct', 15)) reasons.push(`límite diario ${round(dailyPct, 2)}%`);
-  if (balance > 0 && weeklyPct <= -configNum(config, 'weekly_loss_limit_pct', 20)) reasons.push(`límite semanal ${round(weeklyPct, 2)}%`);
-  if (balance > 0 && drawdownPct <= -configNum(config, 'max_drawdown_pct', 25)) reasons.push(`drawdown ${round(drawdownPct, 2)}%`);
+  // Weekly PnL remains observable; the weekly loss limit no longer blocks entries.
+  // Drawdown is informational; it no longer blocks new entries.
   const globalStreakLimit = configNum(config, 'max_consecutive_losses', 4);
   if (globalStreakLimit > 0 && globalStreakRecent && globalStreak >= globalStreakLimit) reasons.push(`${globalStreak} pérdidas globales consecutivas`);
   const groupLimit = configNum(config, 'max_group_consecutive_losses', 4);
@@ -565,8 +565,10 @@ async function getCapitalStatus(balanceInput, candidate = {}) {
     dailyPct: round(dailyPct, 3),
     weeklyPnl: round(weeklyPnl, 2),
     weeklyPct: round(weeklyPct, 3),
+    weeklyBlockingEnabled: false,
     maxDrawdown: round(maxDrawdown, 2),
     drawdownPct: round(drawdownPct, 3),
+    drawdownBlockingEnabled: false,
     streaks: { global: globalStreak, symbol: symbolStreak, setup: setupStreak, session: sessionStreak },
     streakCooldownHours: streakCooldown,
     drawdownWindowDays: configNum(config, 'drawdown_window_days', 7)
@@ -813,7 +815,9 @@ router.get('/api/learning/summary', async (_req, res) => {
         hardMinSample: configNum(config, 'hard_min_sample', 20),
         dailyLossLimitPct: configNum(config, 'daily_loss_limit_pct', 15),
         weeklyLossLimitPct: configNum(config, 'weekly_loss_limit_pct', 20),
+        weeklyBlockingEnabled: false,
         maxDrawdownPct: configNum(config, 'max_drawdown_pct', 25),
+        drawdownBlockingEnabled: false,
         maxConsecutiveLosses: configNum(config, 'max_consecutive_losses', 4)
       },
       rules: ruleSummary || {},

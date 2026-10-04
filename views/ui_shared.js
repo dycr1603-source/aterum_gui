@@ -3224,6 +3224,7 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
     </a>
     <nav class="nav-links nav-links-desktop" aria-label="Navegación principal">
       <a href="/dashboard" class="nav-link${current==='dashboard'?' active':''}">Trading</a>
+      <a href="/strategy-performance" class="nav-link">Strategy Performance</a>
       <a href="/analytics" class="nav-link${current==='analytics'?' active':''}">Analytics</a>
       <a href="/research" class="nav-link${current==='research'?' active':''}">Research</a>
       <a href="/knowledge" class="nav-link${current==='knowledge'?' active':''}">Decisiones</a>
@@ -3257,6 +3258,7 @@ function getSharedNav(current, user, accent = 'blue', extraRight = '') {
   </div>
   <nav class="nav-drawer-links">
     <a href="/dashboard" class="nav-drawer-link${current==='dashboard'?' active':''}">Trading</a>
+    <a href="/strategy-performance" class="nav-drawer-link">Strategy Performance</a>
     <a href="/analytics" class="nav-drawer-link${current==='analytics'?' active':''}">Analytics</a>
     <a href="/research" class="nav-drawer-link${current==='research'?' active':''}">Research</a>
     <a href="/knowledge" class="nav-drawer-link${current==='knowledge'?' active':''}">Decisiones</a>

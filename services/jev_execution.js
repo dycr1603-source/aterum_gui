@@ -4,6 +4,9 @@ const { config, fresh, validateLevels } = require('./jev');
 // Runs inside the sole writer, after a live quote and before any exchange mutation.
 async function validateJevExecution(request, { db, livePrice, quoteTime, rules, now = Date.now(), cfg = config() }) {
   const receipt = request.tradeContext?.jev;
+  if (process.env.STRATEGY_ENGINE === 'two-indicator' && request.tradeContext?.strategy?.version !== 'two-indicator-v1') throw new Error('STRATEGY_RECEIPT_REQUIRED');
+  const simpleRequired = process.env.STRATEGY_ENGINE === 'two-indicator' || request.tradeContext?.strategy?.version === 'two-indicator-v1';
+  if (simpleRequired && (!cfg.enabled || cfg.observe || receipt?.mode !== 'enforce')) throw new Error('STRATEGY_JEV_ENFORCEMENT_REQUIRED');
   if (receipt?.mode === 'enforce' && (!cfg.enabled || cfg.observe)) throw new Error('JEV_ENFORCEMENT_DISABLED');
   if (!cfg.enabled && (!receipt || receipt.mode === 'observe')) return;
   if (cfg.observe && (!receipt || receipt.mode === 'observe')) return; // baseline pipeline only
@@ -17,6 +20,20 @@ async function validateJevExecution(request, { db, livePrice, quoteTime, rules, 
   fresh(quoteTime, now, cfg.maxAgeMs);
   if (!Number.isFinite(result.expiresAt) || now > result.expiresAt) throw new Error('JEV_STALE_DATA');
   const p = result.proposal;
+  if (request.tradeContext?.strategy && result.strategy?.version !== 'two-indicator-v1') throw new Error('STRATEGY_RECEIPT_REQUIRED');
+  if (result.strategy?.version === 'two-indicator-v1') {
+    const { load, promotion } = require('./strategy/policy');
+    const policy = load();
+    const report = require('./strategy/engine').readReport();
+    if (JSON.stringify(result.strategy.riskPolicy) !== JSON.stringify(policy)) throw new Error('STRATEGY_POLICY_CHANGED');
+    if (policy.mode !== 'enforce' || !promotion(policy, report).allowed || result.strategy.reportId !== report?.reportId) throw new Error('STRATEGY_NOT_PROMOTED');
+    if (request.leverage < (policy.minLeverage ?? 1) || request.leverage > (policy.maxLeverage ?? 10)) throw new Error('STRATEGY_LEVERAGE_OUT_OF_RANGE');
+    const state = await require('./strategy/store').status(db);
+    if (state.halted) throw new Error('STRATEGY_CIRCUIT_BREAKER');
+    if (!result.risk || request.quantity !== result.risk.quantity || JSON.stringify(request.tradeContext.strategy) !== JSON.stringify(result.strategy)) throw new Error('STRATEGY_RECEIPT_CHANGED');
+    const risk = request.quantity * (Math.abs(livePrice - request.stopLoss) + (livePrice + request.stopLoss) * (policy.feeRate + policy.slippageBps / 10000) + livePrice * policy.fundingReserve);
+    if (risk > result.risk.riskAtStop + 1e-8) throw new Error('STRATEGY_LIVE_RISK_INCREASED');
+  }
   if (!Number.isInteger(p.leverage) || p.leverage < 1 || p.leverage > 10 || request.leverage !== p.leverage)
     throw new Error('JEV_LEVERAGE_CHANGED');
   if (request.stopLoss !== p.sl || request.takeProfit !== p.tp) throw new Error('JEV_LEVELS_CHANGED');

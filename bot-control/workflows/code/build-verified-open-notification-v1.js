@@ -10,6 +10,18 @@ if (d.success !== true || d.finalStatus !== 'VERIFIED' || verification.verified 
   throw new Error(`TRADE_OPENED notification blocked for unverified lifecycle state (${d.finalStatus || 'UNKNOWN'})`);
 }
 
+// The two-indicator engine has no synthetic technical score provenance.
+if (d.strategyV2 === true) {
+  if (d.strategy?.indicators?.length !== 2 || !d.jev?.risk || allocation.allowed !== true) throw new Error('STRATEGY_OPEN_PROVENANCE_MISSING');
+  const text = ['✅ ATERUM · BINANCE CONFIRMED', `${d.symbol} ${position.side || d.direction}`,
+    `Entry: ${position.entryPrice} · SL: ${requested.stopLoss} · TP: ${requested.takeProfit}`,
+    `Leverage: ${d.leverage}x · capital at risk (incl. costs): ${d.jev.risk.riskAtStop} USDT`,
+    `Expected net R: ${d.jev.risk.expectedR} · JEV confidence: ${d.jev.confidence}%`,
+    ...d.strategy.indicators.map(i => `${i.name}: ${JSON.stringify(i.value)} / ${i.signal}`),
+    `Binance order: ${d.exchangeOrderId} · execution: ${d.executionId}`].join('\n');
+  return [{json:{...d,text,notificationEventKey:`open:${d.executionId}`,notificationState:'TRADE_OPENED_VERIFIED_STRATEGY'}}];
+}
+
 const contributions = Array.isArray(d.contributionTable) ? d.contributionTable : [];
 const opportunity = d.opportunityDecision || {};
 const universe = d.opportunityUniverse || {};
@@ -111,108 +123,49 @@ const leverageCap = tf4h.status === 'CONTRADICTS' ? 4 : 15;
 const timestamp = new Date(d.timestamp || Date.now()).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 
 const jevOwnsStrategy = d.jev?.mode === 'enforce';
+const jevLeveragePolicy = d.jev?.leveragePolicy || null;
+const directionLabel = side === 'SHORT' ? '🔴 SHORT · busca aprovechar una bajada' : '🟢 LONG · busca aprovechar una subida';
+const price = value => Number(value).toLocaleString('es-CR', { maximumFractionDigits: 10 });
 const lines = [
-  '━━━━━━━━━━━━━━━━━━━━━━━',
-  '✅ TRADE ABIERTO',
-  '━━━━━━━━━━━━━━━━━━━━━━━',
-  `💎 ${d.symbol}   ${side === 'SHORT' ? '🔴 SHORT' : '🟢 LONG'}   ⚡ ${d.leverage}x`,
+  '✅ ORDEN CONFIRMADA POR BINANCE',
+  `💎 ${clean(d.symbol)} · ${directionLabel}`,
   `⏰ ${timestamp}`,
-  '',
-  '━━━ ¿POR QUÉ SE APROBÓ? ━━━',
-  `✔ Ranking #${rank} de ${evaluated} evaluados (${totalUniverse} universo)`,
-  jevOwnsStrategy ? `✔ Jev eligió ${side} · score técnico informativo ${num(finalScore, 2)}` : `✔ Score final ${num(finalScore, 2)}/100 · umbral ${num(threshold, 0)}`,
-  `✔ 4H ${tf4h.status || 'N/A'} ${side}`,
-  '✔ Portfolio, correlación y riesgo disponibles',
-  '✔ Binance + persistencia verificados',
-  higherRanked ? `ℹ Superiores descartados: ${clean(higherRanked, 150)}` : '✔ Mayor oportunidad elegible',
-  '',
-  '━━━ PIPELINE DE DECISIÓN ━━━',
-  `Universo       ✅ PASS  ${totalUniverse} activos`,
-  `↓ Ranking      ✅ PASS  #${rank}`,
-  `↓ Portfolio    ✅ PASS  riesgo restante ${num(portfolioRisk.remainingRiskPct)}%`,
-  '↓ Correlación  ✅ PASS  sin blocker',
-  `↓ Macro        ${macroGate}`,
-  `↓ Intelligence ${intelligenceState}`,
-  jevOwnsStrategy ? `↓ Jev          ✅ ${side} · decisión de entrada` : '↓ AI Score     ⚪ NOT USED',
-  `↓ Learning     ${learningApplied === 0 ? '⚪ NO ADJUSTMENT' : `✅ ${signed(learningApplied)}`}`,
-  '↓ Ejecución    ✅ VERIFIED',
-  '↓ Persistencia ✅ VERIFIED',
-  '',
-  '━━━ PUNTUACIÓN REAL ━━━',
-  'Core técnico · 1H + calidad de mercado',
-  bar(coreScore),
-  `↓ 4H ${tf4h.status || 'N/A'}  ${signed(tf4hScore)}`,
-  bar(after4h),
-  `↓ Macro ${market.market_bias || 'N/A'}  ${signed(macroScore)}`,
-  bar(afterMacro),
-  intelligenceIgnored
-    ? `↓ Intelligence ${intelligence.signal || 'N/A'} · IGNORADO (${intelligence.confidence || 'N/A'})`
-    : `↓ Intelligence ${intelligence.signal || 'N/A'}  ${signed(intelligenceScore)}`,
-  bar(afterIntelligence),
-  `Technical Composite  ${num(technicalScore, 2)}/100`,
-  `↓ Learning aplicado  ${signed(learningApplied)}`,
-  '───────────────────────',
-  'FINAL SCORE',
-  bar(finalScore),
-  '',
-  '━━━ PRECIOS ━━━',
-  `🎯 Entry  $${num(entryPrice, entryPrice >= 100 ? 2 : 4)}`,
-  `🛑 SL     $${num(stopLoss, stopLoss >= 100 ? 2 : 4)}  (${num(slDistance)}%)`,
-  `🏁 TP     $${num(takeProfitPrice, takeProfitPrice >= 100 ? 2 : 4)}  (${num(tpDistance)}%)`,
-  `⚖ R:R    1:${num(rr, 2)}`,
-  '',
-  '━━━ POSICIÓN Y RIESGO ━━━',
-  `Cantidad        ${num(quantity, 6)} ${(d.symbol || '').replace('USDT', '')}`,
-  `Margen          $${num(margin)} · leverage ${d.leverage}x`,
-  `Riesgo real     $${num(verifiedRisk)} (${num(verifiedRiskPct)}%)`,
-  `Max loss/gain   -$${num(verifiedRisk)} / +$${num(verifiedGain)}`,
-  `Sizing          score ${num(sizing.scoreMultiplier || 1)}x · 4H ${num(sizing.tf4hMultiplier || 1)}x · macro ${num(macroMultiplier)}x · régimen ${num(sizing.regimeMultiplier || 1)}x`,
-  `Target/final    ${sizing.effectiveRisk || 'N/A'} / ${sizing.actualRisk || num(verifiedRiskPct) + '%'}`,
-  '',
-  '━━━ CUENTA · PREFLIGHT REAL ━━━',
-  `Equity          $${num(equity)} · disponible $${num(account.availableMargin)}`,
-  `Margen usado    $${num(account.marginUsed)} (${num(account.marginUsagePct)}%)`,
-  `Posiciones      ${openBefore} antes · ${openBefore + 1} verificadas ahora`,
-  `Riesgo usado    ${num(portfolioRisk.openRiskPct)}% / máx ${num(portfolioRisk.maximumRiskPct)}%`,
-  `Capacidad       riesgo ${num(portfolioRisk.remainingRiskPct)}% · margen $${num(capacity.remainingMargin)}`,
-  `Exposición      ${num(exposure.totalPct)}% / máx ${num(limits.maxExposurePct)}%`,
-  '',
-  '━━━ ÓRDENES VERIFICADAS ━━━',
-  `MARKET        ✅ ${d.exchangeOrderId}`,
-  `STOP LOSS     ✅ ${stop.algoId || stop.orderId || 'VERIFIED'}`,
-  `TAKE PROFIT   ✅ ${takeProfit.algoId || takeProfit.orderId || 'VERIFIED'}`,
-  `Execution ID  ${d.executionId}`,
-  '',
-  '━━━ INTELLIGENCE ━━━',
-  `Señal          ${intelligence.signal || 'N/A'} · confianza ${intelligence.confidence || 'N/A'}`,
-  `Contribución   ${intelligenceIgnored ? 'IGNORED' : intelligenceScore === 0 ? 'NO ADJUSTMENT' : signed(intelligenceScore)}`,
-  intelligenceIgnored ? 'Motivo          Confianza bajo el umbral de scoring' : `Sesgo           ${intelligence.bias || 'N/A'}`,
-  '',
-  '━━━ AI CONTEXT ━━━',
-  'Score AI       NOT USED · ajuste deshabilitado',
-  `Régimen        ${sizing.regime || d.aiResult?.regime || 'N/A'} · sizing ${num(sizing.regimeMultiplier || 1)}x`,
-  `Leverage       ${d.leverage}x aplicado · cap 4H ${leverageCap}x`,
-  '',
-  '━━━ MACRO Y 4H ━━━',
-  `Macro          ${market.market_bias || 'N/A'} · score ${signed(macroScore)} · size ${num(macroMultiplier)}x`,
-  `Fear & Greed   ${market.fearGreed?.value ?? 'N/A'} (${market.fearGreed?.classification || 'N/A'})`,
-  `BTC / ETH      ${num(market.btcChange)}% / ${num(market.ethChange)}%`,
-  `4H             ${tf4h.trend || 'N/A'} · ${tf4h.status || 'N/A'} · RSI ${num(tf4h.rsi, 1)}`,
-  '',
-  '━━━ INDICADORES ━━━',
-  `RSI14          ${num(indicators.rsi14, 1)} · ATR ${num(indicators.atr, 6)} (${num(indicators.atrPct)}%)`,
-  `EMA 8/21/50    ${num(indicators.ema8, 4)} / ${num(indicators.ema21, 4)} / ${num(indicators.ema50, 4)}`,
-  `VWAP           ${num(indicators.vwap, 4)} · Vol ${num(indicators.volRatio)}x`,
-  `Funding        ${num(Number(indicators.fundingRate || 0) * 100, 4)}% · OI $${num(indicators.currentOI, 0)}`,
-  '',
-  '━━━ EXPLICACIÓN ━━━',
-  jevOwnsStrategy ? `Dirección      ${side} elegida por Jev` : `Dirección      ${side} ganó por ${num(separation, 2)} puntos`,
-  `Tamaño         riesgo ${sizing.actualRisk || num(verifiedRiskPct) + '%'} tras multiplicadores y límites`,
-  jevOwnsStrategy ? `Momento        Jev aprobó; 4H ${tf4h.status || 'N/A'} como contexto` : `Momento        score > umbral, 4H ${tf4h.status || 'N/A'}, macro ${market.market_bias || 'N/A'}`,
-  `Selección      ${rank === 1 ? 'mayor candidato elegible' : `#${rank}; candidatos superiores bloqueados`}`,
-  '━━━━━━━━━━━━━━━━━━━━━━━'
+  'La apertura, las órdenes de protección y el registro local fueron verificados.',
+  '', '━━━ ¿POR QUÉ SE APROBÓ? ━━━',
+  jevOwnsStrategy ? `🧠 Jev eligió ${side}. La puntuación técnica es contexto, no la autorización final.`
+    : `📊 Puntuación ${num(finalScore)}/100; mínimo requerido ${num(threshold, 0)}.`,
+  `🔎 Candidato #${rank} entre ${evaluated} evaluados (${totalUniverse} activos en el universo).`,
+  '🛡 La asignación superó los controles de margen, exposición y riesgo.',
+  '', '━━━ PRECIOS ━━━',
+  `🎯 Entrada confirmada: ${price(entryPrice)} USDT`,
+  `🛑 Stop loss (SL): ${price(stopLoss)} USDT · salida para limitar pérdidas (${num(slDistance)}% desde la entrada).`,
+  `🏁 Take profit (TP): ${price(takeProfitPrice)} USDT · objetivo de cierre con ganancia (${num(tpDistance)}%).`,
+  '', '━━━ POSICIÓN Y RIESGO ━━━',
+  `📦 Cantidad: ${price(quantity)} ${clean(d.symbol).replace(/USDT$/, '')}`,
+  `💰 Margen estimado: ${num(margin)} USDT · capital usado como garantía.`,
+  `⚡ Apalancamiento aplicado: ${d.leverage}× · exposición aproximada ${num(quantity * entryPrice)} USDT.`,
+  ...(jevLeveragePolicy ? [
+    `🧠 Jev seleccionó: ${jevLeveragePolicy.selectedLeverage}×; opciones permitidas: ${(jevLeveragePolicy.allowedChoices || []).join(', ')}×.`
+  ] : []),
+  `📉 Pérdida estimada al SL: ${num(verifiedRisk)} USDT (${equity > 0 ? num(verifiedRiskPct) + '% del capital' : 'capital no disponible'}), antes de costes.`,
+  `📈 Ganancia estimada al TP: ${num(verifiedGain)} USDT, antes de costes.`,
+  `⚖ Por cada 1 USDT arriesgado hasta el SL, el objetivo bruto es ${num(rr)} USDT.`,
+  'ℹ Estas cifras no son ganancias garantizadas ni pérdidas máximas: comisiones, financiación y diferencias de ejecución pueden cambiarlas.',
+  '', '━━━ CUENTA ANTES DE ABRIR ━━━',
+  `👛 Capital: ${num(equity)} USDT · margen disponible: ${num(account.availableMargin)} USDT.`,
+  `📂 Posiciones previas: ${openBefore}. Esta apertura fue verificada por separado.`,
+  `🛡 Riesgo previo hasta los stops: ${num(portfolioRisk.openRiskPct)}% / límite ${num(portfolioRisk.maximumRiskPct)}%.`,
+  `📊 Exposición previa: ${num(exposure.totalPct)}% del capital / límite ${num(limits.maxExposurePct)}%.`,
+  '', '━━━ CONTEXTO DEL ANÁLISIS ━━━',
+  `📊 Puntuación técnica: ${num(technicalScore)}/100 · ajuste por historial: ${signed(learningApplied)}.`,
+  'La puntuación no representa la probabilidad de ganar.',
+  `📈 Volumen: ${num(indicators.volRatio)}× el habitual · RSI (impulso del precio): ${num(indicators.rsi14, 1)}.`,
+  '', '━━━ COMPROBANTES ━━━',
+  `✅ Orden de entrada: ${clean(d.exchangeOrderId)}`,
+  `🛑 Orden SL: ${clean(stop.algoId || stop.orderId || 'verificada')}`,
+  `🏁 Orden TP: ${clean(takeProfit.algoId || takeProfit.orderId || 'verificada')}`,
+  `🆔 Ejecución: ${clean(d.executionId)}`
 ].filter(line => line !== null);
-
 const text = lines.join('\n');
-if (text.length > 4096) throw new Error(`Premium TRADE_OPENED notification exceeds Telegram limit (${text.length})`);
+if (text.length > 4096) throw new Error(`TRADE_OPENED notification exceeds Telegram limit (${text.length})`);
 return [{ json: { ...d, notificationEventKey: `open:${d.executionId}`, text, notificationState: 'TRADE_OPENED_VERIFIED_PREMIUM' } }];

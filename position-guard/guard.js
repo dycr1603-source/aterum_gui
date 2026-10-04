@@ -100,7 +100,7 @@ class PositionGuard {
 
   async expectedTrades() {
     const [rows] = await this.db.query(`SELECT t.id,t.symbol,t.direction,t.status,t.entry_price,t.initial_sl_price,t.sl_price,t.tp_price,
-      t.qty,t.leverage,t.trailing_stage,t.opened_at,t.updated_at
+      t.qty,t.leverage,t.trailing_stage,t.opened_at,t.updated_at,t.execution_id,t.market_order_id,t.policy_version
       FROM trades t
       WHERE t.status='OPEN'
         AND NOT EXISTS (
@@ -326,6 +326,10 @@ class PositionGuard {
       } catch (error) { await connection.rollback(); throw error; }
       finally { connection.release(); }
       const cleanup = await this.cleanupOrphanProtection(expected);
+      if (expected.policy_version === 'two-indicator-v1' && this.executionEngine?.captureStrategyClose) {
+        await this.executionEngine.captureStrategyClose(expected, { symbol: expected.symbol,
+          positionSide: expected.direction, exitPrice, pnl, closeReason: 'SYNC', closedAt: Date.now() });
+      }
       await fetch(`${this.config.dashboardBase}/trade/${expected.symbol}?reason=sync&exitPrice=${exitPrice}`, {
         method: 'DELETE', signal: AbortSignal.timeout(5000)
       }).catch(() => null);

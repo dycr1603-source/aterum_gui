@@ -1,5 +1,4 @@
-const d = $input.first().json;
-
+'use strict';
 // Plain-language Telegram explanations for decision and rejection codes.
 // label: what happened. why: what it protects or means. Keep both short.
 const REASONS = Object.freeze({
@@ -55,35 +54,4 @@ function describeReason(code) {
   const key = String(code || '');
   return REASONS[key] || { label: key ? key.toLowerCase().replace(/_/g, ' ') : 'motivo no informado', why: '' };
 }
-
-const engineAlreadyNotified = d.failureNotificationSent === true;
-const suppressed = d.failureNotificationSuppressed === true;
-const verification = d.verificationResult || {};
-const exchangeVerified = verification.exchangeVerified === true;
-const persistenceFailed = d.failureCategory === 'PERSISTENCE_FAILURE' || exchangeVerified;
-const verificationFailed = d.failureCategory === 'VERIFICATION_FAILURE';
-const preCapacity = d.failureCategory === 'PRE_EXECUTION_CAPACITY';
-const rejected = preCapacity || d.finalStatus === 'REJECTED' || d.status === 'PORTFOLIO_CAPACITY_REJECTED' || d.failureCategory === 'EXECUTION_REJECTED';
-const capacity = d.portfolioCapacity || verification.error?.responseBody || {};
-const reasonCode = d.rejectionReason?.code || capacity.primaryReason?.code || '';
-const reason = describeReason(reasonCode);
-const side = String(d.positionSide || d.direction || d.side || '').toUpperCase();
-const direction = ['SHORT', 'SELL'].includes(side) ? '🔴 SHORT · busca una bajada' : ['LONG', 'BUY'].includes(side) ? '🟢 LONG · busca una subida' : '⚪ Dirección no informada';
-let telegramText = null;
-if (!engineAlreadyNotified && !suppressed) {
-  const title = preCapacity ? '⏸ OPERACIÓN OMITIDA POR CAPACIDAD' : rejected ? '⛔ OPERACIÓN RECHAZADA' : persistenceFailed ? '🚨 REGISTRO LOCAL PENDIENTE' : verificationFailed ? '⚠ VERIFICACIÓN FALLIDA' : '🚨 EJECUCIÓN FALLIDA';
-  telegramText = [title, `💎 ${d.symbol || 'Activo no informado'} · ${direction}`, '',
-    '📋 ¿Qué pasó?',
-    rejected ? 'Un control impidió continuar con la apertura.' : persistenceFailed ? 'El registro local no quedó confirmado.' : 'No se pudo confirmar que la operación terminara correctamente.',
-    reasonCode ? `🔎 Motivo: ${reason.label}. ${reason.why}` : null,
-    '', '🏦 Estado de Binance',
-    exchangeVerified ? '✅ La operación fue confirmada en Binance.' : preCapacity ? '🛡 No se envió ninguna orden a Binance.' : rejected ? '🛡 La solicitud fue rechazada; este aviso no confirma una apertura.' : '⚠ Estado sin confirmar: podría existir una orden o posición en Binance.',
-    '', '👉 Qué sigue',
-    rejected ? 'Se esperará otra oportunidad que cumpla los controles.' : 'Revisar la posición y sus órdenes de protección en Binance, y compararlas con el panel antes de reintentar.',
-    persistenceFailed ? '🗂 Es necesario conciliar el registro local con el estado de Binance.' : null,
-    '', `🆔 Ejecución: ${d.executionId || 'sin identificador'}`,
-    reasonCode ? `Código de diagnóstico: ${reasonCode}` : null
-  ].filter(line => line !== null).join('\n');
-}
-const notificationEventKey = preCapacity ? `pre-execution-capacity:${d.symbol}:${Math.floor(Date.now()/3600000)}` : `execution-failure:${d.executionId}`;
-return [{ json: { ...d, notificationEventKey, telegramText, notificationStatus: engineAlreadyNotified ? 'SENT_BY_ENGINE' : suppressed ? 'SUPPRESSED_TRANSIENT' : 'PENDING_SEND' } }];
+module.exports = { REASONS, describeReason };

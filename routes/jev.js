@@ -4,6 +4,7 @@ const { timingSafeEqual } = require('crypto');
 const shared = require('../shared');
 const jev = require('../services/jev');
 const { deliver } = require('../services/telegram_delivery');
+const { describeReason } = require('../services/telegram_reasons');
 const router = express.Router();
 function internal(req, res, next) {
   const token = process.env.EXECUTION_ENGINE_TOKEN;
@@ -41,44 +42,79 @@ router.post('/internal/jev/evaluate', internal, async (req, res) => {
     const a = result.answer || {};
     const probabilities = a.probabilities || {};
     const indicators = d.indicators || {};
-    const trend = Number(indicators.ema8) > Number(indicators.ema21) ? 'LONG' : Number(indicators.ema8) < Number(indicators.ema21) ? 'SHORT' : 'NEUTRAL';
-    const momentum = `RSI ${Number(indicators.rsi14 || 0).toFixed(1)} · Vol ${Number(indicators.volRatio || 0).toFixed(2)}x`;
+    const trend = Number(indicators.ema8) > Number(indicators.ema21) ? 'alcista (EMA8 > EMA21)'
+      : Number(indicators.ema8) < Number(indicators.ema21) ? 'bajista (EMA8 < EMA21)' : 'neutral';
+    const momentum = `RSI ${Number(indicators.rsi14 || 0).toFixed(1)} · volumen ${Number(indicators.volRatio || 0).toFixed(2)}× lo normal`;
     const providerLabel = result.provider === 'typesafe-jev' ? 'Jev real' : 'Haiku adapter';
     const skippedBeforeModel = !result.request;
+    const approved = ['LONG', 'SHORT'].includes(result.decision);
     const status = skippedBeforeModel ? '⏸ ANÁLISIS JEV OMITIDO'
-      : result.decision === 'NO_TRADE' ? '⛔ OPERACIÓN RECHAZADA' : '🧠 PROPUESTA DE OPERACIÓN';
-    const reasonLabels = { JEV_POSITION_LIMIT: 'límite preventivo de dos posiciones abiertas',
-      JEV_LOW_VOLUME: 'volumen de vela insuficiente (menos de 0.8×)',
-      JEV_QUALITY_DATA_MISSING: 'faltan datos para validar la calidad de entrada',
-      JEV_EXTENDED_ENTRY: 'precio demasiado extendido para entrar', JEV_NO_FEASIBLE_POSITION: 'ninguna combinación viable de dirección, apalancamiento y stop loss',
-      JEV_CAPACITY_UNAVAILABLE: 'no se pudo validar el margen y riesgo actual',
-      JEV_RISK_REJECTED: 'los controles de riesgo impiden abrir otra posición' };
+      : approved ? '🧠 PROPUESTA DE OPERACIÓN' : '⛔ OPERACIÓN RECHAZADA';
+    const sideIcon = side => side === 'LONG' ? '🟢 LONG (busca una subida)' : side === 'SHORT' ? '🔴 SHORT (busca una bajada)' : '⚪ NO OPERAR';
+    const pct = value => `${(Number(value || 0) * 100).toFixed(0)}%`;
+    const reason = describeReason(result.reason);
+    const quality = result.entryQuality || {};
+    const metrics = quality.metrics || {};
+    const selection = quality.selection;
+    const qualityFacts = [
+      metrics.openPositions != null ? `posiciones abiertas ${metrics.openPositions}/${quality.policy?.maxOpenPositions ?? 2}` : '',
+      Number.isFinite(metrics.volumeRatio) ? `volumen ${metrics.volumeRatio.toFixed(2)}× (mín. ${quality.policy?.minVolumeRatio ?? 0.8}×)` : '',
+      Number.isFinite(metrics.extensionAtr) ? `distancia a EMA21 ${metrics.extensionAtr >= 0 ? '+' : ''}${metrics.extensionAtr.toFixed(2)} ATR (máx. ±${quality.policy?.maxTrendExtensionAtr ?? 2})` : ''
+    ].filter(Boolean).join(' · ');
     const eventKey = skippedBeforeModel ? `jev-preflight:${cfg.provider}:${result.reason}:${Math.floor(Date.now() / 3600000)}`
       : `jev:${id}`;
-    const message = skippedBeforeModel
-      ? [`${status} · ${providerLabel}`, `${d.symbol}: ${reasonLabels[result.reason] || result.reason}`,
-        result.preflight?.metrics?.remainingMargin != null
-          ? `Margen restante: ${Number(result.preflight.metrics.remainingMargin).toFixed(2)} USDT` : '',
-        result.preflight?.blockedSides?.length
-          ? `Direcciones sin capacidad: ${result.preflight.blockedSides.join(', ')}` : '',
-        'No se consultó al modelo; tokens de Jev: 0.',
-        'No se envió ninguna orden a Binance.']
-      : [`${status} · ${providerLabel} (${result.mode})`, `${d.symbol}: ${result.proposedDecision}`,
-        `Modelo: ${result.model || 'sin respuesta válida'}`,
-        p ? `Entrada ${p.entry} · ${p.leverage}× · TP ${p.tp} · SL ${p.sl}` : '',
+    let levels = [];
+    if (p) {
+      const entry = Number(p.entry), sl = Number(p.sl), tp = Number(p.tp);
+      const slPct = Math.abs(entry - sl) / entry * 100, tpPct = Math.abs(tp - entry) / entry * 100;
+      levels = ['', '━━━ 📋 PROPUESTA ━━━',
+        `🎯 Entrada  ${p.entry} · ⚡ ${p.leverage}×`,
+        `🏁 Objetivo de ganancia (TP): ${p.tp} (${tpPct.toFixed(2)}% de recorrido)`,
+        `🛑 Salida para limitar pérdidas (SL): ${p.sl} (${slPct.toFixed(2)}% en contra desde la entrada)`,
+        `⚖ R:R      1:${(tpPct / slPct).toFixed(2)} bruto${selection ? ` · ${selection.netRewardRisk.toFixed(2)} neto de comisiones` : ''}`,
         result.leveragePolicy?.allowedChoices?.length
-          ? `Leverage permitido: ${result.leveragePolicy.allowedChoices.map(n => `${n}×`).join(', ')} · Jev eligió ${p?.leverage}×` : '',
+          ? `⚡ Apalancamiento permitido: ${result.leveragePolicy.allowedChoices.map(n => `${n}×`).join(', ')} · Jev eligió ${p.leverage}×` : null,
         result.leveragePolicy?.caps?.length
-          ? `Topes: ${result.leveragePolicy.caps.map(cap => `${cap.source} ${cap.max}×`).join(' · ')}` : '',
-        `Probabilidades: NO_TRADE ${(Number(probabilities.NO_TRADE || 0) * 100).toFixed(0)}% · LONG ${(Number(probabilities.LONG || 0) * 100).toFixed(0)}% · SHORT ${(Number(probabilities.SHORT || 0) * 100).toFixed(0)}%`,
-        `Reglas: EMA ${trend} · ${momentum}`,
+          ? `🧱 Topes: ${result.leveragePolicy.caps.map(cap => `${cap.source} ${cap.max}×`).join(' · ')}` : null,
+        'ℹ El tamaño y el riesgo en USDT se calculan después; llegan en el aviso de orden confirmada.'];
+    }
+    const message = skippedBeforeModel
+      ? [`${status} · ${providerLabel}`, `💎 ${d.symbol}`, '',
+        `❓ Qué pasó: ${reason.label}.`,
+        reason.why ? `💡 Por qué: ${reason.why}` : null,
+        qualityFacts ? `📊 Datos: ${qualityFacts}` : null,
+        result.preflight?.metrics?.remainingMargin != null
+          ? `💰 Margen restante: ${Number(result.preflight.metrics.remainingMargin).toFixed(2)} USDT` : null,
+        result.preflight?.blockedSides?.length
+          ? `🚫 Direcciones sin capacidad: ${result.preflight.blockedSides.join(', ')}` : null,
+        quality.blockedSides?.length && result.reason !== 'JEV_EXTENDED_ENTRY'
+          ? `🚫 Direcciones descartadas por precio extendido: ${quality.blockedSides.join(', ')}` : null,
+        '',
+        '🪙 No se consultó al modelo; tokens de Jev: 0.',
+        '🛡 No se envió ninguna orden a Binance.']
+      : [`${status} · ${providerLabel}${result.mode === 'observe' ? ' (modo observación: no decide operaciones)' : ''}`,
+        `💎 ${d.symbol} · el modelo propuso ${sideIcon(result.proposedDecision)}`,
+        `🤖 Modelo: ${result.model || 'sin respuesta válida'}`,
+        ...levels,
+        '', '━━━ 🎲 OPINIÓN DEL MODELO ━━━',
+        `NO OPERAR ${pct(probabilities.NO_TRADE)} · LONG ${pct(probabilities.LONG)} · SHORT ${pct(probabilities.SHORT)}`,
+        selection ? `Confianza ${pct(selection.confidence)} (mín. 60%) · ventaja sobre la 2.ª opción ${pct(selection.decisionMargin)} (mín. 20 puntos porcentuales)` : null,
+        'ℹ Son preferencias del modelo, no probabilidades de ganar.',
+        '', '━━━ 📈 CONTEXTO DE MERCADO ━━━',
+        `Tendencia 1H: ${trend}`, `Impulso: ${momentum}`,
+        qualityFacts ? `Calidad de entrada: ${qualityFacts}` : null,
         result.intelligenceReference?.receivedConfidence
-          ? `Intelligence: ${result.intelligenceReference.applied ? 'referencia aplicada' : 'ignorada'} (confianza ${result.intelligenceReference.receivedConfidence})` : '',
-        result.entryQuality?.selection ? `Calidad: R:R neto ${result.entryQuality.selection.netRewardRisk.toFixed(2)} · confianza ${result.entryQuality.selection.confidence}` : '',
-        `Resultado tras validación: ${result.decision}`, `Motivo: ${result.reason}`,
-        'No confirma una orden en Binance.', `Decision ID: ${id}`];
+          ? `Intelligence: ${result.intelligenceReference.applied ? 'referencia aplicada' : 'ignorada'} (confianza ${result.intelligenceReference.receivedConfidence})` : null,
+        '', `━━━ ${approved ? '✅' : '⛔'} RESULTADO ━━━`,
+        `Resultado tras validación: ${approved ? sideIcon(result.decision) : 'NO OPERAR'}`,
+        `Motivo: ${reason.label} (${result.reason})`,
+        reason.why ? `💡 ${reason.why}` : null,
+        result.mode === 'observe' ? '👁 Análisis informativo: el flujo base conserva la decisión de operar.' : approved ? '👉 Ahora se calcula el tamaño y se revisa el riesgo de la cartera.' : '🛡 No se enviará ninguna orden por esta señal.',
+        approved ? 'ℹ No confirma una orden en Binance. Si se abre, llegará "✅ ORDEN CONFIRMADA POR BINANCE".'
+          : 'ℹ No confirma una orden en Binance.',
+        `🆔 Decision ID: ${id}`];
     await deliver({ db: shared.db, eventKey, token: process.env.TELEGRAM_BOT_TOKEN,
-      chatId: process.env.TELEGRAM_CHAT_ID, text: message.filter(Boolean).join('\n') });
+      chatId: process.env.TELEGRAM_CHAT_ID, text: message.filter(line => line != null).join('\n') });
     res.json({ enabled: true, ...result });
   } catch (_) {
     console.error('[Jev] DECISION_SERVICE_FAILED');

@@ -145,6 +145,7 @@ class ExecutionEngine {
     if (!/^[A-Z0-9_]{3,24}$/.test(request.symbol)) throw new Error('Invalid symbol');
     if (!['LONG', 'SHORT'].includes(request.positionSide)) throw new Error('positionSide must be LONG or SHORT');
     if (request.type === 'OPEN_POSITION') {
+      if (request.tradeContext?.strategy?.version === 'two-indicator-v1' && (!Number.isInteger(request.leverage) || request.leverage < 1 || request.leverage > 10)) throw new Error('INVALID_LEVERAGE');
       request.quantity = number(request.quantity, 'quantity');
       request.stopLoss = number(request.stopLoss, 'stopLoss');
       request.takeProfit = number(request.takeProfit, 'takeProfit');
@@ -294,7 +295,8 @@ class ExecutionEngine {
       close.entryLeverage ? `Entrada: ${close.entryLeverage}× · TP ${close.entryTp} · SL ${close.entrySl}` : null,
       `Reason: ${this.closeReasonLabel(close.closeReason, close.trailingStage)}`,
       `Execution ID: ${close.executionId}`, `Final Stage: ${close.trailingStage}`,
-      `PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} USDT`,
+      close.strategyFeedback ? null : `PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} USDT`,
+      close.strategyFeedback ? `Gross PnL: ${close.strategyFeedback.gross ?? 'pendiente'} · fees: ${close.strategyFeedback.fees ?? 'pendiente'} · funding: ${close.strategyFeedback.funding ?? 'pendiente'} · NET: ${close.strategyFeedback.net ?? 'pendiente'} USDT · net R: ${close.strategyFeedback.r ?? 'pendiente'}` : null,
       `Final R: ${rFinal >= 0 ? '+' : ''}${rFinal.toFixed(2)}R`,
       `Duration: ${close.durationMinutes} minutes`].filter(Boolean).join('\n');
     const delivered = await deliver({ db: this.db, eventKey: `close:${close.executionId}`, text: message,
@@ -326,10 +328,12 @@ class ExecutionEngine {
       correlationId: reconciliation.correlationId, symbol: input.symbol, positionSide: input.positionSide,
       exchangeOrderId: String(input.exchangeOrderId), exitPrice, pnl, rFinal, closeReason,
       trailingStage, durationMinutes, closedAt };
+    let strategyOriginal = null;
     if (trade.execution_id) {
       try {
         const [entries] = await this.db.execute('SELECT request_payload FROM trade_executions WHERE execution_id=?', [trade.execution_id]);
         const original = parsedJson(entries[0]?.request_payload);
+        if (original?.tradeContext?.strategy?.version === 'two-indicator-v1') strategyOriginal = original;
         const receiptId = original?.tradeContext?.jev?.id;
         if (receiptId) {
           const [decisions] = await this.db.execute('SELECT result FROM jev_decisions WHERE id=?', [receiptId]);
@@ -376,6 +380,10 @@ class ExecutionEngine {
 
     const cleanup = await this.cleanupVerifiedClose(input.symbol, input.positionSide);
     await this.publishFinalizedClose(close);
+    if (strategyOriginal) {
+      close.strategyFeedback = await this.captureStrategyClose(trade, close, strategyOriginal);
+      await this.db.execute("UPDATE trade_lifecycle_events SET event_payload=? WHERE trade_id=? AND event_type='CLOSE_FINALIZED'", [json(close), trade.id]);
+    }
     reconciliation = await this.recordExternalClose({ ...input, executionId: reconciliation.executionId,
       correlationId: reconciliation.correlationId, persistenceStatus: 'VERIFIED', cleanup });
     await this.db.execute(`UPDATE trade_lifecycle_events SET event_payload=? WHERE id=?`,
@@ -455,6 +463,9 @@ class ExecutionEngine {
           verificationResult, timestamp: new Date().toISOString(), finalStatus: 'VERIFIED', attemptCount: attempts };
       } catch (error) {
         lastError = error;
+        if (request.tradeContext?.strategy?.version === 'two-indicator-v1') {
+          await require('../services/strategy/store').halt(this.db, error.message);
+        }
         verificationResult = error.verificationResult || verificationResult;
         exchangeResponse = error.exchangeResponse || exchangeResponse;
         exchangeOrderId = error.exchangeOrderId || exchangeOrderId;
@@ -626,6 +637,13 @@ class ExecutionEngine {
       throw new Error(`Take profit ${takeProfit} is on the wrong side of Binance price ${livePrice}`);
     }
     let jevFeeAmount = 0;
+    const strategy = request.tradeContext?.strategy;
+    if (strategy?.version === 'two-indicator-v1' && !marketOrder && !before.position) {
+      const allPositions = (await this.binance.positions()).map(normalizePosition).filter(Boolean);
+      const [local] = await this.db.execute("SELECT symbol,direction,qty FROM trades WHERE status='OPEN'");
+      const matches = local.length === allPositions.length && local.every(t => allPositions.some(p => p.symbol === t.symbol && p.side === t.direction && near(p.qty, t.qty)));
+      if (!matches) throw new Error('BINANCE_INCONSISTENCIES');
+    }
     if (request.tradeContext?.jev?.mode === 'enforce' && !marketOrder && !before.position) {
       const [rawBrackets, commission] = await Promise.all([
         this.binance.leverageBracket(request.symbol), this.binance.commissionRate(request.symbol)
@@ -642,6 +660,11 @@ class ExecutionEngine {
       // Conservative buffer also covers rate changes between sizing and execution.
       const feeRate = Math.max(takerFee, 0.001);
       jevFeeAmount = quantity * (livePrice + stopLoss) * feeRate;
+      if (strategy?.version === 'two-indicator-v1') {
+        const policy = strategy.riskPolicy;
+        jevFeeAmount += quantity * ((livePrice + stopLoss) * policy.slippageBps / 10000 + livePrice * policy.fundingReserve);
+        if (quantity * Math.abs(livePrice - stopLoss) + jevFeeAmount > Number(request.tradeContext.maxLoss) + 1e-8) throw new Error('STRATEGY_RISK_BUDGET_EXCEEDED');
+      }
     }
     let portfolioAllocation = null;
     if (request.tradeContext?.jev?.mode === 'enforce' && !this.portfolioAllocator)
@@ -650,6 +673,13 @@ class ExecutionEngine {
       portfolioAllocation = await this.portfolioAllocator.capacity({ symbol: request.symbol,
         positionSide: request.positionSide, quantity, entryPrice: livePrice, stopLoss,
         leverage: request.leverage, riskFeeAmount: jevFeeAmount });
+      if (strategy?.version === 'two-indicator-v1' && portfolioAllocation.allowed) {
+        const p = strategy.riskPolicy, equity = Number(portfolioAllocation.account.equity);
+        const margin = quantity * livePrice / request.leverage;
+        if (margin > equity * (p.maxMarginFractionPerPosition ?? 0.9) + 1e-8 || margin + Number(portfolioAllocation.account.marginUsed) > equity * (p.maxTotalMarginFraction ?? 0.9) + 1e-8) throw new Error('STRATEGY_MARGIN_BUDGET_EXCEEDED');
+        const risk = quantity * Math.abs(livePrice - stopLoss) + jevFeeAmount;
+        if (risk > equity * p.riskFraction + 1e-8 || risk + Number(portfolioAllocation.risk.openRiskAmount) > equity * p.maxPortfolioRisk + 1e-8 || portfolioAllocation.positions.length >= p.maxPositions) throw new Error('STRATEGY_PORTFOLIO_RISK_EXCEEDED');
+      }
       if (!portfolioAllocation.allowed) {
         const primary = portfolioAllocation.primaryReason || { code: 'PORTFOLIO_CAPACITY_REJECTED' };
         const error = new Error(`${primary.code}: portfolio capacity rejected the entry`);
@@ -874,6 +904,21 @@ class ExecutionEngine {
     };
   }
 
+  async captureStrategyClose(trade, close, original = null) {
+    try {
+      if (!original && trade.execution_id) {
+        const [rows] = await this.db.execute('SELECT request_payload FROM trade_executions WHERE execution_id=?', [trade.execution_id]);
+        original = parsedJson(rows[0]?.request_payload);
+      }
+      if (original?.tradeContext?.strategy?.version !== 'two-indicator-v1') return null;
+      return await require('../services/strategy/feedback').capture({ db: this.db, binance: this.binance, trade, original, close });
+    } catch (error) {
+      console.error('[Strategy feedback]', error.message);
+      await require('../services/strategy/store').halt(this.db, 'FEEDBACK_PERSISTENCE_FAILED').catch(() => {});
+      return { accountingComplete: false, accountingReason: 'FEEDBACK_PERSISTENCE_FAILED' };
+    }
+  }
+
   async persistVerifiedState(request, verification, exchangeResponse) {
     const after = verification.after;
     if (request.type === 'OPEN_POSITION') {
@@ -898,6 +943,7 @@ class ExecutionEngine {
       if (!updated.affectedRows) throw new Error('Verified Binance reduction could not be matched to an open local trade');
       await this.publishOpenState(request);
     } else if (request.type === 'CLOSE_POSITION') {
+      let closedTrade = null;
       const connection = await this.db.getConnection();
       try {
         await connection.beginTransaction();
@@ -914,6 +960,7 @@ class ExecutionEngine {
           const rFinal = initialRisk > 0 ? (Math.abs(exitPrice - entryPrice) / initialRisk) * (pnl >= 0 ? 1 : -1) : 0;
           const reasonText = String(request.reason || '').toUpperCase();
           const closeReason = reasonText.includes('STOP') ? 'SL' : reasonText.includes('TIME') ? 'TIME_EXIT' : 'MANUAL';
+          closedTrade = { trade, close: { symbol:request.symbol, positionSide:request.positionSide, executionId:request.executionId, exitPrice, pnl, rFinal, closeReason, trailingStage:trade.trailing_stage || 'INITIAL', closedAt:Date.now(), durationMinutes:Math.max(0,Math.round((Date.now()-Date.parse(trade.opened_at))/60000)) } };
           const [existingClose] = await connection.execute('SELECT id FROM trade_closes WHERE trade_id=? LIMIT 1', [trade.id]);
           if (!existingClose.length) {
             await connection.execute(`INSERT INTO trade_closes
@@ -928,6 +975,13 @@ class ExecutionEngine {
       } catch (error) { await connection.rollback(); throw error; }
       finally { connection.release(); }
       await this.removeLocalState(request, exchangeResponse);
+      if (closedTrade) {
+        const feedback = await this.captureStrategyClose(closedTrade.trade, closedTrade.close);
+        if (feedback) {
+          closedTrade.close.strategyFeedback = feedback;
+          await this.sendCanonicalClose(closedTrade.close).catch(error => console.error('[Strategy close notification]', error.message));
+        }
+      }
     }
   }
 

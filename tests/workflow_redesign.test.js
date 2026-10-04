@@ -13,7 +13,8 @@ const removed = [
 ];
 
 assert.strictEqual(workflow.active, false, 'repository workflow must remain safe to import');
-assert.strictEqual(workflow.nodes.length, 31);
+assert.strictEqual(workflow.nodes.length, 36, '31 existing nodes plus five strategy-routing nodes');
+assert.deepStrictEqual(workflow.connections['Main Schedule'].main[0].map(x => x.node), ['Strategy Mode']);
 for (const name of removed) assert(!names.has(name), `${name} must not remain in V2`);
 for (const name of ['Risk Guard', 'AGENTE DE MERCADO', 'Opportunity Discovery', 'Deterministic Entry Gate', 'Position Sizer', 'Execute Trade']) {
   assert(names.has(name), `${name} missing from V2`);

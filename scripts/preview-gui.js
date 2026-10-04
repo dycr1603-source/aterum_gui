@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 const pages = {
+  '/strategy-performance': () => require('../views/strategy').getStrategyHTML(),
   '/dashboard': user => require('../views/dashboard').getDashboardHTML('BTCUSDT', user),
   '/analytics': user => require('../views/analytics').getAnalyticsHTML(user),
   '/ai-data': user => require('../views/aidata').getAIDataHTML(user),

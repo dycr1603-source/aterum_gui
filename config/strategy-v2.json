@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "mode": "enforce",
+  "pair": [
+    "ADX",
+    "BOLLINGER"
+  ],
+  "scale": 0.8,
+  "timeframe": "4h",
+  "directions": [
+    "SHORT"
+  ],
+  "riskFraction": 0.005,
+  "maxPortfolioRisk": 0.02,
+  "maxPositions": 2,
+  "maxDrawdown": 0.15,
+  "maxLossStreak": 10,
+  "minQuoteVolume": 5000000,
+  "minDepthQuote": 100000,
+  "maxSpreadBps": 10,
+  "maxAtrFraction": 0.08,
+  "feeRate": 0.001,
+  "slippageBps": 5,
+  "fundingReserve": 0.001,
+  "initialCapital": 1000,
+  "latencyBars": 1,
+  "maxHoldingBars": 24,
+  "minTrades": 30,
+  "minProfitableSymbolFraction": 0.6,
+  "maxWinnerConcentration": 0.35,
+  "monteCarloIterations": 1000,
+  "seed": 20261003,
+  "promotion": null,
+  "management": "existing",
+  "manualActivation": {
+    "enabled": true,
+    "reportId": "7f47a216ad619daa47b7f559b79d708a4a0d638e5d2417ca5ceaeafea4560bae",
+    "authorizedAt": "2026-10-04T18:39:02.992710+00:00",
+    "reason": "Explicit user instruction on 2026-10-04 to activate the new strategy on the active Aterum PC despite rejected validation."
+  },
+  "minLeverage": 5,
+  "maxLeverage": 10,
+  "maxMarginFractionPerPosition": 0.45,
+  "maxTotalMarginFraction": 0.9
+}
