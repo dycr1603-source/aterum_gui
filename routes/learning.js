@@ -554,9 +554,9 @@ async function getCapitalStatus(balanceInput, candidate = {}) {
   const globalStreakLimit = configNum(config, 'max_consecutive_losses', 4);
   if (globalStreakLimit > 0 && globalStreakRecent && globalStreak >= globalStreakLimit) reasons.push(`${globalStreak} pérdidas globales consecutivas`);
   const groupLimit = configNum(config, 'max_group_consecutive_losses', 4);
-  if (candidate.symbol && symbolStreakRecent && symbolStreak >= groupLimit) reasons.push(`${symbolStreak} pérdidas consecutivas en ${candidate.symbol}`);
-  if (candidate.setup && setupStreakRecent && setupStreak >= groupLimit) reasons.push(`${setupStreak} pérdidas consecutivas en setup ${setup}`);
-  if (candidate.session && sessionStreakRecent && sessionStreak >= groupLimit) reasons.push(`${sessionStreak} pérdidas consecutivas en sesión ${session}`);
+  if (candidate.symbol && symbolStreakRecent && symbolStreak >= groupLimit) reasons.push(`${symbolStreak} pérdidas consecutivas`);
+  if (candidate.setup && setupStreakRecent && setupStreak >= groupLimit) reasons.push(`${setupStreak} pérdidas consecutivas`);
+  if (candidate.session && sessionStreakRecent && sessionStreak >= groupLimit) reasons.push(`${sessionStreak} pérdidas consecutivas`);
   return {
     halted: reasons.length > 0,
     reasons,
