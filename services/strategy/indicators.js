@@ -12,6 +12,10 @@ const CATEGORIES = Object.freeze({
   VWAP: "VOLUME",
   RVOL: "VOLUME",
 });
+const DIRECTIONAL = Object.freeze([
+  "EMA", "SUPERTREND", "ADX", "MACD", "RSI", "STOCH_RSI", "BOLLINGER", "VWAP",
+]);
+const CONTEXTUAL = Object.freeze(["ATR", "RVOL"]);
 const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
 function smooth(a, n, wilder = false) {
   const out = Array(a.length).fill(null),
@@ -277,12 +281,34 @@ function signal(feature, pair) {
     ? direction
     : "NO_TRADE";
 }
+function consensus(feature, minVotes = 5) {
+  if (!Number.isInteger(minVotes) || minVotes < 5 || minVotes > DIRECTIONAL.length)
+    throw Error("INVALID_CONSENSUS_THRESHOLD");
+  const votes = { LONG: 0, SHORT: 0 };
+  for (const name of DIRECTIONAL) {
+    const side = feature?.signals?.[name]?.signal;
+    if (side === "LONG" || side === "SHORT") votes[side]++;
+  }
+  const confirmations = CONTEXTUAL.filter(
+    (name) => feature?.signals?.[name]?.signal === "ACTIVE",
+  ).length;
+  const direction = feature?.ready && Math.max(votes.LONG, votes.SHORT) >= minVotes
+    ? votes.LONG > votes.SHORT ? "LONG" : votes.SHORT > votes.LONG ? "SHORT" : "NO_TRADE"
+    : "NO_TRADE";
+  const supporting = direction === "NO_TRADE" ? Math.max(votes.LONG, votes.SHORT) : votes[direction];
+  const opposing = direction === "NO_TRADE" ? Math.min(votes.LONG, votes.SHORT) : votes[direction === "LONG" ? "SHORT" : "LONG"];
+  return { direction, votes, supporting, opposing, confirmations,
+    score: supporting * 100 - opposing * 20 + confirmations * 10 };
+}
 module.exports = {
   CATEGORIES,
+  DIRECTIONAL,
+  CONTEXTUAL,
   mean,
   smooth,
   validateBars,
   calculate,
   pairs,
   signal,
+  consensus,
 };

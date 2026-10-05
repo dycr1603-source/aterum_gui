@@ -3,9 +3,20 @@ const fs = require("node:fs"),
   path = require("node:path"),
   { randomUUID } = require("node:crypto");
 const { load, promotion } = require("./policy"),
-  { calculate, signal, validateBars } = require("./indicators"),
+  { calculate, signal, consensus, validateBars, DIRECTIONAL, CONTEXTUAL } = require("./indicators"),
   { breaker } = require("./risk"),
+  { filtersFor } = require("../jev_capacity"),
   store = require("./store");
+const candleCache = new Map();
+function minimumLotRisk(symbolInfo, price, atr, policy) {
+  const rules = filtersFor(symbolInfo);
+  if (!(price > 0 && atr > 0)) return Infinity;
+  const minQuantity = Math.max(rules.minQty || 0, (rules.minNotional || 0) / price);
+  const minStopDistance = 1.2 * atr;
+  const costs = (Math.max(0, 2 * price - minStopDistance) *
+    (policy.feeRate + policy.slippageBps / 10000)) + price * policy.fundingReserve;
+  return minQuantity * (minStopDistance + costs);
+}
 function readReport() {
   try {
     return JSON.parse(
@@ -201,6 +212,7 @@ async function cycle({
       get(`${base}/ticker/bookTicker`),
     ]);
     const rows = universe({ info, tickers, books, now: now(), policy });
+    const symbolInfo = new Map(info.symbols.map((symbol) => [symbol.symbol, symbol]));
     await store.record(db, `universe:${id}`, "UNIVERSE", { cycleId: id, rows });
     const allowed = rows.filter((r) => r.status === "SELECTED");
     const offset = batchOffset(now(), allowed.length);
@@ -216,14 +228,25 @@ async function cycle({
       reasons: {},
       checked: [],
     };
+    const checkedBySymbol = new Map();
     const note = (item, reasons, detail = {}) => {
       const list = Array.isArray(reasons) ? reasons : [reasons];
-      result.universeSummary.checked.push({ symbol: item.symbol, reasons: list, ...detail });
-      result.universeSummary.scanned = result.universeSummary.checked.length;
-      for (const reason of list)
+      let checked = checkedBySymbol.get(item.symbol);
+      if (!checked) {
+        checked = { symbol: item.symbol, reasons: [] };
+        checkedBySymbol.set(item.symbol, checked);
+        result.universeSummary.checked.push(checked);
+      }
+      Object.assign(checked, detail);
+      for (const reason of list) {
+        if (checked.reasons.includes(reason)) continue;
+        checked.reasons.push(reason);
         result.universeSummary.reasons[reason] =
           (result.universeSummary.reasons[reason] || 0) + 1;
+      }
+      result.universeSummary.scanned = result.universeSummary.checked.length;
     };
+    const technicalCandidates = [];
     for (const item of batch) {
       if (positions.some((p) => p.symbol === item.symbol)) {
         item.status = "REJECTED";
@@ -231,38 +254,58 @@ async function cycle({
         note(item, "ALREADY_OPEN");
         continue;
       }
-      const raw = await get(
-        `${base}/klines?symbol=${item.symbol}&interval=${policy.timeframe}&limit=240`,
-      );
-      const bars = raw
-        .filter((r) => Number(r[6]) < now())
-        .map((r) => ({
-          time: Number(r[0]),
-          open: Number(r[1]),
-          high: Number(r[2]),
-          low: Number(r[3]),
-          close: Number(r[4]),
-          volume: Number(r[5]),
-          quoteVolume: Number(r[7]),
-        }));
       const interval = policy.timeframe === "1h" ? 3600000 : 14400000;
-      validateBars(bars, interval);
+      const cacheKey = `${policy.timeframe}:${item.symbol}`;
+      const bucket = Math.floor(now() / interval);
+      let bars = candleCache.get(cacheKey)?.bucket === bucket
+        ? candleCache.get(cacheKey).bars : null;
+      const cached = Boolean(bars);
+      if (!bars) {
+        const raw = await get(
+          `${base}/klines?symbol=${item.symbol}&interval=${policy.timeframe}&limit=240`,
+        );
+        bars = raw
+          .filter((r) => Number(r[6]) < now())
+          .map((r) => ({
+            time: Number(r[0]),
+            open: Number(r[1]),
+            high: Number(r[2]),
+            low: Number(r[3]),
+            close: Number(r[4]),
+            volume: Number(r[5]),
+            quoteVolume: Number(r[7]),
+          }));
+        validateBars(bars, interval);
+      }
       if (now() - (bars.at(-1).time + interval) > interval)
         throw Error("STALE_MARKET_DATA");
+      if (!cached) candleCache.set(cacheKey, { bucket, bars });
       const f = calculate(bars, policy.scale, policy).at(-1),
         price = bars.at(-1).close;
-      const direction = signal(f, policy.pair);
+      const votes = policy.entryMode === "consensus10"
+        ? consensus(f, policy.minVotes)
+        : { direction: signal(f, policy.pair), score: 0 };
+      const direction = votes.direction;
       const failed = [];
       if (f.atr / price > policy.maxAtrFraction)
         failed.push("ABNORMAL_VOLATILITY");
-      if (direction === "NO_TRADE") failed.push("NO_TWO_INDICATOR_SIGNAL");
+      const minimumRisk = minimumLotRisk(symbolInfo.get(item.symbol), price, f.atr, policy);
+      if (minimumRisk > equity * policy.riskFraction)
+        failed.push("MIN_LOT_RISK");
+      if (direction === "NO_TRADE") failed.push(
+        policy.entryMode === "consensus10" ? "INSUFFICIENT_VOTES" : "NO_TWO_INDICATOR_SIGNAL",
+      );
       else if (!policy.directions.includes(direction))
         failed.push("DIRECTION_DISABLED");
       const detail = {
-        indicators: policy.pair.map((name) => ({
+        indicators: (policy.entryMode === "consensus10"
+          ? [...DIRECTIONAL, ...CONTEXTUAL] : policy.pair).map((name) => ({
           name,
           signal: f.signals[name]?.signal || "UNAVAILABLE",
         })),
+        votes: votes.votes || null,
+        score: votes.score,
+        minimumLotRisk: Number(minimumRisk.toFixed(6)),
       };
       if (failed.length) {
         item.status = "REJECTED";
@@ -270,11 +313,18 @@ async function cycle({
         note(item, failed, detail);
         continue;
       }
-      const [depth, funding, higher] = await Promise.all([
-        get(`${base}/depth?symbol=${item.symbol}&limit=100`),
-        get(`${base}/premiumIndex?symbol=${item.symbol}`),
-        get(`${base}/klines?symbol=${item.symbol}&interval=1d&limit=8`),
-      ]);
+      technicalCandidates.push({ item, bars, f, price, direction, votes, detail });
+      note(item, "TECHNICAL_CANDIDATE", detail);
+    }
+    const requiredDepthQuote = Math.max(
+      policy.minDepthQuote,
+      equity * (policy.maxMarginFractionPerPosition ?? 0.9) *
+        (policy.maxLeverage ?? 10) * (policy.depthNotionalMultiple ?? 5),
+    );
+    const ranked = [];
+    for (const candidate of technicalCandidates) {
+      const { item, price, detail } = candidate;
+      const depth = await get(`${base}/depth?symbol=${item.symbol}&limit=100`);
       const depthQuote = Math.min(
         ...["bids", "asks"].map((side) =>
           (depth[side] || [])
@@ -283,18 +333,37 @@ async function cycle({
         ),
       );
       if (
-        !Number.isFinite(depthQuote) ||
-        !Number.isFinite(Number(funding.lastFundingRate))
+        !Number.isFinite(depthQuote)
       )
         throw Error("INVALID_MARKET_DATA");
       detail.depthQuote = Number(depthQuote.toFixed(2));
-      detail.requiredDepthQuote = policy.minDepthQuote;
-      if (depthQuote < policy.minDepthQuote) {
+      detail.requiredDepthQuote = Number(requiredDepthQuote.toFixed(2));
+      if (depthQuote < requiredDepthQuote) {
         item.status = "REJECTED";
         item.reasons.push("LOW_DEPTH");
         note(item, "LOW_DEPTH", detail);
         continue;
       }
+      candidate.depthQuote = depthQuote;
+      candidate.rankScore = candidate.votes.score +
+        Math.log10(Math.max(1, item.quoteVolume)) * 2 - item.spreadBps * 2 +
+        Math.log10(depthQuote / requiredDepthQuote) * 10;
+      note(item, [], { ...detail, rankScore: Number(candidate.rankScore.toFixed(2)) });
+      ranked.push(candidate);
+    }
+    ranked.sort((a, b) => b.rankScore - a.rankScore ||
+      b.depthQuote - a.depthQuote || a.item.symbol.localeCompare(b.item.symbol));
+    result.universeSummary.technicalCandidates = technicalCandidates.length;
+    result.universeSummary.marketQualified = ranked.length;
+    let invalidJevCandidates = 0;
+    for (const [rankIndex, candidate] of ranked.entries()) {
+      const { item, bars, f, price, direction, votes, detail } = candidate;
+      const [funding, higher] = await Promise.all([
+        get(`${base}/premiumIndex?symbol=${item.symbol}`),
+        get(`${base}/klines?symbol=${item.symbol}&interval=1d&limit=8`),
+      ]);
+      if (!Number.isFinite(Number(funding.lastFundingRate)))
+        throw Error("INVALID_MARKET_DATA");
       const correlationPositions = [];
       for (const position of positions) {
         const rows = await get(
@@ -316,12 +385,17 @@ async function cycle({
         indicators: { currentPrice: price, atr: f.atr },
         passRisk: true,
         strategy: {
-          version: "two-indicator-v1",
+          version: policy.entryMode === "consensus10" ? "consensus-10-v1" : "two-indicator-v1",
           timeframe: policy.timeframe,
           reportId: report.reportId,
           pair: policy.pair,
-          directions: policy.directions,
-          indicators: policy.pair.map((name) => ({ name, ...f.signals[name] })),
+          directions: [direction],
+          indicators: (policy.entryMode === "consensus10"
+            ? [...DIRECTIONAL, ...CONTEXTUAL] : policy.pair)
+            .map((name) => ({ name, ...f.signals[name] })),
+          voteSummary: votes,
+          candidateRank: rankIndex + 1,
+          candidateCount: ranked.length,
           regime: f.regime,
           recentCandles: bars.slice(-60),
           volume: { last: bars.at(-1).volume, quote24h: item.quoteVolume },
@@ -343,12 +417,17 @@ async function cycle({
           riskPolicy: policy,
         },
       };
-      const jev = await evaluateJev(d);
-      if (!["LONG", "SHORT"].includes(jev.decision) || !jev.risk) {
+      let jev = await evaluateJev(d);
+      if (jev.reason === "JEV_INVALID_RESPONSE") jev = await evaluateJev(d);
+      if (jev.decision !== direction || !jev.risk) {
         const reason = String(jev.reason || "JEV_NO_TRADE");
         item.status = "REJECTED";
         item.reasons.push("JEV_NO_TRADE");
         note(item, "JEV_NO_TRADE", { ...detail, jevReason: reason });
+        if (["JEV_INVALID_RESPONSE", "JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE", "JEV_CAPACITY_UNAVAILABLE"].includes(reason)) {
+          invalidJevCandidates++;
+          if (invalidJevCandidates < 3) continue;
+        }
         if (/UNAVAILABLE|INVALID|TIMEOUT/.test(reason)) {
           await store.halt(db, reason);
           result.skipReason = reason;
@@ -381,7 +460,7 @@ async function cycle({
         rrRatio: r.expectedR,
         riskPct: (r.riskAtStop / equity) * 100,
         sizingInfo: r,
-        policyVersion: "two-indicator-v1",
+        policyVersion: d.strategy.version,
         aiResult: { regime: f.regime, reasoning: jev.explanation },
       });
       break;
@@ -399,4 +478,4 @@ async function cycle({
     return finish();
   }
 }
-module.exports = { cycle, universe, logDecision, readReport, batchOffset };
+module.exports = { cycle, universe, logDecision, readReport, batchOffset, minimumLotRisk };

@@ -28,7 +28,7 @@ test('margin allocation caps each position at 45 percent and combined margin at 
 test('manual activation preserves failed validation and is bound to its report and candidate', () => {
   const candidate = { pair: ['ADX', 'BOLLINGER'], timeframe: '4h', scale: 0.8, directions: ['SHORT'], management: 'existing' };
   const report = { reportId: 'test-report', frozenCandidate: candidate };
-  const p = { ...policy, ...candidate, adxThreshold: 25, bollingerSigma: 2, minExpectedR: 0, manualActivation: { enabled: true, reportId: 'test-report', reason: 'Operator request', authorizedAt: '2026-10-04T00:00:00Z' } };
+  const p = { ...policy, ...candidate, entryMode: 'pair', adxThreshold: 25, bollingerSigma: 2, minExpectedR: 0, manualActivation: { enabled: true, reportId: 'test-report', reason: 'Operator request', authorizedAt: '2026-10-04T00:00:00Z' } };
   const result = promotion(p, report);
   assert.equal(result.allowed, true);
   assert.equal(result.validationPassed, false);
@@ -41,7 +41,7 @@ test('manual activation preserves failed validation and is bound to its report a
 test('manual override binds the wider signal and reward policy exactly', () => {
   const report = { reportId: policy.manualActivation.reportId, frozenCandidate: { pair: policy.pair, timeframe: policy.timeframe, scale: policy.scale, directions: ['SHORT'], management: 'existing' } };
   assert.equal(promotion(policy, report).activation, 'MANUAL_UNVALIDATED');
-  for (const edit of [{ adxThreshold: 20 }, { bollingerSigma: 1.5 }, { minExpectedR: 1 }, { directions: ['SHORT'] }])
+  for (const edit of [{ adxThreshold: 20 }, { bollingerSigma: 1.5 }, { minExpectedR: 1 }, { directions: ['SHORT'] }, { minVotes: 6 }, { minDepthQuote: 500 }])
     assert.equal(promotion({ ...policy, ...edit }, report).allowed, false);
 });
 const bars = (n = 100) =>
@@ -125,6 +125,30 @@ test("exactly two signals produce LONG SHORT or NO_TRADE; non-directional pair c
   assert.equal(I.signal(f, ["EMA", "RSI"]), "SHORT");
   assert.equal(I.signal(f, ["ATR", "RVOL"]), "NO_TRADE");
   assert.throws(() => I.signal(f, ["EMA"]), /TWO_INDICATORS/);
+});
+test('ten readings require five of eight directional votes; ATR and RVOL cannot invent a side', () => {
+  const names = I.DIRECTIONAL;
+  const feature = { ready: true, signals: Object.fromEntries([
+    ...names.map((name, i) => [name, { signal: i < 5 ? 'LONG' : 'SHORT' }]),
+    ['ATR', { signal: 'ACTIVE' }], ['RVOL', { signal: 'ACTIVE' }],
+  ]) };
+  const approved = I.consensus(feature, 5);
+  assert.equal(approved.direction, 'LONG');
+  assert.equal(approved.supporting, 5);
+  assert.equal(approved.opposing, 3);
+  assert.equal(approved.confirmations, 2);
+  feature.signals[names[4]].signal = 'SHORT';
+  assert.equal(I.consensus(feature, 5).direction, 'NO_TRADE');
+  assert.equal(I.consensus({ ready: false, signals: feature.signals }, 5).direction, 'NO_TRADE');
+});
+test('minimum Binance lot is rejected only when its lower-bound stop risk exceeds the budget', () => {
+  const { minimumLotRisk } = require('../services/strategy/engine');
+  const symbol = { filters: [
+    { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001', maxQty: '100' },
+    { filterType: 'MIN_NOTIONAL', notional: '5' },
+  ] };
+  assert(minimumLotRisk(symbol, 100000, 1000, policy) > 100 * policy.riskFraction);
+  assert(minimumLotRisk(symbol, 100, 0.5, policy) < 100 * policy.riskFraction);
 });
 test("data gaps, duplicate and corrupt OHLC cannot generate signals", () => {
   for (const alter of [

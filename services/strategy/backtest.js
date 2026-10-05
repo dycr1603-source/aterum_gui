@@ -1,5 +1,5 @@
 "use strict";
-const { calculate, signal } = require("./indicators"),
+const { calculate, signal, consensus } = require("./indicators"),
   { levels, size, pnl } = require("./risk"),
   { metrics, breakdown } = require("./metrics"),
   { planProtection } = require("./trailing");
@@ -27,6 +27,7 @@ function unitTrades(
     end,
     policy,
     entrySignals = null,
+    entryMode = "pair",
   },
 ) {
   const { bars, features, intervalMs, funding } = data,
@@ -75,7 +76,8 @@ function unitTrades(
       if (entrySignals) {
         provided = entrySignals.get(b.time);
         side = provided?.side || "NO_TRADE";
-      } else side = signal(f, pair);
+      } else side = entryMode === "consensus10"
+        ? consensus(f, policy.minVotes ?? 5).direction : signal(f, pair);
       if (!directions.includes(side)) continue;
       const recent = bars.slice(
           Math.max(0, si - Math.ceil(86400000 / intervalMs) + 1),

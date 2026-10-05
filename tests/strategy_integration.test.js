@@ -157,6 +157,49 @@ for (const side of ["LONG", "SHORT", "NO_TRADE"])
       assert.equal(m.requests.length, 2);
     }
   });
+test('JEV receives all ten readings and the ranked candidate context', async () => {
+  const input = d();
+  input.strategy.version = 'consensus-10-v1';
+  input.strategy.directions = ['LONG'];
+  input.strategy.indicators = [
+    ...input.strategy.indicators,
+    ...['SUPERTREND','ADX','MACD','STOCH_RSI','BOLLINGER','VWAP','ATR','RVOL']
+      .map(name => ({ name, value: 1, signal: ['ATR','RVOL'].includes(name) ? 'ACTIVE' : 'LONG' })),
+  ];
+  input.strategy.voteSummary = { direction: 'LONG', supporting: 6, opposing: 1, confirmations: 2 };
+  input.strategy.candidateRank = 1;
+  input.strategy.candidateCount = 12;
+  const m = mock('LONG');
+  const result = await evaluate(input, { cfg, now: () => now, ...m });
+  assert.equal(result.decision, 'LONG', JSON.stringify(result));
+  assert.equal(m.requests[0].state.indicators.length, 10);
+  assert.equal(m.requests[0].state.voteSummary.supporting, 6);
+  assert.match(m.requests[0].questions[Object.keys(m.requests[0].questions)[0]].instructions, /ranks 1 of 12/);
+});
+test('JEV retries a transient Binance leverage-data failure before rejecting a candidate', async () => {
+  const m = mock('LONG');
+  let failures = 0;
+  const fetchImpl = async (url, args) => {
+    if (url.includes('commissionRate') && failures++ === 0)
+      return { ok: false, status: 429, headers: { get: () => null }, json: async () => ({ code: -1003, msg: 'rate limit' }) };
+    return m.fetchImpl(url, args);
+  };
+  const result = await evaluate(d(), { cfg, now: () => now, fetchImpl, sleep: async () => {} });
+  assert.equal(result.decision, 'LONG', JSON.stringify(result));
+  assert.equal(failures, 2);
+});
+test('JEV retries a temporary capacity 503 and still enforces the returned capacity', async () => {
+  const m = mock('LONG');
+  let calls = 0;
+  const fetchImpl = async (url, args) => {
+    if (url.includes('portfolio-capacity') && calls++ === 0)
+      return { ok: false, status: 503 };
+    return m.fetchImpl(url, args);
+  };
+  const result = await evaluate(d(), { cfg, now: () => now, fetchImpl, sleep: async () => {} });
+  assert.equal(result.decision, 'LONG', JSON.stringify(result));
+  assert.equal(calls, 2);
+});
 for (const failure of ["unavailable", "invalid"])
   test(`JEV ${failure} closes new-entry gate`, async () => {
     const r = await evaluate(d(), {
@@ -332,7 +375,7 @@ test('engine checks every eligible symbol when no entry is found', async () => {
     if (sql.includes('FROM strategy_events WHERE event_type=')) return [[]];
     return [[]];
   } };
-  let depthRequests = 0;
+  let depthRequests = 0, klineRequests = 0;
   const fetchImpl = async url => {
     let data;
     if (url.includes('portfolio-capacity')) data = { checkedAt: new Date(when).toISOString(), allowed: true, account: { equity: 1000 }, positions: [] };
@@ -341,7 +384,7 @@ test('engine checks every eligible symbol when no entry is found', async () => {
     else if (url.endsWith('/ticker/bookTicker')) data = symbols.map(symbol => ({ symbol, bidPrice: '99.99', askPrice: '100.01' }));
     else if (url.includes('/depth')) { depthRequests++; data = { bids: [], asks: [] }; }
     else if (url.includes('/premiumIndex')) data = { lastFundingRate: '0.0001' };
-    else if (url.includes('/klines')) data = candles;
+    else if (url.includes('/klines')) { klineRequests++; data = candles; }
     else throw Error(`Unexpected URL ${url}`);
     return { ok: true, json: async () => data };
   };
@@ -352,8 +395,56 @@ test('engine checks every eligible symbol when no entry is found', async () => {
   assert.equal(result.universeSummary.eligible, 30);
   assert.equal(result.universeSummary.scanned, 30);
   assert.equal(result.universeSummary.checked.length, 30);
-  assert(result.universeSummary.checked.every(x => x.reasons.includes('NO_TWO_INDICATOR_SIGNAL')));
+  assert(result.universeSummary.checked.every(x => x.reasons.includes('INSUFFICIENT_VOTES')));
   assert.equal(depthRequests, 0);
+  const repeated = await cycle({ db, fetchImpl, policy, report, now: () => when,
+    evaluateJev: () => assert.fail('No symbol passed market quality') });
+  assert.equal(repeated.universeSummary.scanned, 30);
+  assert.equal(klineRequests, 30, 'closed 4h candles are reused until the next bar');
+});
+test('engine ranks the full universe and asks JEV about the next candidate after a veto', async () => {
+  const when = 1800000000000, interval = 14400000;
+  const symbols = { BESTUSDT: 0.05, NEXTUSDT: 0.01 };
+  const lastPrice = Object.fromEntries(Object.entries(symbols).map(([symbol, slope]) => [symbol, 100 + slope * 239 + (symbol === 'NEXTUSDT' ? 0.1 * Math.sin(239 * 0.5) : 0)]));
+  const candles = Object.fromEntries(Object.entries(symbols).map(([symbol, slope]) => [symbol,
+    Array.from({ length: 240 }, (_, i) => {
+      const openTime = when - (240 - i) * interval;
+      const close = 100 + slope * i + (symbol === 'NEXTUSDT' ? 0.1 * Math.sin(i * 0.5) : 0);
+      return [openTime, String(close), String(close + 1), String(close - 1), String(close), '100', openTime + interval - 1, '10000'];
+    })]));
+  const db = { execute: async sql => {
+    if (sql.includes('FROM strategy_breaker')) return [[{ halted: 0, peak_equity: 1000 }]];
+    if (sql.includes('FROM trades WHERE')) return [[]];
+    if (sql.includes('FROM strategy_events WHERE event_type=')) return [[]];
+    return [[]];
+  } };
+  const json = data => ({ ok: true, json: async () => data });
+  const fetchImpl = async url => {
+    if (url.includes('portfolio-capacity')) return json({ checkedAt: new Date(when).toISOString(), allowed: true, account: { equity: 1000 }, positions: [] });
+    if (url.endsWith('/exchangeInfo')) return json({ symbols: Object.keys(symbols).map(symbol => ({ symbol, quoteAsset: 'USDT', contractType: 'PERPETUAL', status: 'TRADING', onboardDate: when - 120 * 86400000 })) });
+    if (url.endsWith('/ticker/24hr')) return json(Object.keys(symbols).map(symbol => ({ symbol, quoteVolume: symbol === 'BESTUSDT' ? '10000000' : '1000000000' })));
+    if (url.endsWith('/ticker/bookTicker')) return json(Object.keys(symbols).map(symbol => ({ symbol, bidPrice: 100, askPrice: 100.01 })));
+    const symbol = new URL(url).searchParams.get('symbol');
+    if (url.includes('/klines') && url.includes('interval=1d')) return json([]);
+    if (url.includes('/klines')) return json(candles[symbol]);
+    if (url.includes('/depth')) return json({ bids: [[lastPrice[symbol], '1000']], asks: [[lastPrice[symbol], '1000']] });
+    if (url.includes('/premiumIndex')) return json({ lastFundingRate: '0.0001', nextFundingTime: when + interval });
+    throw Error(`Unexpected URL ${url}`);
+  };
+  const calls = [];
+  const result = await cycle({ db, fetchImpl, policy, report: require('../docs/strategy/results.json'), now: () => when,
+    evaluateJev: async d => {
+      calls.push({ symbol: d.symbol, votes: d.strategy.voteSummary.supporting, count: d.strategy.indicators.length, directions: d.strategy.directions });
+      return calls.length === 1 ? { decision: 'NO_TRADE', reason: 'JEV_INVALID_RESPONSE' } :
+        calls.length === 2 ? { decision: 'NO_TRADE', reason: 'JEV_NO_TRADE' } :
+        { id: 'a'.repeat(64), decision: d.strategy.directions[0], mode: 'enforce', proposal: { entry: lastPrice[d.symbol], sl: lastPrice[d.symbol] - 1, tp: lastPrice[d.symbol] + 3, leverage: 5 }, risk: { quantity: 1, margin: 20, riskAtStop: 5, expectedR: 2 } };
+    } });
+  assert.deepEqual(calls.map(x => x.symbol), ['BESTUSDT', 'BESTUSDT', 'NEXTUSDT']);
+  assert(calls.every(x => x.count === 10 && x.directions.length === 1));
+  assert.equal(result.universeSummary.scanned, 2);
+  assert.equal(result.universeSummary.marketQualified, 2);
+  assert.equal(result.passAI, true);
+  assert.equal(result.symbol, 'NEXTUSDT');
 });
 
 test("feedback uses actual Binance entry time and filled quantity, not delayed DB time/request quantity", async () => {

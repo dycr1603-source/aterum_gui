@@ -4,8 +4,10 @@ const { config, fresh, validateLevels } = require('./jev');
 // Runs inside the sole writer, after a live quote and before any exchange mutation.
 async function validateJevExecution(request, { db, livePrice, quoteTime, rules, now = Date.now(), cfg = config() }) {
   const receipt = request.tradeContext?.jev;
-  if (process.env.STRATEGY_ENGINE === 'two-indicator' && request.tradeContext?.strategy?.version !== 'two-indicator-v1') throw new Error('STRATEGY_RECEIPT_REQUIRED');
-  const simpleRequired = process.env.STRATEGY_ENGINE === 'two-indicator' || request.tradeContext?.strategy?.version === 'two-indicator-v1';
+  const strategyVersion = request.tradeContext?.strategy?.version;
+  const supportedStrategy = ['two-indicator-v1', 'consensus-10-v1'].includes(strategyVersion);
+  if (process.env.STRATEGY_ENGINE === 'two-indicator' && !supportedStrategy) throw new Error('STRATEGY_RECEIPT_REQUIRED');
+  const simpleRequired = process.env.STRATEGY_ENGINE === 'two-indicator' || supportedStrategy;
   if (simpleRequired && (!cfg.enabled || cfg.observe || receipt?.mode !== 'enforce')) throw new Error('STRATEGY_JEV_ENFORCEMENT_REQUIRED');
   if (receipt?.mode === 'enforce' && (!cfg.enabled || cfg.observe)) throw new Error('JEV_ENFORCEMENT_DISABLED');
   if (!cfg.enabled && (!receipt || receipt.mode === 'observe')) return;
@@ -20,8 +22,8 @@ async function validateJevExecution(request, { db, livePrice, quoteTime, rules, 
   fresh(quoteTime, now, cfg.maxAgeMs);
   if (!Number.isFinite(result.expiresAt) || now > result.expiresAt) throw new Error('JEV_STALE_DATA');
   const p = result.proposal;
-  if (request.tradeContext?.strategy && result.strategy?.version !== 'two-indicator-v1') throw new Error('STRATEGY_RECEIPT_REQUIRED');
-  if (result.strategy?.version === 'two-indicator-v1') {
+  if (request.tradeContext?.strategy && !['two-indicator-v1', 'consensus-10-v1'].includes(result.strategy?.version)) throw new Error('STRATEGY_RECEIPT_REQUIRED');
+  if (['two-indicator-v1', 'consensus-10-v1'].includes(result.strategy?.version)) {
     const { load, promotion } = require('./strategy/policy');
     const policy = load();
     const report = require('./strategy/engine').readReport();

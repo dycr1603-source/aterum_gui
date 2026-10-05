@@ -83,4 +83,4 @@ docker compose --profile trading --profile ai --profile aux ps
 curl --fail http://127.0.0.1:3001/healthz
 ```
 
-Comprobar en n8n que el workflow principal, SL Monitor y Trailing Manager estén publicados; comprobar que Position Guard, JEV y Telegram estén saludables. La política del repositorio fija ADX+Bollinger 4h LONG/SHORT con ADX ≥22, bandas ±1,8 y objetivo neto mínimo 1,5R, dos posiciones, leverage 5–10x y hasta 45% de margen por posición sujeto al presupuesto de pérdida. El resultado histórico sigue marcado `MANUAL_UNVALIDATED`.
+Comprobar en n8n que el workflow principal, SL Monitor y Trailing Manager estén publicados; comprobar que Position Guard, JEV y Telegram estén saludables. La política del repositorio usa consenso de diez lecturas en 4h: al menos cinco de ocho indicadores direccionales deben coincidir; ATR y RVOL son contexto. Se ordenan los candidatos por consenso y liquidez antes de consultar JEV. Se exige objetivo neto mínimo 1,5R, con dos posiciones como máximo, leverage 5–10x y hasta 45% de margen por posición sujeto al presupuesto de pérdida. El resultado histórico sigue marcado `MANUAL_UNVALIDATED`.

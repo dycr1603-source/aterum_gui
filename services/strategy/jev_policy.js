@@ -125,7 +125,7 @@ function projections({
     }
   }
   return {
-    policyVersion: "two-indicator-v1",
+    policyVersion: d.strategy.version,
     allowedChoices: Object.keys(result).map(Number),
     projections: result,
     caps: [],
@@ -164,7 +164,8 @@ function preflight(d, entry, symbol, candidates, capacity) {
 function state(d, market, candidates, capacity) {
   const [a, b] = d.strategy.indicators;
   return {
-    schemaVersion: "aterum-two-indicator-v1",
+    schemaVersion: d.strategy.version === "consensus-10-v1"
+      ? "aterum-consensus-10-v1" : "aterum-two-indicator-v1",
     symbol: d.symbol,
     price: market.entry,
     timeframe: d.timeframe,
@@ -177,6 +178,10 @@ function state(d, market, candidates, capacity) {
     indicator_2: b.name,
     indicator_2_value: b.value,
     indicator_2_signal: b.signal,
+    indicators: d.strategy.indicators,
+    voteSummary: d.strategy.voteSummary || null,
+    candidateRank: d.strategy.candidateRank || null,
+    candidateCount: d.strategy.candidateCount || null,
     contextualVolatility: d.indicators.atr,
     recentCandles: d.strategy.recentCandles,
     volume: d.strategy.volume,

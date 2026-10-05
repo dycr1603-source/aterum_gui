@@ -10,14 +10,16 @@ if (d.success !== true || d.finalStatus !== 'VERIFIED' || verification.verified 
   throw new Error(`TRADE_OPENED notification blocked for unverified lifecycle state (${d.finalStatus || 'UNKNOWN'})`);
 }
 
-// The two-indicator engine has no synthetic technical score provenance.
+// The strategy engine has no synthetic technical score provenance.
 if (d.strategyV2 === true) {
-  if (d.strategy?.indicators?.length !== 2 || !d.jev?.risk || allocation.allowed !== true) throw new Error('STRATEGY_OPEN_PROVENANCE_MISSING');
+  if (![2, 10].includes(d.strategy?.indicators?.length) || !d.jev?.risk || allocation.allowed !== true) throw new Error('STRATEGY_OPEN_PROVENANCE_MISSING');
+  const votes = d.strategy.voteSummary;
   const text = ['✅ ATERUM · BINANCE CONFIRMED', `${d.symbol} ${position.side || d.direction}`,
     `Entry: ${position.entryPrice} · SL: ${requested.stopLoss} · TP: ${requested.takeProfit}`,
     `Leverage: ${d.leverage}x · capital at risk (incl. costs): ${d.jev.risk.riskAtStop} USDT`,
     `Expected net R: ${d.jev.risk.expectedR} · JEV confidence: ${d.jev.confidence}%`,
-    ...d.strategy.indicators.map(i => `${i.name}: ${JSON.stringify(i.value)} / ${i.signal}`),
+    ...(votes ? [`Consenso: ${votes.supporting}/8 a favor · ${votes.opposing}/8 en contra · rango ${d.strategy.candidateRank}/${d.strategy.candidateCount}`]
+      : d.strategy.indicators.map(i => `${i.name}: ${JSON.stringify(i.value)} / ${i.signal}`)),
     `Binance order: ${d.exchangeOrderId} · execution: ${d.executionId}`].join('\n');
   return [{json:{...d,text,notificationEventKey:`open:${d.executionId}`,notificationState:'TRADE_OPENED_VERIFIED_STRATEGY'}}];
 }

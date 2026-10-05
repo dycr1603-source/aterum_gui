@@ -37,6 +37,13 @@ function load(
     p.maxLossStreak < 2 ||
     !["1h", "4h"].includes(p.timeframe) ||
     ![0.8, 1, 1.2].includes(p.scale) ||
+    !["pair", "consensus10"].includes(p.entryMode ?? "pair") ||
+    !Number.isInteger(p.minVotes ?? 5) ||
+    (p.minVotes ?? 5) < 5 ||
+    (p.minVotes ?? 5) > 8 ||
+    !Number.isFinite(p.depthNotionalMultiple ?? 5) ||
+    (p.depthNotionalMultiple ?? 5) < 1 ||
+    (p.depthNotionalMultiple ?? 5) > 20 ||
     !Number.isFinite(p.adxThreshold ?? 25) ||
     (p.adxThreshold ?? 25) < 10 ||
     (p.adxThreshold ?? 25) > 40 ||
@@ -121,8 +128,13 @@ function promotion(p, report) {
     (p.adxThreshold ?? 25) === (manualCandidate?.adxThreshold ?? 25) &&
     (p.bollingerSigma ?? 2) === (manualCandidate?.bollingerSigma ?? 2) &&
     (p.minExpectedR ?? 0) === (manualCandidate?.minExpectedR ?? 0);
-  return { allowed: !reasons.length || manualAllowed, reasons,
+  const manualSettingsMatch =
+    (p.entryMode ?? "pair") === (manualCandidate?.entryMode ?? "pair") &&
+    (p.minVotes ?? 5) === (manualCandidate?.minVotes ?? 5) &&
+    p.minDepthQuote === (manualCandidate?.minDepthQuote ?? p.minDepthQuote) &&
+    (p.depthNotionalMultiple ?? 5) === (manualCandidate?.depthNotionalMultiple ?? 5);
+  return { allowed: !reasons.length || (manualAllowed && manualSettingsMatch), reasons,
     validationPassed: !reasons.length,
-    activation: manualAllowed ? 'MANUAL_UNVALIDATED' : !reasons.length ? 'VALIDATED' : 'BLOCKED' };
+    activation: manualAllowed && manualSettingsMatch ? 'MANUAL_UNVALIDATED' : !reasons.length ? 'VALIDATED' : 'BLOCKED' };
 }
 module.exports = { load, promotion };

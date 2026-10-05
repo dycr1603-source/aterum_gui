@@ -326,7 +326,7 @@ class PositionGuard {
       } catch (error) { await connection.rollback(); throw error; }
       finally { connection.release(); }
       const cleanup = await this.cleanupOrphanProtection(expected);
-      if (expected.policy_version === 'two-indicator-v1' && this.executionEngine?.captureStrategyClose) {
+      if (['two-indicator-v1', 'consensus-10-v1'].includes(expected.policy_version) && this.executionEngine?.captureStrategyClose) {
         await this.executionEngine.captureStrategyClose(expected, { symbol: expected.symbol,
           positionSide: expected.direction, exitPrice, pnl, closeReason: 'SYNC', closedAt: Date.now() });
       }

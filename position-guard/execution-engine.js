@@ -10,6 +10,7 @@ const EXECUTION_TYPES = new Set([
 ]);
 const TERMINAL_STATUSES = new Set(['VERIFIED', 'REJECTED', 'FAILED']);
 const ACTIVE_ORDER_STATUSES = new Set(['NEW', 'PARTIALLY_FILLED']);
+const isStrategyVersion = version => ['two-indicator-v1', 'consensus-10-v1'].includes(version);
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function json(value) { return JSON.stringify(value ?? null); }
@@ -145,7 +146,7 @@ class ExecutionEngine {
     if (!/^[A-Z0-9_]{3,24}$/.test(request.symbol)) throw new Error('Invalid symbol');
     if (!['LONG', 'SHORT'].includes(request.positionSide)) throw new Error('positionSide must be LONG or SHORT');
     if (request.type === 'OPEN_POSITION') {
-      if (request.tradeContext?.strategy?.version === 'two-indicator-v1' && (!Number.isInteger(request.leverage) || request.leverage < 1 || request.leverage > 10)) throw new Error('INVALID_LEVERAGE');
+      if (isStrategyVersion(request.tradeContext?.strategy?.version) && (!Number.isInteger(request.leverage) || request.leverage < 1 || request.leverage > 10)) throw new Error('INVALID_LEVERAGE');
       request.quantity = number(request.quantity, 'quantity');
       request.stopLoss = number(request.stopLoss, 'stopLoss');
       request.takeProfit = number(request.takeProfit, 'takeProfit');
@@ -333,7 +334,7 @@ class ExecutionEngine {
       try {
         const [entries] = await this.db.execute('SELECT request_payload FROM trade_executions WHERE execution_id=?', [trade.execution_id]);
         const original = parsedJson(entries[0]?.request_payload);
-        if (original?.tradeContext?.strategy?.version === 'two-indicator-v1') strategyOriginal = original;
+        if (isStrategyVersion(original?.tradeContext?.strategy?.version)) strategyOriginal = original;
         const receiptId = original?.tradeContext?.jev?.id;
         if (receiptId) {
           const [decisions] = await this.db.execute('SELECT result FROM jev_decisions WHERE id=?', [receiptId]);
@@ -463,7 +464,7 @@ class ExecutionEngine {
           verificationResult, timestamp: new Date().toISOString(), finalStatus: 'VERIFIED', attemptCount: attempts };
       } catch (error) {
         lastError = error;
-        if (request.tradeContext?.strategy?.version === 'two-indicator-v1') {
+        if (isStrategyVersion(request.tradeContext?.strategy?.version)) {
           await require('../services/strategy/store').halt(this.db, error.message);
         }
         verificationResult = error.verificationResult || verificationResult;
@@ -638,7 +639,7 @@ class ExecutionEngine {
     }
     let jevFeeAmount = 0;
     const strategy = request.tradeContext?.strategy;
-    if (strategy?.version === 'two-indicator-v1' && !marketOrder && !before.position) {
+    if (isStrategyVersion(strategy?.version) && !marketOrder && !before.position) {
       const allPositions = (await this.binance.positions()).map(normalizePosition).filter(Boolean);
       const [local] = await this.db.execute("SELECT symbol,direction,qty FROM trades WHERE status='OPEN'");
       const matches = local.length === allPositions.length && local.every(t => allPositions.some(p => p.symbol === t.symbol && p.side === t.direction && near(p.qty, t.qty)));
@@ -660,7 +661,7 @@ class ExecutionEngine {
       // Conservative buffer also covers rate changes between sizing and execution.
       const feeRate = Math.max(takerFee, 0.001);
       jevFeeAmount = quantity * (livePrice + stopLoss) * feeRate;
-      if (strategy?.version === 'two-indicator-v1') {
+      if (isStrategyVersion(strategy?.version)) {
         const policy = strategy.riskPolicy;
         jevFeeAmount += quantity * ((livePrice + stopLoss) * policy.slippageBps / 10000 + livePrice * policy.fundingReserve);
         if (quantity * Math.abs(livePrice - stopLoss) + jevFeeAmount > Number(request.tradeContext.maxLoss) + 1e-8) throw new Error('STRATEGY_RISK_BUDGET_EXCEEDED');
@@ -673,7 +674,7 @@ class ExecutionEngine {
       portfolioAllocation = await this.portfolioAllocator.capacity({ symbol: request.symbol,
         positionSide: request.positionSide, quantity, entryPrice: livePrice, stopLoss,
         leverage: request.leverage, riskFeeAmount: jevFeeAmount });
-      if (strategy?.version === 'two-indicator-v1' && portfolioAllocation.allowed) {
+      if (isStrategyVersion(strategy?.version) && portfolioAllocation.allowed) {
         const p = strategy.riskPolicy, equity = Number(portfolioAllocation.account.equity);
         const margin = quantity * livePrice / request.leverage;
         if (margin > equity * (p.maxMarginFractionPerPosition ?? 0.9) + 1e-8 || margin + Number(portfolioAllocation.account.marginUsed) > equity * (p.maxTotalMarginFraction ?? 0.9) + 1e-8) throw new Error('STRATEGY_MARGIN_BUDGET_EXCEEDED');
@@ -910,7 +911,7 @@ class ExecutionEngine {
         const [rows] = await this.db.execute('SELECT request_payload FROM trade_executions WHERE execution_id=?', [trade.execution_id]);
         original = parsedJson(rows[0]?.request_payload);
       }
-      if (original?.tradeContext?.strategy?.version !== 'two-indicator-v1') return null;
+      if (!isStrategyVersion(original?.tradeContext?.strategy?.version)) return null;
       return await require('../services/strategy/feedback').capture({ db: this.db, binance: this.binance, trade, original, close });
     } catch (error) {
       console.error('[Strategy feedback]', error.message);

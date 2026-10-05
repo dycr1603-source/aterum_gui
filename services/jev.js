@@ -88,8 +88,9 @@ function choiceAnswer(body, key, criteria) {
       keys.some(k => a.probabilities[k] > a.probabilities[a.choice])) throw new Error('JEV_INVALID_RESPONSE');
   return a;
 }
-async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now } = {}) {
-  const simple = d.strategy?.version === 'two-indicator-v1';
+async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  const simple = ['two-indicator-v1', 'consensus-10-v1'].includes(d.strategy?.version);
   const id = requestId(d);
   const result = { id, symbol: d.symbol, provider: cfg.provider, mode: cfg.observe ? 'observe' : 'enforce',
     decision: 'NO_TRADE', proposedDecision: 'NO_TRADE', reason: null,
@@ -107,13 +108,21 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     if (adapterEnabled(cfg) && !cfg.adapterToken) throw new Error('JEV_ADAPTER_NOT_CONFIGURED');
     if (!cfg.executionToken) throw new Error('JEV_CAPACITY_UNAVAILABLE');
     let capacity;
-    try {
-      const response = await fetchImpl(cfg.capacityUrl, { headers: { authorization: `Bearer ${cfg.executionToken}` },
-        signal: AbortSignal.timeout(cfg.timeoutMs) });
-      if (!response.ok) throw new Error('capacity');
-      capacity = await response.json();
-      fresh(Date.parse(capacity.checkedAt), now(), cfg.maxAgeMs);
-    } catch (_) { throw new Error('JEV_CAPACITY_UNAVAILABLE'); }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetchImpl(cfg.capacityUrl, { headers: { authorization: `Bearer ${cfg.executionToken}` },
+          signal: AbortSignal.timeout(cfg.timeoutMs) });
+        if (!response.ok) throw Object.assign(new Error('capacity'), { status: response.status });
+        capacity = await response.json();
+        fresh(Date.parse(capacity.checkedAt), now(), cfg.maxAgeMs);
+        break;
+      } catch (error) {
+        if (attempt === 1) throw new Error('JEV_CAPACITY_UNAVAILABLE');
+        const rateLimited = [429, 502, 503, 504].includes(Number(error.status));
+        const delay = rateLimited ? 61000 - Date.now() % 60000 : 1000;
+        await sleep(delay);
+      }
+    }
     result.validations.capacityChecked = true;
     const get = async url => {
       const r = await fetchImpl(url, { signal: AbortSignal.timeout(cfg.timeoutMs) });
@@ -146,19 +155,29 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     if (simple || cfg.dynamicLeverageEnabled) {
       if (!cfg.binanceApiKey || !cfg.binanceApiSecret) throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE');
       const binance = new BinanceFutures({ apiKey: cfg.binanceApiKey, apiSecret: cfg.binanceApiSecret, fetchImpl });
-      let rawBrackets, commission;
-      try { [rawBrackets, commission] = await Promise.all([
-        binance.leverageBracket(d.symbol), binance.commissionRate(d.symbol)
-      ]); } catch (_) { throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE'); }
-      const bracketRow = (Array.isArray(rawBrackets) ? rawBrackets : [rawBrackets]).find(row => row.symbol === d.symbol);
-      const coefficient = Number(bracketRow?.notionalCoef || 1);
-      leverageMarket = { brackets: bracketRow?.brackets?.map(row => ({ ...row,
-        notionalFloor: Number(row.notionalFloor) * coefficient,
-        notionalCap: Number(row.notionalCap) * coefficient })),
-      feeRate: Number(commission?.takerCommissionRate) };
-      if (!Number.isFinite(leverageMarket.feeRate) || leverageMarket.feeRate < 0 ||
-          !Array.isArray(leverageMarket.brackets) || !leverageMarket.brackets.length)
-        throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE');
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const [rawBrackets, commission] = await Promise.all([
+            binance.leverageBracket(d.symbol), binance.commissionRate(d.symbol)
+          ]);
+          const bracketRow = (Array.isArray(rawBrackets) ? rawBrackets : [rawBrackets]).find(row => row.symbol === d.symbol);
+          const coefficient = Number(bracketRow?.notionalCoef || 1);
+          const candidate = { brackets: bracketRow?.brackets?.map(row => ({ ...row,
+            notionalFloor: Number(row.notionalFloor) * coefficient,
+            notionalCap: Number(row.notionalCap) * coefficient })),
+          feeRate: Number(commission?.takerCommissionRate) };
+          if (!Number.isFinite(candidate.feeRate) || candidate.feeRate < 0 ||
+              !Array.isArray(candidate.brackets) || !candidate.brackets.length)
+            throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE');
+          leverageMarket = candidate;
+          break;
+        } catch (error) {
+          const transient = [408, 429, 500, 502, 503, 504].includes(Number(error.statusCode)) ||
+            /timeout|timed out|fetch failed|ECONNRESET|EAI_AGAIN/i.test(String(error.message));
+          if (!transient || attempt === 1) throw new Error('JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE');
+          await sleep(Math.min(30000, Math.max(1000, Number(error.retryAfterMs || 0))));
+        }
+      }
     }
     const available = Object.fromEntries(Object.entries(preflight.sides).map(([side, sideOptions]) =>
       [side, { sl: sideOptions.sl, tp: sideOptions.tp }]));
@@ -171,12 +190,15 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now }
     for (const side of Object.keys(available)) directionCriteria[side] = `Propose a ${side.toLowerCase()} position within the available account capacity.`;
     const referenceInstructions = state.marketContext?.intelligenceSignal
       ? ' Intelligence is a high-confidence deterministic heuristic reference, not a prior Jev decision or an operational veto. Assess it alongside the market evidence and decide independently.' : '';
-    const questions = { [prefix]: choice('Decide independently whether to open no position, LONG, or SHORT from this market snapshot. NO_TRADE is fully valid. Only capacity-feasible sides are offered. Evaluate entry timing, exhaustion, volume and reversal risk, not just trend direction. Prefer NO_TRADE when a timely setup is unsupported. Scores and your option probabilities are not calibrated probabilities of profit; do not chase losses.' + referenceInstructions, directionCriteria) };
+    const consensusContext = d.strategy?.version === 'consensus-10-v1'
+      ? ` This asset ranks ${d.strategy.candidateRank} of ${d.strategy.candidateCount} market-qualified candidates after a full eligible-universe scan, with ${d.strategy.voteSummary?.supporting} directional votes and ${d.strategy.voteSummary?.opposing} opposing votes. A valid consensus is an entry opportunity, not proof of profit. Choose the offered direction when timing and market context support it; use NO_TRADE for a concrete adverse factor.`
+      : '';
+    const questions = { [prefix]: choice('Decide independently whether to open no position, LONG, or SHORT from this market snapshot. NO_TRADE is fully valid. Only capacity-feasible sides are offered. Evaluate entry timing, exhaustion, volume and reversal risk, not just trend direction. Prefer NO_TRADE when a timely setup is unsupported. Scores and your option probabilities are not calibrated probabilities of profit; do not chase losses.' + consensusContext + referenceInstructions, directionCriteria) };
     if (simple) questions[`${prefix}_reason`] = choice('Choose the primary explanation for your decision. For NO_TRADE, explain missing edge, account exposure or uncertainty. This describes your choice and does not add another technical indicator.', {
       TREND_CONTINUATION: 'Trend continuation is the primary hypothesis for this opportunity.',
       BREAKOUT: 'The observed price structure supports a breakout hypothesis.',
       REVERSION: 'The observed price structure supports a mean-reversion hypothesis.',
-      INSUFFICIENT_EDGE: 'The two signals do not offer enough expected net edge in this context.',
+      INSUFFICIENT_EDGE: 'The technical signals do not offer enough expected net edge in this context.',
       EXPOSURE_RISK: 'Current positions or exposure make this opportunity unattractive.',
       UNCERTAIN_CONTEXT: 'The market context is too uncertain for a new position.'
     });
