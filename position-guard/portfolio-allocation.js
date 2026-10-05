@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizePosition, isStop, triggerPrice } = require('./binance');
+const { normalizePosition, isStop, triggerPrice, protectionOrdersForPositions } = require('./binance');
 
 function finite(value, fallback = 0) {
   const parsed = Number(value);
@@ -204,10 +204,11 @@ function calculateCapacity({ balanceRows = [], positionRows = [], protectiveOrde
 class PortfolioAllocator {
   constructor({ config, binance, db = null }) { this.config = config; this.binance = binance; this.db = db; }
   async capacity(candidate = null) {
-    const [balanceRows, positionRows, regularOrders, algoOrders, tradeRows] = await Promise.all([
-      this.binance.balance(), this.binance.positions(), this.binance.openOrders(), this.binance.openAlgoOrders(),
-      this.loadTradeRows()
+    const [balanceRows, positionRows, tradeRows] = await Promise.all([
+      this.binance.balance(), this.binance.positions(), this.loadTradeRows()
     ]);
+    const { regular: regularOrders, algo: algoOrders } =
+      await protectionOrdersForPositions(this.binance, positionRows);
     return calculateCapacity({ balanceRows, positionRows, protectiveOrders: [...regularOrders, ...algoOrders],
       candidate, limits: this.config, tradeRows });
   }

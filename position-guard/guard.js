@@ -1,7 +1,8 @@
 'use strict';
 const { deliver } = require('../services/telegram_delivery');
 
-const { normalizePosition, isStop, isTakeProfit, triggerPrice } = require('./binance');
+const { normalizePosition, isStop, isTakeProfit, triggerPrice,
+  protectionOrdersForPositions } = require('./binance');
 const { readOpenTime } = require('./open-time');
 
 function json(value) { return JSON.stringify(value ?? null); }
@@ -381,9 +382,11 @@ class PositionGuard {
       reconciled: 0, driftDetected: 0, adopted: 0, pendingPersistence: 0, pendingExecutions: 0,
       projectionsRefreshed: 0, errors: [] };
     try {
-      const [positionRows, regularOrders, algoOrders, expectedRows] = await Promise.all([
-        this.binance.positions(), this.binance.openOrders(), this.binance.openAlgoOrders(), this.expectedTrades()
+      const [positionRows, expectedRows] = await Promise.all([
+        this.binance.positions(), this.expectedTrades()
       ]);
+      const { regular: regularOrders, algo: algoOrders } =
+        await protectionOrdersForPositions(this.binance, positionRows);
       const allOrders = [...regularOrders, ...algoOrders];
       const positions = positionRows.map(normalizePosition).filter(Boolean);
       summary.positions = positions.length;

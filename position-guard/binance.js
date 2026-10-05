@@ -141,4 +141,19 @@ function matchesPosition(row, symbol, side) {
   return position && position.symbol === symbol && position.side === side ? position : null;
 }
 
-module.exports = { BinanceFutures, normalizePosition, matchesPosition, isStop, isTakeProfit, triggerPrice };
+async function protectionOrdersForPositions(binance, positionRows) {
+  const symbols = [...new Set(positionRows.map(normalizePosition).filter(Boolean).map(row => row.symbol))];
+  const orders = await Promise.all(symbols.map(async symbol => {
+    const [regular, algo] = await Promise.all([
+      binance.openOrders(symbol), binance.openAlgoOrders(symbol)
+    ]);
+    return { regular, algo };
+  }));
+  return {
+    regular: orders.flatMap(row => row.regular),
+    algo: orders.flatMap(row => row.algo)
+  };
+}
+
+module.exports = { BinanceFutures, normalizePosition, matchesPosition, isStop, isTakeProfit,
+  triggerPrice, protectionOrdersForPositions };
