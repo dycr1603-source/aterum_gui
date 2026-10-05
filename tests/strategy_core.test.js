@@ -22,11 +22,13 @@ test('margin allocation caps each position at 45 percent and combined margin at 
   for (const s of Object.values(result.projections)) assert(s.margin <= 300);
   capacity.account.marginUsed = 900;
   assert.deepEqual(projections(args).allowedChoices, []);
+  capacity.account.marginUsed = 0;
+  assert.deepEqual(projections({ ...args, d: { ...args.d, strategy: { riskPolicy: { ...p, minExpectedR: 1.5 } } }, target: 100.01 }).allowedChoices, []);
 });
 test('manual activation preserves failed validation and is bound to its report and candidate', () => {
   const candidate = { pair: ['ADX', 'BOLLINGER'], timeframe: '4h', scale: 0.8, directions: ['SHORT'], management: 'existing' };
   const report = { reportId: 'test-report', frozenCandidate: candidate };
-  const p = { ...policy, ...candidate, manualActivation: { enabled: true, reportId: 'test-report', reason: 'Operator request', authorizedAt: '2026-10-04T00:00:00Z' } };
+  const p = { ...policy, ...candidate, adxThreshold: 25, bollingerSigma: 2, minExpectedR: 0, manualActivation: { enabled: true, reportId: 'test-report', reason: 'Operator request', authorizedAt: '2026-10-04T00:00:00Z' } };
   const result = promotion(p, report);
   assert.equal(result.allowed, true);
   assert.equal(result.validationPassed, false);
@@ -35,6 +37,12 @@ test('manual activation preserves failed validation and is bound to its report a
   assert.equal(promotion(p, { ...report, reportId: 'different' }).allowed, false);
   assert.equal(promotion({ ...p, directions: ['LONG'] }, report).allowed, false);
   assert.equal(promotion({ ...p, manualActivation: null }, report).allowed, false);
+});
+test('manual override binds the wider signal and reward policy exactly', () => {
+  const report = { reportId: policy.manualActivation.reportId, frozenCandidate: { pair: policy.pair, timeframe: policy.timeframe, scale: policy.scale, directions: ['SHORT'], management: 'existing' } };
+  assert.equal(promotion(policy, report).activation, 'MANUAL_UNVALIDATED');
+  for (const edit of [{ adxThreshold: 20 }, { bollingerSigma: 1.5 }, { minExpectedR: 1 }, { directions: ['SHORT'] }])
+    assert.equal(promotion({ ...policy, ...edit }, report).allowed, false);
 });
 const bars = (n = 100) =>
   Array.from({ length: n }, (_, i) => ({
@@ -65,6 +73,30 @@ test("indicator reference values, Wilder RSI/ATR and flat prices", () => {
   assert.equal(x.signals.VWAP.value, 100);
   assert.equal(x.signals.RVOL.value, 1);
   assert.equal(x.signals.STOCH_RSI.value, 50);
+});
+test('lower ADX and Bollinger thresholds increase eligible signals without changing defaults', () => {
+  const sample = (slope, wave, frequency) => Array.from({ length: 120 }, (_, i) => {
+    const close = 100 + slope * i + wave * Math.sin(i * frequency);
+    return { time: i * 14400000, open: close, high: close + 1, low: close - 1, close, volume: 100, quoteVolume: 10000 };
+  });
+  const adxBars = sample(-0.05, 0.5, 0.55);
+  const regularAdx = I.calculate(adxBars, 0.8).at(-1);
+  const widerAdx = I.calculate(adxBars, 0.8, { adxThreshold: 22, bollingerSigma: 1.8 }).at(-1);
+  assert.equal(regularAdx.signals.ADX.signal, 'NEUTRAL');
+  assert.equal(widerAdx.signals.ADX.signal, 'SHORT');
+  const bandBars = sample(-0.1, 0.1, 0.4);
+  assert.equal(I.calculate(bandBars, 0.8).at(-1).signals.BOLLINGER.signal, 'NEUTRAL');
+  assert.equal(I.calculate(bandBars, 0.8, { adxThreshold: 22, bollingerSigma: 1.8 }).at(-1).signals.BOLLINGER.signal, 'SHORT');
+});
+test('JEV target choices offer at least two gross reward units for the widest stop', () => {
+  const { levelOptions } = require('../services/strategy/jev_policy');
+  const result = levelOptions({ strategy: { directions: ['LONG', 'SHORT'], recentCandles: bars() }, indicators: { atr: 2 } }, 110, { tickSize: '0.1' });
+  for (const [side, options] of Object.entries(result)) {
+    const stop = Math.max(...Object.values(options.sl).map(x => Math.abs(110 - x)));
+    const targets = Object.values(options.tp).map(x => Math.abs(110 - x));
+    assert(targets[0] >= stop * 2 - 1e-8, side);
+    assert(targets[1] > targets[0] && targets[2] > targets[1], side);
+  }
 });
 test("no future bars influence indicators; all ten families calculated", () => {
   const a = bars(150),

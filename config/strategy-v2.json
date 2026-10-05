@@ -6,11 +6,15 @@
     "BOLLINGER"
   ],
   "scale": 0.8,
+  "adxThreshold": 22,
+  "bollingerSigma": 1.8,
   "timeframe": "4h",
   "directions": [
+    "LONG",
     "SHORT"
   ],
   "riskFraction": 0.005,
+  "minExpectedR": 1.5,
   "maxPortfolioRisk": 0.02,
   "maxPositions": 2,
   "maxDrawdown": 0.15,
@@ -36,7 +40,17 @@
     "enabled": true,
     "reportId": "7f47a216ad619daa47b7f559b79d708a4a0d638e5d2417ca5ceaeafea4560bae",
     "authorizedAt": "2026-10-04T18:39:02.992710+00:00",
-    "reason": "Explicit user instruction on 2026-10-04 to activate the new strategy on the active Aterum PC despite rejected validation."
+    "reason": "Explicit user instruction on 2026-10-04 to increase entry frequency and net reward-to-risk despite rejected validation.",
+    "overrideCandidate": {
+      "pair": ["ADX", "BOLLINGER"],
+      "timeframe": "4h",
+      "scale": 0.8,
+      "directions": ["LONG", "SHORT"],
+      "management": "existing",
+      "adxThreshold": 22,
+      "bollingerSigma": 1.8,
+      "minExpectedR": 1.5
+    }
   },
   "minLeverage": 5,
   "maxLeverage": 10,

@@ -249,7 +249,7 @@ async function cycle({
       validateBars(bars, interval);
       if (now() - (bars.at(-1).time + interval) > interval)
         throw Error("STALE_MARKET_DATA");
-      const f = calculate(bars, policy.scale).at(-1),
+      const f = calculate(bars, policy.scale, policy).at(-1),
         price = bars.at(-1).close;
       const direction = signal(f, policy.pair);
       const failed = [];

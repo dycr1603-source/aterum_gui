@@ -3,7 +3,7 @@ const { calculate, signal } = require("./indicators"),
   { levels, size, pnl } = require("./risk"),
   { metrics, breakdown } = require("./metrics"),
   { planProtection } = require("./trailing");
-function prepare(dataset, scale = 1) {
+function prepare(dataset, scale = 1, signalPolicy = {}) {
   const fundingByBar = new Map();
   for (const f of dataset.funding) {
     const time =
@@ -12,7 +12,7 @@ function prepare(dataset, scale = 1) {
         dataset.intervalMs;
     (fundingByBar.get(time) || fundingByBar.set(time, []).get(time)).push(f);
   }
-  return { ...dataset, features: calculate(dataset.bars, scale), fundingByBar };
+  return { ...dataset, features: calculate(dataset.bars, scale, signalPolicy), fundingByBar };
 }
 // Entry at the open AFTER latencyBars complete bars have elapsed. OHLC ambiguity:
 // stop before target, adverse gap fills, no use of bar high to move its own stop.

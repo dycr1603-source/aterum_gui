@@ -37,6 +37,15 @@ function load(
     p.maxLossStreak < 2 ||
     !["1h", "4h"].includes(p.timeframe) ||
     ![0.8, 1, 1.2].includes(p.scale) ||
+    !Number.isFinite(p.adxThreshold ?? 25) ||
+    (p.adxThreshold ?? 25) < 10 ||
+    (p.adxThreshold ?? 25) > 40 ||
+    !Number.isFinite(p.bollingerSigma ?? 2) ||
+    (p.bollingerSigma ?? 2) < 1 ||
+    (p.bollingerSigma ?? 2) > 3 ||
+    !Number.isFinite(p.minExpectedR ?? 0) ||
+    (p.minExpectedR ?? 0) < 0 ||
+    (p.minExpectedR ?? 0) > 5 ||
     !Array.isArray(p.directions) ||
     !p.directions.length ||
     p.directions.some((s) => !["LONG", "SHORT"].includes(s)) ||
@@ -100,14 +109,18 @@ function promotion(p, report) {
   // Bind it to the exact diagnostic candidate and report; never clear failures.
   const manual = p.manualActivation;
   const candidate = report?.frozenCandidate;
+  const manualCandidate = manual?.overrideCandidate || candidate;
   const manualAllowed = manual?.enabled === true &&
     manual.reportId === report?.reportId && typeof report?.reportId === 'string' &&
     typeof manual.reason === 'string' && manual.reason.trim().length > 0 &&
     Number.isFinite(Date.parse(manual.authorizedAt)) &&
-    p.management === 'existing' && candidate?.management === 'existing' &&
-    JSON.stringify(p.pair) === JSON.stringify(candidate?.pair) &&
-    p.timeframe === candidate?.timeframe && p.scale === candidate?.scale &&
-    JSON.stringify(p.directions) === JSON.stringify(candidate?.directions);
+    p.management === 'existing' && manualCandidate?.management === 'existing' &&
+    JSON.stringify(p.pair) === JSON.stringify(manualCandidate?.pair) &&
+    p.timeframe === manualCandidate?.timeframe && p.scale === manualCandidate?.scale &&
+    JSON.stringify(p.directions) === JSON.stringify(manualCandidate?.directions) &&
+    (p.adxThreshold ?? 25) === (manualCandidate?.adxThreshold ?? 25) &&
+    (p.bollingerSigma ?? 2) === (manualCandidate?.bollingerSigma ?? 2) &&
+    (p.minExpectedR ?? 0) === (manualCandidate?.minExpectedR ?? 0);
   return { allowed: !reasons.length || manualAllowed, reasons,
     validationPassed: !reasons.length,
     activation: manualAllowed ? 'MANUAL_UNVALIDATED' : !reasons.length ? 'VALIDATED' : 'BLOCKED' };

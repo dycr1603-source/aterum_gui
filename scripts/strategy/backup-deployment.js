@@ -26,12 +26,30 @@ function backup() {
     "aterum-dashboard-1",
   ]).trim();
   run(["tag", image, tag]);
-  for (const name of [".env", "docker-compose.yml", "config/strategy-v2.json"])
+  for (const name of [".env", "docker-compose.yml"])
     if (fs.existsSync(path.join(root, name))) {
       fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
       fs.copyFileSync(path.join(root, name), path.join(dir, name));
       fs.chmodSync(path.join(dir, name), 0o600);
     }
+  // After git pull, the checkout contains the incoming policy. Preserve the
+  // policy actually running in the previous dashboard image for rollback.
+  let previousPolicy;
+  try {
+    previousPolicy = run([
+      "run", "--rm", "--network", "none", "--entrypoint", "cat",
+      image, "/app/config/strategy-v2.json",
+    ]);
+  } catch {
+    previousPolicy = null;
+  }
+  if (previousPolicy) {
+    JSON.parse(previousPolicy);
+    fs.mkdirSync(path.join(dir, "config"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "config/strategy-v2.json"), previousPolicy, {
+      mode: 0o600,
+    });
+  }
   const rows = JSON.parse(
     run([
       "run",

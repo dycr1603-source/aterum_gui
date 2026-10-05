@@ -49,7 +49,7 @@ function validateBars(bars, intervalMs) {
       throw Error("INVALID_MARKET_DATA");
   });
 }
-function calculate(bars, scale = 1) {
+function calculate(bars, scale = 1, { adxThreshold = 25, bollingerSigma = 2 } = {}) {
   validateBars(bars);
   const p = (n) => Math.max(2, Math.round(n * scale)),
     c = bars.map((b) => b.close),
@@ -173,7 +173,7 @@ function calculate(bars, scale = 1) {
       ADX: {
         value: { adx: adx[i], plus: plus[i], minus: minus[i] },
         signal:
-          adx[i] !== null && adx[i] >= 25
+          adx[i] !== null && adx[i] >= adxThreshold
             ? directional(plus[i] - minus[i])
             : "NEUTRAL",
       },
@@ -210,9 +210,9 @@ function calculate(bars, scale = 1) {
       BOLLINGER: {
         value: { mid, upper: mid + 2 * sd, lower: mid - 2 * sd },
         signal:
-          b.close > mid + 2 * sd
+          b.close > mid + bollingerSigma * sd
             ? "LONG"
-            : b.close < mid - 2 * sd
+            : b.close < mid - bollingerSigma * sd
               ? "SHORT"
               : "NEUTRAL",
       },

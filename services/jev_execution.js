@@ -33,6 +33,8 @@ async function validateJevExecution(request, { db, livePrice, quoteTime, rules, 
     if (!result.risk || request.quantity !== result.risk.quantity || JSON.stringify(request.tradeContext.strategy) !== JSON.stringify(result.strategy)) throw new Error('STRATEGY_RECEIPT_CHANGED');
     const risk = request.quantity * (Math.abs(livePrice - request.stopLoss) + (livePrice + request.stopLoss) * (policy.feeRate + policy.slippageBps / 10000) + livePrice * policy.fundingReserve);
     if (risk > result.risk.riskAtStop + 1e-8) throw new Error('STRATEGY_LIVE_RISK_INCREASED');
+    const netReward = request.quantity * (Math.abs(request.takeProfit - livePrice) - (livePrice + request.takeProfit) * (policy.feeRate + policy.slippageBps / 10000) - livePrice * policy.fundingReserve);
+    if (!(risk > 0 && netReward / risk >= (policy.minExpectedR ?? 0))) throw new Error('STRATEGY_REWARD_RISK_TOO_LOW');
   }
   if (!Number.isInteger(p.leverage) || p.leverage < 1 || p.leverage > 10 || request.leverage !== p.leverage)
     throw new Error('JEV_LEVERAGE_CHANGED');

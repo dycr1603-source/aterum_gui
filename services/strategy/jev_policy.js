@@ -4,22 +4,41 @@ const { levels, size } = require("./risk"),
 function levelOptions(d, entry, filter) {
   const out = {};
   for (const direction of d.strategy.directions) {
-    const sl = {},
-      tp = {};
-    for (const [i, scale] of [0.8, 1, 1.2].entries()) {
-      const x = levels({
-        bars: d.strategy.recentCandles,
-        entry,
-        side: direction,
-        atr: d.indicators.atr,
-        stopAtr: 1.5 * scale,
-        targetAtr: 3 * scale,
-        tick: Number(filter.tickSize),
-      });
-      sl[`sl${i + 1}`] = Number(x.stop.toFixed(12));
-      tp[`tp${i + 1}`] = Number(x.target.toFixed(12));
+    try {
+      const sl = {}, tp = {};
+      for (const [i, scale] of [0.8, 1, 1.2].entries()) {
+        const x = levels({
+          bars: d.strategy.recentCandles,
+          entry,
+          side: direction,
+          atr: d.indicators.atr,
+          stopAtr: 1.5 * scale,
+          targetAtr: 3 * scale,
+          tick: Number(filter.tickSize),
+        });
+        sl[`sl${i + 1}`] = Number(x.stop.toFixed(12));
+        tp[`tp${i + 1}`] = Number(x.target.toFixed(12));
+      }
+      const sign = direction === "LONG" ? 1 : -1;
+      const widestStop = Math.max(...Object.values(sl).map((stop) => Math.abs(entry - stop)));
+      const tick = Number(filter.tickSize);
+      let previousDistance = 0;
+      for (const [i, multiplier] of [2.5, 3, 3.5].entries()) {
+        const key = `tp${i + 1}`;
+        const distance = Math.max(Math.abs(tp[key] - entry), widestStop * multiplier, previousDistance + tick);
+        const raw = entry + sign * distance;
+        const rounded = (sign === 1 ? Math.ceil(raw / tick) : Math.floor(raw / tick)) * tick;
+        tp[key] = Number(rounded.toFixed(12));
+        previousDistance = Math.abs(tp[key] - entry);
+      }
+      const prices = [...Object.values(sl), ...Object.values(tp)];
+      if (prices.some((price) => !Number.isFinite(price) || price <= 0 ||
+          (Number(filter.minPrice) > 0 && price < Number(filter.minPrice)) ||
+          (Number(filter.maxPrice) > 0 && price > Number(filter.maxPrice)))) continue;
+      out[direction] = { sl, tp };
+    } catch (error) {
+      if (!['INVALID_STRUCTURE', 'INVALID_LEVELS'].includes(error.message)) throw error;
     }
-    out[direction] = { sl, tp };
   }
   return out;
 }
@@ -92,6 +111,7 @@ function projections({
         maxQty: Math.min(rules.maxQty, maxNotional / entry, marginCap * leverage / entry),
         maintenanceRate: Number(bracket.maintMarginRatio),
       });
+      if (s.expectedR < (p.minExpectedR ?? 0)) continue;
       if (
         rules.lotStep &&
         Math.abs(
@@ -118,6 +138,7 @@ function projections({
 }
 function preflight(d, entry, symbol, candidates, capacity) {
   if (
+    !Object.keys(candidates).length ||
     capacity?.allowed !== true ||
     !Array.isArray(capacity.positions) ||
     capacity.positions.length >= d.strategy.riskPolicy.maxPositions ||

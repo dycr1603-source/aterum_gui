@@ -39,3 +39,13 @@ La primera prueba de escaneo completo se detuvo en la solicitud 97 con `API_PROB
 ## Telegram compacto y transferencia a Saitama
 
 A pedido del usuario, se eliminó de Telegram la lista de símbolos y sus motivos individuales. El último workflow publicado conserva el escaneo completo y su auditoría en `strategy_events`, pero envía como máximo un resumen breve por hora con total revisado y motivos agregados. No envía el informe de escaneo después de una apertura confirmada; esa apertura conserva su aviso habitual. Para preparar Saitama consulta [SAITAMA.md](SAITAMA.md).
+
+## Apertura más frecuente y objetivo de ganancia mayor
+
+Una instrucción posterior del usuario autorizó ampliar las entradas aun con la validación histórica rechazada. El escaneo sigue cubriendo todos los elegibles, pero la pareja ADX+Bollinger de 4h ahora usa ADX ≥22 y bandas ±1,8 desviaciones, y permite LONG y SHORT. JEV conserva la decisión final y puede responder `NO_TRADE`.
+
+Los tres objetivos ofrecidos a JEV quedan al menos a 2,5 / 3 / 3,5 veces la distancia del stop más amplio, sujetos a precio válido del símbolo. Tras elegir niveles y leverage, sólo se ofrece una proyección cuyo beneficio neto estimado sea ≥1,5 veces la pérdida estimada al stop, con comisiones, slippage y reserva de funding. El ejecutor comprueba otra vez esa relación frente al precio de ejecución. Siguen vigentes el riesgo de 0,5% por entrada, 2% agregado, dos posiciones, leverage 5–10x, 45% de margen por posición y los bloqueos por datos, cuenta o divergencia.
+
+Comparación diagnóstica con el histórico local de ocho símbolos 4h, usando los objetivos del backtest anterior y sin emular decisiones JEV: con ADX ≥22, bandas ±1,8 y ambos lados, el replay produjo 177 operaciones y −48,57 USDT en TRAIN, 58 y −20,46 en VALIDATION, 68 y −21,78 en OOS. Los objetivos nuevos de JEV no están modelados en ese replay. Por tanto, este cambio busca más oportunidades y una relación nominal mayor, **no** acredita rentabilidad. La activación sigue `MANUAL_UNVALIDATED`; el reporte original permanece rechazado.
+
+Desplegado en Delcon el 2026-10-04 hora de Costa Rica, con respaldo privado `.local/strategy-backup-6bMeae` e imagen anterior `aterum-dashboard:before-strategy-20261005040124`. Las 49 suites offline, 35 pruebas de estrategia y el build pasaron. Tras recrear los servicios, los nueve contenedores estaban saludables, `/healthz` respondió correctamente, el workflow principal seguía activo con versión publicada, y el breaker estaba libre sin contabilidad pendiente. Aún no se ha observado una entrada real con esta revisión.
