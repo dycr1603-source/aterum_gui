@@ -15,9 +15,9 @@
     "LONG",
     "SHORT"
   ],
-  "riskFraction": 0.005,
+  "riskFraction": 0.22,
   "minExpectedR": 1.5,
-  "maxPortfolioRisk": 0.02,
+  "maxPortfolioRisk": 0.44,
   "maxPositions": 2,
   "maxDrawdown": 0.15,
   "maxLossStreak": 10,
@@ -42,8 +42,8 @@
   "manualActivation": {
     "enabled": true,
     "reportId": "7f47a216ad619daa47b7f559b79d708a4a0d638e5d2417ca5ceaeafea4560bae",
-    "authorizedAt": "2026-10-05T04:20:05Z",
-    "reason": "Explicit user instruction on 2026-10-04 to rank all eligible assets using ten indicator readings and open the best JEV-approved candidate despite rejected validation.",
+    "authorizedAt": "2026-10-06T07:07:45Z",
+    "reason": "Explicit user instruction on 2026-10-06 to allocate 45 percent of current equity as margin per position, two positions maximum, with 10 percent reserve; historical validation remains rejected.",
     "overrideCandidate": {
       "pair": ["ADX", "BOLLINGER"],
       "timeframe": "4h",
@@ -56,11 +56,17 @@
       "depthNotionalMultiple": 5,
       "adxThreshold": 22,
       "bollingerSigma": 1.8,
-      "minExpectedR": 1.5
+      "minExpectedR": 1.5,
+      "riskFraction": 0.22,
+      "maxPortfolioRisk": 0.44,
+      "maxMarginFractionPerPosition": 0.45,
+      "maxTotalMarginFraction": 0.9,
+      "minMarginFillFraction": 0.95
     }
   },
   "minLeverage": 5,
   "maxLeverage": 10,
   "maxMarginFractionPerPosition": 0.45,
-  "maxTotalMarginFraction": 0.9
+  "maxTotalMarginFraction": 0.9,
+  "minMarginFillFraction": 0.95
 }

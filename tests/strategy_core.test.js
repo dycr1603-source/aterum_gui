@@ -8,9 +8,18 @@ const I = require("../services/strategy/indicators"),
   { account } = require("../services/strategy/feedback"),
   { promotion } = require("../services/strategy/policy");
 const policy = require("../config/strategy-v2.json");
+test('installed policy targets two positions with 45 percent margin each and 10 percent reserve', () => {
+  const current = require('../services/strategy/policy').load();
+  assert.equal(current.maxPositions, 2);
+  assert.equal(current.maxMarginFractionPerPosition, 0.45);
+  assert.equal(current.maxTotalMarginFraction, 0.9);
+  assert.equal(current.minMarginFillFraction, 0.95);
+  assert.equal(current.riskFraction, 0.22);
+  assert.equal(current.maxPortfolioRisk, 0.44);
+});
 test('margin allocation caps each position at 45 percent and combined margin at 90 percent, with leverage 5–10', () => {
   const { projections } = require('../services/strategy/jev_policy');
-  const p = { ...policy, riskFraction: 0.02, feeRate: 0, slippageBps: 0, fundingReserve: 0, minLeverage: 5, maxLeverage: 10, maxMarginFractionPerPosition: 0.45, maxTotalMarginFraction: 0.9 };
+  const p = { ...policy, riskFraction: 0.02, feeRate: 0, slippageBps: 0, fundingReserve: 0, minLeverage: 5, maxLeverage: 10 };
   const capacity = { account: { equity: 1000, marginUsed: 0 }, risk: { remainingRiskAmount: 100, openRiskAmount: 0 }, capacity: { remainingMargin: 900 }, exposure: { remaining: 100000, bySymbol: {}, direction: { LONG: 0 } }, limits: { maxSymbolExposurePct: 2000, maxDirectionExposurePct: 2000 } };
   const args = { d: { symbol: 'TESTUSDT', strategy: { riskPolicy: p } }, side: 'LONG', entry: 100, stop: 99.99, target: 102, capacity, symbol: { filters: [{ filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001', maxQty: '10000' }, { filterType: 'MIN_NOTIONAL', notional: '5' }] }, brackets: [{ notionalFloor: 0, notionalCap: 100000, initialLeverage: 10, maintMarginRatio: 0.005 }], feeRate: 0 };
   let result = projections(args);
@@ -24,6 +33,37 @@ test('margin allocation caps each position at 45 percent and combined margin at 
   assert.deepEqual(projections(args).allowedChoices, []);
   capacity.account.marginUsed = 0;
   assert.deepEqual(projections({ ...args, d: { ...args.d, strategy: { riskPolicy: { ...p, minExpectedR: 1.5 } } }, target: 100.01 }).allowedChoices, []);
+});
+test('HYPE sized from live account equity reaches the 45 percent margin target without breaching stop risk', () => {
+  const { projections } = require('../services/strategy/jev_policy');
+  const equity = 66.6352;
+  const capacity = { account: { equity, marginUsed: 0 },
+    risk: { remainingRiskAmount: equity * 0.44, openRiskAmount: 0 },
+    capacity: { remainingMargin: equity * 0.9 },
+    exposure: { remaining: equity * 9, bySymbol: {}, direction: { LONG: 0 } },
+    limits: { maxSymbolExposurePct: 450, maxDirectionExposurePct: 900 } };
+  const args = { d: { symbol: 'HYPEUSDT', strategy: { version: 'consensus-10-v1', riskPolicy: policy } },
+    side: 'LONG', entry: 93.247, stop: 89.267, target: 103.197, capacity,
+    symbol: { filters: [{ filterType: 'LOT_SIZE', minQty: '0.01', stepSize: '0.01', maxQty: '10000' },
+      { filterType: 'MIN_NOTIONAL', notional: '5' }] },
+    brackets: [{ notionalFloor: 0, notionalCap: 100000, initialLeverage: 10, maintMarginRatio: 0.005 }], feeRate: 0.001 };
+  const result = projections(args);
+  assert(result.allowedChoices.includes(5));
+  const first = result.projections[5];
+  assert(first.margin >= equity * 0.45 * 0.95);
+  assert(first.margin <= equity * 0.45);
+  assert(first.riskAtStop <= equity * policy.riskFraction);
+  capacity.account.marginUsed = first.margin;
+  capacity.capacity.remainingMargin = equity * 0.9 - first.margin;
+  capacity.exposure.remaining -= first.notional;
+  capacity.exposure.direction.LONG += first.notional;
+  const second = projections({ ...args, d: { ...args.d, symbol: 'OTHERUSDT' } }).projections[5];
+  assert(second);
+  assert(first.margin + second.margin <= equity * 0.9 + 1e-8);
+  assert(equity - first.margin - second.margin >= equity * 0.1 - 1e-8);
+  const smallRisk = { ...args, d: { ...args.d, strategy: { ...args.d.strategy,
+    riskPolicy: { ...policy, riskFraction: 0.005 } } } };
+  assert.deepEqual(projections(smallRisk).allowedChoices, []);
 });
 test('manual activation preserves failed validation and is bound to its report and candidate', () => {
   const candidate = { pair: ['ADX', 'BOLLINGER'], timeframe: '4h', scale: 0.8, directions: ['SHORT'], management: 'existing' };
@@ -41,7 +81,7 @@ test('manual activation preserves failed validation and is bound to its report a
 test('manual override binds the wider signal and reward policy exactly', () => {
   const report = { reportId: policy.manualActivation.reportId, frozenCandidate: { pair: policy.pair, timeframe: policy.timeframe, scale: policy.scale, directions: ['SHORT'], management: 'existing' } };
   assert.equal(promotion(policy, report).activation, 'MANUAL_UNVALIDATED');
-  for (const edit of [{ adxThreshold: 20 }, { bollingerSigma: 1.5 }, { minExpectedR: 1 }, { directions: ['SHORT'] }, { minVotes: 6 }, { minDepthQuote: 500 }])
+  for (const edit of [{ adxThreshold: 20 }, { bollingerSigma: 1.5 }, { minExpectedR: 1 }, { directions: ['SHORT'] }, { minVotes: 6 }, { minDepthQuote: 500 }, { riskFraction: 0.2 }, { maxPortfolioRisk: 0.4 }, { maxMarginFractionPerPosition: 0.4 }, { minMarginFillFraction: 0.9 }])
     assert.equal(promotion({ ...policy, ...edit }, report).allowed, false);
 });
 const bars = (n = 100) =>
@@ -147,8 +187,9 @@ test('minimum Binance lot is rejected only when its lower-bound stop risk exceed
     { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001', maxQty: '100' },
     { filterType: 'MIN_NOTIONAL', notional: '5' },
   ] };
-  assert(minimumLotRisk(symbol, 100000, 1000, policy) > 100 * policy.riskFraction);
-  assert(minimumLotRisk(symbol, 100, 0.5, policy) < 100 * policy.riskFraction);
+  const smallBudget = { ...policy, riskFraction: 0.005 };
+  assert(minimumLotRisk(symbol, 100000, 1000, smallBudget) > 100 * smallBudget.riskFraction);
+  assert(minimumLotRisk(symbol, 100, 0.5, smallBudget) < 100 * smallBudget.riskFraction);
 });
 test("data gaps, duplicate and corrupt OHLC cannot generate signals", () => {
   for (const alter of [

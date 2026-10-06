@@ -41,6 +41,12 @@ for key, value in {
     'JEV_ENABLED': 'true',
     'JEV_OBSERVE_ONLY': 'false',
     'N8N_TRADING_DISABLED': '0',
+    'PORTFOLIO_MAX_RISK_PCT': '44',
+    'PORTFOLIO_MAX_MARGIN_USAGE_PCT': '90',
+    'PORTFOLIO_MIN_FREE_MARGIN_PCT': '10',
+    'PORTFOLIO_MAX_EXPOSURE_PCT': '900',
+    'PORTFOLIO_MAX_SYMBOL_EXPOSURE_PCT': '450',
+    'PORTFOLIO_MAX_DIRECTION_EXPOSURE_PCT': '900',
 }.items():
     line = f'{key}={value}'
     s = re.sub(rf'^{key}=.*$', line, s, flags=re.M) if re.search(rf'^{key}=', s, re.M) else s.rstrip() + '\n' + line + '\n'
@@ -83,4 +89,4 @@ docker compose --profile trading --profile ai --profile aux ps
 curl --fail http://127.0.0.1:3001/healthz
 ```
 
-Comprobar en n8n que el workflow principal, SL Monitor y Trailing Manager estén publicados; comprobar que Position Guard, JEV y Telegram estén saludables. La política del repositorio usa consenso de diez lecturas en 4h: al menos cinco de ocho indicadores direccionales deben coincidir; ATR y RVOL son contexto. Se ordenan los candidatos por consenso y liquidez antes de consultar JEV. Se exige objetivo neto mínimo 1,5R, con dos posiciones como máximo, leverage 5–10x y hasta 45% de margen por posición sujeto al presupuesto de pérdida. El resultado histórico sigue marcado `MANUAL_UNVALIDATED`.
+Comprobar en n8n que el workflow principal, SL Monitor y Trailing Manager estén publicados; comprobar que Position Guard, JEV y Telegram estén saludables. La política del repositorio usa consenso de diez lecturas en 4h: al menos cinco de ocho indicadores direccionales deben coincidir; ATR y RVOL son contexto. Se ordenan los candidatos por consenso y liquidez antes de consultar JEV. Se exige objetivo neto mínimo 1,5R, con dos posiciones como máximo, leverage 5–10x y un objetivo de 45% del equity actual como margen por posición, hasta 90% conjunto y 10% reservado. El presupuesto de pérdida al stop es ahora hasta 22% del equity por operación y 44% agregado; una operación que no alcance al menos 95% del margen disponible para su cupo se descarta. El resultado histórico sigue marcado `MANUAL_UNVALIDATED`.

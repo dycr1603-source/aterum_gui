@@ -73,6 +73,10 @@ function projections({
     equity * (p.maxMarginFractionPerPosition ?? 0.9),
     equity * (p.maxTotalMarginFraction ?? 0.9) - Number(capacity.account.marginUsed ?? 0),
   );
+  const minimumMargin = d.strategy.version === 'consensus-10-v1'
+    ? Math.min(marginCap, Number(capacity.capacity.remainingMargin)) *
+      (p.minMarginFillFraction ?? 0)
+    : 0;
   const result = {};
   for (let leverage = p.minLeverage ?? 1; leverage <= Math.min(maxLeverage, p.maxLeverage ?? 10); leverage++) {
     try {
@@ -112,6 +116,7 @@ function projections({
         maintenanceRate: Number(bracket.maintMarginRatio),
       });
       if (s.expectedR < (p.minExpectedR ?? 0)) continue;
+      if (s.margin + 1e-8 < minimumMargin) continue;
       if (
         rules.lotStep &&
         Math.abs(

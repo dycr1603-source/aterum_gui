@@ -12,16 +12,19 @@ function load(
     !["research", "shadow", "enforce"].includes(p.mode) ||
     !Number.isFinite(p.riskFraction) ||
     p.riskFraction <= 0 ||
-    p.riskFraction > 0.02 ||
+    p.riskFraction > 0.22 ||
     !Number.isFinite(p.maxPortfolioRisk) ||
     p.maxPortfolioRisk < p.riskFraction ||
-    p.maxPortfolioRisk > 0.1 ||
+    p.maxPortfolioRisk > 0.44 ||
     !Number.isFinite(p.maxMarginFractionPerPosition ?? 0.9) ||
     (p.maxMarginFractionPerPosition ?? 0.9) <= 0 ||
     (p.maxMarginFractionPerPosition ?? 0.9) > 0.9 ||
     !Number.isFinite(p.maxTotalMarginFraction ?? 0.9) ||
     (p.maxTotalMarginFraction ?? 0.9) < (p.maxMarginFractionPerPosition ?? 0.9) ||
     (p.maxTotalMarginFraction ?? 0.9) > 0.9 ||
+    !Number.isFinite(p.minMarginFillFraction ?? 0) ||
+    (p.minMarginFillFraction ?? 0) < 0 ||
+    (p.minMarginFillFraction ?? 0) > 1 ||
     !Number.isInteger(p.minLeverage ?? 1) ||
     !Number.isInteger(p.maxLeverage ?? 10) ||
     (p.minLeverage ?? 1) < 1 ||
@@ -132,7 +135,10 @@ function promotion(p, report) {
     (p.entryMode ?? "pair") === (manualCandidate?.entryMode ?? "pair") &&
     (p.minVotes ?? 5) === (manualCandidate?.minVotes ?? 5) &&
     p.minDepthQuote === (manualCandidate?.minDepthQuote ?? p.minDepthQuote) &&
-    (p.depthNotionalMultiple ?? 5) === (manualCandidate?.depthNotionalMultiple ?? 5);
+    (p.depthNotionalMultiple ?? 5) === (manualCandidate?.depthNotionalMultiple ?? 5) &&
+    ['riskFraction', 'maxPortfolioRisk', 'maxMarginFractionPerPosition',
+      'maxTotalMarginFraction', 'minMarginFillFraction'].every(key =>
+      manualCandidate?.[key] === undefined || p[key] === manualCandidate[key]);
   return { allowed: !reasons.length || (manualAllowed && manualSettingsMatch), reasons,
     validationPassed: !reasons.length,
     activation: manualAllowed && manualSettingsMatch ? 'MANUAL_UNVALIDATED' : !reasons.length ? 'VALIDATED' : 'BLOCKED' };

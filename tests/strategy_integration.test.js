@@ -152,7 +152,7 @@ for (const side of ["LONG", "SHORT", "NO_TRADE"])
     assert.equal(m.requests[0].state.directionalEvidence, undefined);
     if (side !== "NO_TRADE") {
       assert.equal(r.proposal.leverage, 5);
-      assert(r.risk.riskAtStop <= 5);
+      assert(r.risk.riskAtStop <= 20);
       assert.equal(r.confidence, 82);
       assert.equal(m.requests.length, 2);
     }
@@ -160,6 +160,7 @@ for (const side of ["LONG", "SHORT", "NO_TRADE"])
 test('JEV receives all ten readings and the ranked candidate context', async () => {
   const input = d();
   input.strategy.version = 'consensus-10-v1';
+  input.strategy.riskPolicy = { ...policy, minMarginFillFraction: 0 };
   input.strategy.directions = ['LONG'];
   input.strategy.indicators = [
     ...input.strategy.indicators,
