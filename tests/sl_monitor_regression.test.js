@@ -9,7 +9,7 @@ const workflowPath = path.resolve(__dirname, '../bot-control/workflows/current/s
 const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 const code = workflow.nodes.find(node => node.name === 'SL Monitor Code').parameters.jsCode;
 
-async function runScenario({ price, hoursOpen = 1, engineFailure = false }) {
+async function runScenario({ price, hoursOpen = 1, engineFailure = false, engineRoundedPrice = null }) {
   const calls = [];
   const position = {
     positionSide: 'LONG', slPrice: 90, qty: 10, side: 'SELL', entryPrice: 100,
@@ -32,7 +32,8 @@ async function runScenario({ price, hoursOpen = 1, engineFailure = false }) {
       return {
         ok: true, executionId: options.body.executionId, exchangeOrderId: '8001',
         exchangeResponse: { order: { orderId: '8001', avgPrice: String(price), status: 'FILLED' } },
-        verificationResult: { verified: true, requested: options.body, exchangeVerified: true },
+        verificationResult: { verified: true, requested: { ...options.body,
+          targetPrice: engineRoundedPrice ?? options.body.targetPrice }, exchangeVerified: true },
         finalStatus: 'VERIFIED', timestamp: new Date().toISOString()
       };
     }
@@ -116,6 +117,13 @@ async function runExternalClose({ finalizationFailure = false } = {}) {
   assert.equal(engineCall(timed.calls).body.targetPrice, 93);
   assert.equal(timed.state.positions.BTCUSDT.slPrice, 93);
   assert(timed.result.telegramText.includes('SL AJUSTADO POR TIEMPO'));
+
+  const rounded = await runScenario({ price: 99, hoursOpen: 6.1, engineRoundedPrice: 92.9 });
+  assert.equal(engineCall(rounded.calls).body.targetPrice, 93);
+  assert.equal(rounded.result.newSL, 92.9);
+  assert.equal(rounded.state.positions.BTCUSDT.slPrice, 92.9);
+  assert.equal(rounded.calls.find(call => call.url.endsWith('/trade')).body.sl, 92.9);
+  assert(rounded.result.telegramText.includes('SL nuevo    : $92.9'));
 
   const stop = await runScenario({ price: 90 });
   assert.equal(stop.result.status, 'SL_EXECUTED');

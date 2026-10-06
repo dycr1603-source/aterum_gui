@@ -25,7 +25,7 @@
       "activeAtExport": false,
       "nodeCount": 14,
       "filename": "sl-monitor.workflow.json",
-      "sha256": "7b1808000cbb046933139103e123c59cd4086f3fb02e80244c2457059908a343"
+      "sha256": "76a9f5c48d24d05a1d790cd676acf66f5f8ed8c9e7d681efdf92793fc2fe031d"
     },
     {
       "id": "telemetryPersistenceTest",

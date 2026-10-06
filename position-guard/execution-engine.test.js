@@ -3,8 +3,8 @@
 const assert = require('assert');
 const { ExecutionEngine, failureNotificationPolicy } = require('./execution-engine');
 
-function algo({ id, client, type = 'STOP_MARKET', price = 95, side = 'SELL', positionSide = 'LONG' }) {
-  return { algoId: id, clientAlgoId: client, symbol: 'BTCUSDT', side, positionSide,
+function algo({ id, client, symbol = 'BTCUSDT', type = 'STOP_MARKET', price = 95, side = 'SELL', positionSide = 'LONG' }) {
+  return { algoId: id, clientAlgoId: client, symbol, side, positionSide,
     orderType: type, algoStatus: 'NEW', triggerPrice: String(price) };
 }
 
@@ -21,7 +21,7 @@ class FakeBinance {
   openOrders() { return Promise.resolve(this.orders); }
   openAlgoOrders() { return Promise.resolve(this.algos); }
   createAlgoOrder(params) {
-    const row = algo({ id: this.nextAlgo++, client: params.clientAlgoId, type: params.type,
+    const row = algo({ id: this.nextAlgo++, client: params.clientAlgoId, symbol: params.symbol, type: params.type,
       price: params.triggerPrice, side: params.side, positionSide: params.positionSide });
     if (params.callbackRate != null) row.callbackRate = String(params.callbackRate);
     this.algos.push(row); return Promise.resolve(row);
@@ -69,6 +69,29 @@ async function testReplaceStop() {
   assert.equal(binance.algos.length, 1);
   assert.equal(binance.algos[0].triggerPrice, '95');
   assert.notEqual(binance.algos[0].algoId, 1);
+}
+
+async function testShortStopUsesExchangePricePrecision() {
+  const binance = new FakeBinance();
+  binance.position = { symbol: 'ENSUSDT', positionAmt: '-21.8', positionSide: 'SHORT',
+    entryPrice: '6.744', markPrice: '6.786', leverage: '5' };
+  binance.algos = [algo({ id: 1, client: 'old-stop', symbol: 'ENSUSDT',
+    positionSide: 'SHORT', side: 'BUY', price: 7.031 })];
+  binance.exchangeInfo = async () => ({ symbols: [{ symbol: 'ENSUSDT', pricePrecision: 3,
+    filters: [{ filterType: 'PRICE_FILTER', tickSize: '0.001', minPrice: '0.010' }] }] });
+  const originalCreate = binance.createAlgoOrder.bind(binance);
+  binance.createAlgoOrder = params => {
+    assert.equal(params.triggerPrice, 6.944);
+    return originalCreate(params);
+  };
+  const result = await engine(binance).replaceProtection({
+    executionId: '11111111-1111-4111-8111-111111111112', type: 'MOVE_STOP_LOSS',
+    symbol: 'ENSUSDT', positionSide: 'SHORT', targetPrice: 6.9449
+  });
+  assert.equal(result.verificationResult.verified, true);
+  assert.equal(result.verificationResult.requested.targetPrice, 6.944);
+  assert.equal(binance.algos.length, 1);
+  assert.equal(binance.algos[0].triggerPrice, '6.944');
 }
 
 async function testRejectedReplacementKeepsOldStop() {
@@ -304,6 +327,7 @@ function testActionableFailuresStillNotify() {
 
 (async () => {
   await testReplaceStop();
+  await testShortStopUsesExchangePricePrecision();
   await testRejectedReplacementKeepsOldStop();
   await testMoveTakeProfitKeepsStop();
   await testTrailingReplacesOnlyStop();

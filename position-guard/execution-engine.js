@@ -571,6 +571,7 @@ class ExecutionEngine {
     const notional = row.filters.find(filter => ['MIN_NOTIONAL', 'NOTIONAL'].includes(filter.filterType));
     const positiveMaxima = [Number(lot?.maxQty), Number(marketLot?.maxQty)].filter(n => Number.isFinite(n) && n > 0);
     return { minPrice: Number(price?.minPrice || 0), maxPrice: Number(price?.maxPrice || 0), tick: Number(price?.tickSize || 0),
+      pricePrecision: Number.isInteger(row.pricePrecision) ? row.pricePrecision : null,
       step: Number(marketLot?.stepSize || 0) || Number(lot?.stepSize || 0), lotStep: Number(lot?.stepSize || 0),
       minQty: Math.max(Number(lot?.minQty || 0), Number(marketLot?.minQty || 0)),
       maxQty: positiveMaxima.length ? Math.min(...positiveMaxima) : 0,
@@ -583,6 +584,29 @@ class ExecutionEngine {
     const ratio = Number(value) / increment;
     const units = mode === 'floor' ? Math.floor(ratio) : Math.round(ratio);
     return Number((units * increment).toFixed(places));
+  }
+
+  protectivePrice(value, rules, mode = 'nearest') {
+    const tick = rules.tick;
+    if (!(tick > 0)) throw new Error('Binance PRICE_FILTER tickSize is unavailable');
+    const tickPlaces = (String(tick).split('.')[1] || '').length;
+    const pricePlaces = Number.isInteger(rules.pricePrecision) && rules.pricePrecision >= 0
+      ? rules.pricePrecision : tickPlaces;
+    const places = Math.max(tickPlaces, pricePlaces);
+    const scale = 10 ** places;
+    const tickUnits = Math.round(tick * scale);
+    const precisionUnits = 10 ** (places - pricePlaces);
+    const gcd = (a, b) => b ? gcd(b, a % b) : a;
+    const stepUnits = tickUnits / gcd(tickUnits, precisionUnits) * precisionUnits;
+    const ratio = Number(value) * scale / stepUnits;
+    const units = mode === 'floor' ? Math.floor(ratio + 1e-9)
+      : mode === 'ceil' ? Math.ceil(ratio - 1e-9) : Math.round(ratio);
+    const result = Number((units * stepUnits / scale).toFixed(pricePlaces));
+    if (!(result > 0) || (rules.minPrice > 0 && result < rules.minPrice)
+        || (rules.maxPrice > 0 && result > rules.maxPrice)) {
+      throw new Error('Protective price is outside Binance PRICE_FILTER');
+    }
+    return result;
   }
 
   async abortOpen(request, position, cause) {
@@ -807,6 +831,13 @@ class ExecutionEngine {
   }
 
   async replaceProtection(request) {
+    const rules = await this.symbolRules(request.symbol);
+    const stop = request.type !== 'MOVE_TAKE_PROFIT';
+    const mode = stop ? (request.positionSide === 'SHORT' ? 'floor' : 'ceil') : 'nearest';
+    request.targetPrice = this.protectivePrice(request.targetPrice, rules, mode);
+    if (request.activationPrice != null) {
+      request.activationPrice = this.protectivePrice(request.activationPrice, rules, 'nearest');
+    }
     const before = await this.snapshot(request);
     if (!before.position) throw new Error(`No ${request.symbol} ${request.positionSide} position exists on Binance`);
     const prefix = request.type === 'MOVE_TAKE_PROFIT' ? 'aterum_tp' : request.type === 'TRAILING_STOP' ? 'aterum_trail' : 'aterum_sl';
