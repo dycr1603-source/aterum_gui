@@ -18,7 +18,8 @@ const counts = Object.entries(summary.reasons || {})
 const text = [
   'ℹ️ ATERUM · SIN ENTRADA',
   `Motor: consenso de diez indicadores · ${d.skipReason || 'NO_TRADE'}`,
-  `Analizados: ${Number(summary.scanned || 0)} de ${Number(summary.eligible || 0)} elegibles.`,
+  ...(d.universeSummary ? [`Analizados: ${Number(summary.scanned || 0)} de ${Number(summary.eligible || 0)} elegibles.`]
+    : ['Escaneo omitido por control de estrategia.']),
   ...counts.slice(0, 6),
   'Sin orden enviada a Binance.'
 ].join('\n');

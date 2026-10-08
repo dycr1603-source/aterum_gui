@@ -1,5 +1,6 @@
 'use strict';
 const { config, fresh, validateLevels } = require('./jev');
+const { liveRisk } = require('./strategy/live-risk');
 
 // Runs inside the sole writer, after a live quote and before any exchange mutation.
 async function validateJevExecution(request, { db, livePrice, quoteTime, rules, now = Date.now(), cfg = config() }) {
@@ -33,10 +34,12 @@ async function validateJevExecution(request, { db, livePrice, quoteTime, rules, 
     const state = await require('./strategy/store').status(db);
     if (state.halted) throw new Error('STRATEGY_CIRCUIT_BREAKER');
     if (!result.risk || request.quantity !== result.risk.quantity || JSON.stringify(request.tradeContext.strategy) !== JSON.stringify(result.strategy)) throw new Error('STRATEGY_RECEIPT_CHANGED');
-    const risk = request.quantity * (Math.abs(livePrice - request.stopLoss) + (livePrice + request.stopLoss) * (policy.feeRate + policy.slippageBps / 10000) + livePrice * policy.fundingReserve);
-    if (risk > result.risk.riskAtStop + 1e-8) throw new Error('STRATEGY_LIVE_RISK_INCREASED');
-    const netReward = request.quantity * (Math.abs(request.takeProfit - livePrice) - (livePrice + request.takeProfit) * (policy.feeRate + policy.slippageBps / 10000) - livePrice * policy.fundingReserve);
-    if (!(risk > 0 && netReward / risk >= (policy.minExpectedR ?? 0))) throw new Error('STRATEGY_REWARD_RISK_TOO_LOW');
+    // The JEV receipt binds quantity and levels. A later quote can change the
+    // estimated loss; the live portfolio checks enforce the actual risk cap.
+    const { expectedR } = liveRisk({ quantity: request.quantity, entry: livePrice,
+      stop: request.stopLoss, target: request.takeProfit, feeRate: policy.feeRate,
+      slippageBps: policy.slippageBps, fundingReserve: policy.fundingReserve });
+    if (expectedR < (policy.minExpectedR ?? 0)) throw new Error('STRATEGY_REWARD_RISK_TOO_LOW');
   }
   if (!Number.isInteger(p.leverage) || p.leverage < 1 || p.leverage > 10 || request.leverage !== p.leverage)
     throw new Error('JEV_LEVERAGE_CHANGED');

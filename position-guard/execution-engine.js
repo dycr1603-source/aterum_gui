@@ -1,5 +1,6 @@
 'use strict';
 const { validateJevExecution } = require('../services/jev_execution');
+const { assertPortfolioRisk } = require('../services/strategy/live-risk');
 const { deliver } = require('../services/telegram_delivery');
 
 const { randomUUID, createHash } = require('crypto');
@@ -688,7 +689,6 @@ class ExecutionEngine {
       if (isStrategyVersion(strategy?.version)) {
         const policy = strategy.riskPolicy;
         jevFeeAmount += quantity * ((livePrice + stopLoss) * policy.slippageBps / 10000 + livePrice * policy.fundingReserve);
-        if (quantity * Math.abs(livePrice - stopLoss) + jevFeeAmount > Number(request.tradeContext.maxLoss) + 1e-8) throw new Error('STRATEGY_RISK_BUDGET_EXCEEDED');
       }
     }
     let portfolioAllocation = null;
@@ -703,7 +703,8 @@ class ExecutionEngine {
         const margin = quantity * livePrice / request.leverage;
         if (margin > equity * (p.maxMarginFractionPerPosition ?? 0.9) + 1e-8 || margin + Number(portfolioAllocation.account.marginUsed) > equity * (p.maxTotalMarginFraction ?? 0.9) + 1e-8) throw new Error('STRATEGY_MARGIN_BUDGET_EXCEEDED');
         const risk = quantity * Math.abs(livePrice - stopLoss) + jevFeeAmount;
-        if (risk > equity * p.riskFraction + 1e-8 || risk + Number(portfolioAllocation.risk.openRiskAmount) > equity * p.maxPortfolioRisk + 1e-8 || portfolioAllocation.positions.length >= p.maxPositions) throw new Error('STRATEGY_PORTFOLIO_RISK_EXCEEDED');
+        assertPortfolioRisk({ risk, equity, openRisk: Number(portfolioAllocation.risk.openRiskAmount),
+          positions: portfolioAllocation.positions.length, policy: p });
       }
       if (!portfolioAllocation.allowed) {
         const primary = portfolioAllocation.primaryReason || { code: 'PORTFOLIO_CAPACITY_REJECTED' };

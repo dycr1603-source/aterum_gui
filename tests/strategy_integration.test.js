@@ -363,6 +363,18 @@ test('a no-opportunity report sends one compact hourly summary without symbol li
   assert(!posted[0].body.text.includes('TOKEN0USDT'));
   assert(posted[0].body.text.length < 500);
 });
+test('a breaker summary says the scan was skipped instead of reporting zero eligible symbols', async () => {
+  const code = fs.readFileSync(require.resolve('../bot-control/workflows/code/strategy-no-trade.js'), 'utf8');
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const run = new AsyncFunction('$input', code);
+  let message;
+  await run.call({ helpers: { httpRequest: async request => {
+    message = request.body.text;
+    return { status: 'SENT' };
+  } } }, { first: () => ({ json: { skipReason: 'CIRCUIT_BREAKER: TEST' } }) });
+  assert.match(message, /Escaneo omitido por control de estrategia/);
+  assert.doesNotMatch(message, /0 de 0 elegibles/);
+});
 test('engine checks every eligible symbol when no entry is found', async () => {
   const when = 1800000000000;
   const symbols = Array.from({ length: 30 }, (_, i) => `TOKEN${i}USDT`);
