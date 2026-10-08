@@ -82,17 +82,21 @@ function relation(item) {
 }
 
 async function fetchJson(url) {
-  const res = await fetch(url, { headers: { 'user-agent': 'aterum-simulator/1.0' } });
+  const res = await fetch(url, { headers: { 'user-agent': 'aterum-simulator/1.0' }, signal: AbortSignal.timeout(12000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
 async function getKlines(symbol, startMs, hours) {
+  // Begin with the first complete minute after entry. An earlier candle could
+  // contain a stop/target touch that happened before the trade existed.
+  const firstFullMinute = Math.ceil(startMs / 60000) * 60000;
   const endMs = startMs + hours * 3600 * 1000;
-  const url = `${BINANCE_BASE}/fapi/v1/klines?symbol=${encodeURIComponent(symbol)}&interval=5m&startTime=${startMs}&endTime=${endMs}&limit=1000`;
+  const url = `${BINANCE_BASE}/fapi/v1/klines?symbol=${encodeURIComponent(symbol)}&interval=1m&startTime=${firstFullMinute}&endTime=${endMs - 1}&limit=1000`;
   const raw = await fetchJson(url);
   if (!Array.isArray(raw)) return [];
-  return raw.map(k => ({
+  const now = Date.now();
+  return raw.filter(k => Number(k[0]) + 60000 <= now).map(k => ({
     openTime: k[0],
     open: Number(k[1]),
     high: Number(k[2]),
@@ -101,16 +105,27 @@ async function getKlines(symbol, startMs, hours) {
   }));
 }
 
-function simulateOutcome(item, bars) {
+function simulateOutcome(item, bars, hours, enteredAt) {
   const direction = item?.direction || item?.side;
   const entry = Number(item?.entryPrice || item?.indicators?.currentPrice || 0);
   const atrPct = Number(item?.indicators?.atrPct || 0);
-  if (!entry || !atrPct || !['LONG', 'SHORT'].includes(direction) || !bars.length) return null;
+  if (!(entry > 0) || !['LONG', 'SHORT'].includes(direction) || !bars.length) return null;
 
-  const stopPct = Math.max(0.35, atrPct * 1.5) / 100;
-  const tpPct = stopPct * 2;
-  const sl = direction === 'LONG' ? entry * (1 - stopPct) : entry * (1 + stopPct);
-  const tp = direction === 'LONG' ? entry * (1 + tpPct) : entry * (1 - tpPct);
+  // Current workflows persist actual planned levels; ATR was only present in
+  // the old workflow. Never invent levels when neither source is available.
+  let sl = Number(item?.initialSL || item?.sl || item?.slPrice || 0);
+  let tp = Number(item?.tp || item?.tpPrice || 0);
+  let levelsSource = 'recorded';
+  if (!(sl > 0 && tp > 0)) {
+    if (!(atrPct > 0)) return null;
+    const derivedStop = Math.max(0.35, atrPct * 1.5) / 100;
+    sl = direction === 'LONG' ? entry * (1 - derivedStop) : entry * (1 + derivedStop);
+    tp = direction === 'LONG' ? entry * (1 + derivedStop * 2) : entry * (1 - derivedStop * 2);
+    levelsSource = 'atr_estimate';
+  }
+  if (direction === 'LONG' ? !(sl < entry && tp > entry) : !(sl > entry && tp < entry)) return null;
+  const stopPct = Math.abs(sl / entry - 1);
+  const tpPct = Math.abs(tp / entry - 1);
 
   let mfe = 0;
   let mae = 0;
@@ -134,8 +149,12 @@ function simulateOutcome(item, bars) {
 
   const lastClose = bars[bars.length - 1].close;
   const endRet = direction === 'LONG' ? (lastClose - entry) / entry : (entry - lastClose) / entry;
+  const windowComplete = Number.isFinite(enteredAt) && Date.now() >= enteredAt + hours * 3600000 &&
+    bars.at(-1).openTime + 60000 >= enteredAt + hours * 3600000 - 60000;
   const quality = firstHit === 'tp' ? 'good_tp'
     : firstHit === 'sl' ? 'bad_sl'
+    : firstHit === 'both_same_bar' ? 'bad_ambiguous'
+    : !windowComplete ? 'pending'
     : mfe >= tpPct * 0.5 && mfe > mae ? 'good_partial'
     : mae >= stopPct * 0.8 && mae > mfe ? 'bad_pressure'
     : 'mixed';
@@ -149,8 +168,34 @@ function simulateOutcome(item, bars) {
     endRetPct: endRet * 100,
     firstHit,
     hitAt,
-    quality
+    quality,
+    windowComplete,
+    levelsSource
   };
+}
+
+function openScenario(row) {
+  const entry = Number(row.entry_price);
+  const qty = Number(row.qty);
+  const sl = Number(row.sl_price);
+  const tp = Number(row.tp_price);
+  const direction = row.direction;
+  if (!(entry > 0 && qty > 0) || !['LONG', 'SHORT'].includes(direction)) return null;
+  const pnlAt = price => Number.isFinite(price) && price > 0
+    ? (direction === 'LONG' ? 1 : -1) * (price - entry) * qty : null;
+  return {
+    id: row.id, symbol: row.symbol, direction, entry, qty,
+    leverage: Number(row.leverage) || null, sl: sl > 0 ? sl : null,
+    tp: tp > 0 ? tp : null, pnlAtSl: pnlAt(sl), pnlAtTp: pnlAt(tp),
+    openedAt: row.opened_at
+  };
+}
+
+async function getOpenScenarios() {
+  const rows = await shared.query(`SELECT id,symbol,direction,entry_price,qty,leverage,sl_price,tp_price,opened_at
+    FROM trades WHERE status='OPEN' ORDER BY opened_at DESC LIMIT 20`);
+  if (!Array.isArray(rows)) return { status: 'unavailable', rows: [] };
+  return { status: 'ready', rows: rows.map(openScenario).filter(Boolean) };
 }
 
 function bumpGroup(groups, key, signal) {
@@ -311,7 +356,13 @@ async function getSimulatorReport(options = {}) {
   const hours = clampInt(options.hours, 4, 1, 12);
   const force = options.force === true || options.force === '1' || options.force === 'true';
   const cacheKey = `${limit}:${hours}`;
-  if (!force && cache && cache.key === cacheKey && Date.now() - cache.ts < CACHE_MS) return cache.data;
+  if (!force && cache && cache.key === cacheKey && Date.now() - cache.ts < CACHE_MS) {
+    // Only the historical replay is cached. Current positions and actual
+    // trades always come from the database on each request.
+    const [openScenarios, actual] = await Promise.all([getOpenScenarios(), getActualTradeStats()]);
+    return { ...cache.data, actual, openScenarios: openScenarios.rows,
+      sources: { ...cache.data.sources, actual: actual.status, openScenarios: openScenarios.status } };
+  }
 
   let executions = [];
   let executionSource = 'ready';
@@ -329,6 +380,7 @@ async function getSimulatorReport(options = {}) {
   }
 
   const signals = [];
+  const [openScenarios, actual] = await Promise.all([getOpenScenarios(), getActualTradeStats()]);
   for (const execution of executions) {
     let parsed;
     try {
@@ -346,13 +398,27 @@ async function getSimulatorReport(options = {}) {
     if (!['opened', 'rejected'].includes(decision.type)) continue;
     if (!item.symbol || !['LONG', 'SHORT'].includes(direction)) continue;
 
-    const startedAt = String(execution.startedAt || '').replace(' ', 'T') + 'Z';
-    const startedMs = Date.parse(startedAt);
+    const startedAt = String(execution.startedAt || '').replace(' ', 'T');
+    const startedMs = Date.parse(/[zZ]$|[+-]\d\d:\d\d$/.test(startedAt) ? startedAt : startedAt + 'Z');
+    // The execution starts before the exchange fill. Use the persisted fill
+    // time and levels when this workflow execution has a matching trade.
+    const matched = item.executionId ? await shared.query(
+      'SELECT entry_price,initial_sl_price,tp_price,opened_at FROM trades WHERE execution_id=? LIMIT 1',
+      [item.executionId]
+    ) : null;
+    const linked = Array.isArray(matched) ? matched[0] : null;
+    const fillMs = linked?.opened_at ? new Date(linked.opened_at).getTime() : NaN;
+    const entryMs = Number.isFinite(fillMs) ? fillMs : startedMs;
+    const levels = linked ? { ...item, entryPrice: Number(linked.entry_price) || item.entryPrice,
+      initialSL: Number(linked.initial_sl_price) || item.initialSL || item.sl,
+      tp: Number(linked.tp_price) || item.tp } : item;
     let outcome = null;
     let outcomeError = null;
     try {
-      const bars = await getKlines(item.symbol, startedMs, hours);
-      outcome = simulateOutcome(item, bars);
+      if (!Number.isFinite(entryMs)) throw Error('Fecha de entrada no disponible');
+      const bars = await getKlines(item.symbol, entryMs, hours);
+      outcome = simulateOutcome(levels, bars, hours, entryMs);
+      if (!outcome) outcomeError = bars.length ? 'Faltan niveles de entrada, stop u objetivo válidos' : 'Sin velas completas después de la entrada';
     } catch (error) {
       outcomeError = error.message;
     }
@@ -391,15 +457,15 @@ async function getSimulatorReport(options = {}) {
   signals.filter(s => s.outcome).forEach(signal => {
     bumpGroup(groups, `${signal.type}|${signal.direction}|macro=${signal.macroRelation}|4h=${signal.tf4h}`, signal);
   });
-  const actual = await getActualTradeStats();
   const data = {
     generatedAt: new Date().toISOString(),
     options: { limit, hours },
-    sources: { executions: executionSource === 'unavailable' ? 'unavailable' : signals.length ? 'ready' : 'empty', actual: actual.status },
+    sources: { executions: executionSource === 'unavailable' ? 'unavailable' : signals.length ? 'ready' : 'empty', actual: actual.status, openScenarios: openScenarios.status },
     stats: buildStats(signals.filter(s => s.outcome)),
     groups: finalizeGroups(groups),
     signals,
-    actual
+    actual,
+    openScenarios: openScenarios.rows
   };
   cache = { key: cacheKey, ts: Date.now(), data };
   return data;
@@ -407,5 +473,7 @@ async function getSimulatorReport(options = {}) {
 
 module.exports = {
   getSimulatorReport,
-  getSimulatorPolicy
+  getSimulatorPolicy,
+  simulateOutcome,
+  openScenario
 };

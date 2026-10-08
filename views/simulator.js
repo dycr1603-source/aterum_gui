@@ -270,8 +270,17 @@ ${getSharedNav('simulator', user, 'blue')}
     </select>
   </div>
 
-  <div class="section-label">Simulación</div>
-  <div class="section-note">Todo este bloque es hipotético. Sirve para responder qué habría pasado con el capital simulado elegido.</div>
+  <div class="section-label">Posiciones abiertas · ¿qué pasaría si cierro a este precio?</div>
+  <div class="section-note">Usa la cantidad y la entrada guardadas en la base local. Cambia el precio para calcular el PnL bruto hipotético. No incluye comisiones, funding ni deslizamiento; no envía órdenes.</div>
+  <section class="card">
+    <div class="table-wrap"><table>
+      <thead><tr><th>Símbolo</th><th>Dir</th><th>Cantidad</th><th>Entrada</th><th>Stop actual</th><th>PnL si stop</th><th>Objetivo actual</th><th>PnL si objetivo</th><th>Precio hipotético</th><th>PnL hipotético</th></tr></thead>
+      <tbody id="openScenariosBody"><tr><td colspan="10">${emptyMarkup('Cargando posiciones')}</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <div class="section-label">Simulación histórica</div>
+  <div class="section-note">Este bloque reproduce señales pasadas con las velas posteriores a su entrada. El PnL simulado es bruto y no representa dinero real.</div>
 
   <section class="grid kpis" id="kpis">
     <div class="kpi"><div class="kpi-label">Señales</div><div class="kpi-value">--</div><div class="kpi-sub">analizadas</div></div>
@@ -367,7 +376,7 @@ function simulatedReturnPct(signal){
   const o = signal && signal.outcome;
   if(!o) return null;
   if(o.firstHit === 'tp' && hasNum(o.tpPct)) return Number(o.tpPct);
-  if(o.firstHit === 'sl' && hasNum(o.stopPct)) return -Number(o.stopPct);
+  if((o.firstHit === 'sl' || o.firstHit === 'both_same_bar') && hasNum(o.stopPct)) return -Number(o.stopPct);
   return hasNum(o.endRetPct) ? Number(o.endRetPct) : null;
 }
 function simulatedPnl(signal){
@@ -383,8 +392,34 @@ function clsByOutcome(o){
 }
 function outcomeLabel(o){
   if(!o) return 'Sin datos';
-  const labels = { good_tp:'TP simulado', bad_sl:'SL simulado', good_partial:'Avance útil', bad_pressure:'Presión fuerte', mixed:'Mixto', both_same_bar:'TP/SL misma vela' };
+  const labels = { good_tp:'TP simulado', bad_sl:'SL simulado', bad_ambiguous:'TP/SL misma vela: SL asumido', pending:'Ventana en curso', good_partial:'Avance útil', bad_pressure:'Presión fuerte', mixed:'Mixto' };
   return labels[o.quality] || o.quality || o.firstHit || 'Mixto';
+}
+function renderOpenScenarios(rows){
+  const body=document.getElementById('openScenariosBody');
+  body.replaceChildren();
+  if(!rows || !rows.length){
+    const tr=document.createElement('tr'),td=document.createElement('td');
+    td.colSpan=10;td.textContent='No hay posiciones abiertas en la base local.';tr.append(td);body.append(tr);return;
+  }
+  for(const row of rows){
+    const tr=document.createElement('tr');
+    const cell=(value,css='')=>{const td=document.createElement('td');td.textContent=value;td.className=css;tr.append(td);return td;};
+    const number=value=>hasNum(value)?Number(value).toLocaleString('es',{maximumFractionDigits:8}):'--';
+    cell(row.symbol);cell(row.direction);cell(number(row.qty));cell(number(row.entry));
+    cell(number(row.sl));cell(money(row.pnlAtSl),hasNum(row.pnlAtSl)?Number(row.pnlAtSl)>=0?'good':'bad':'muted');
+    cell(number(row.tp));cell(money(row.pnlAtTp),hasNum(row.pnlAtTp)?Number(row.pnlAtTp)>=0?'good':'bad':'muted');
+    const priceCell=document.createElement('td'),input=document.createElement('input');
+    input.className='input';input.type='number';input.min='0';input.step='any';
+    input.value=String(row.tp || row.entry);input.setAttribute('aria-label','Precio hipotético '+row.symbol);
+    priceCell.append(input);tr.append(priceCell);
+    const pnlCell=cell('--','mono');
+    const update=()=>{const price=Number(input.value),entry=Number(row.entry),qty=Number(row.qty);
+      if(!(price>0&&entry>0&&qty>0)){pnlCell.textContent='--';pnlCell.className='muted';return;}
+      const pnl=(row.direction==='LONG'?1:-1)*(price-entry)*qty;
+      pnlCell.textContent=money(pnl);pnlCell.className='mono '+(pnl>=0?'good':'bad');};
+    input.addEventListener('input',update);update();body.append(tr);
+  }
 }
 function contextText(s){
   return 'macro ' + (s.macroRelation || '-') + ' · 4H ' + (s.tf4h || '-') + ' · ' + (s.aiRegime || '-');
@@ -544,7 +579,7 @@ function renderSignals(){
     const typeBadge = s.type === 'opened' ? '<span class="badge b-open">Abierto</span>' : '<span class="badge b-reject">Rechazado</span>';
     const dirBadge = '<span class="badge '+(s.direction==='LONG'?'b-long':'b-short')+'">'+s.direction+'</span>';
     const score = (s.score ?? '--') + (s.threshold ? ' / ' + s.threshold : '');
-    const reason = s.reason ? String(s.reason).slice(0,180) : '<span class="muted">Trade ejecutado</span>';
+    const reason = s.outcomeError ? AterumUI.escape(s.outcomeError) : s.reason ? AterumUI.escape(String(s.reason).slice(0,180)) : '<span class="muted">Trade ejecutado</span>';
     return '<tr>'+
       '<td class="mono">'+String(s.at||'').slice(5,16)+'</td>'+
       '<td>'+typeBadge+'</td>'+
@@ -566,8 +601,11 @@ function render(report){
   const notices=[];
   if(report.sources?.executions==='unavailable')notices.push('No se pudo leer el historial de ejecuciones. Los resultados de simulación no están disponibles.');
   else if(report.sources?.executions==='empty')notices.push('No hay señales compatibles con esta consulta.');
+  else if(report.signals?.length && !report.stats?.total)notices.push('Hay señales, pero faltan velas o niveles válidos para simularlas. Revisa el motivo de cada fila.');
   if(report.sources?.actual==='unavailable')notices.push('No se pudo cargar el historial de operaciones reales.');
+  if(report.sources?.openScenarios==='unavailable')notices.push('No se pudieron cargar las posiciones abiertas.');
   document.getElementById('simSourceStatus').textContent=notices.join(' ');
+  renderOpenScenarios(report.openScenarios || []);
   renderKpis(report.stats || {});
   renderRealSummary(report.actual && report.actual.summary);
   renderGroups(report.groups || {});
@@ -611,6 +649,7 @@ function clearView(){
   document.getElementById('generatedAt').textContent = '--';
   renderKpis({ total:'--', good:'--', goodRate:'--', bad:'--', avgMfe:null, avgMae:null, avgEnd:null });
   renderRealSummary(null);
+  document.getElementById('openScenariosBody').innerHTML='<tr><td colspan="10">'+emptyMarkup('Elige parámetros y carga el análisis')+'</td></tr>';
   document.getElementById('groupList').innerHTML = emptyMarkup('Carga un análisis para ver grupos');
   document.getElementById('signalsBody').innerHTML = '<tr><td colspan="12">'+emptyMarkup('Elige parámetros y carga el análisis')+'</td></tr>';
   renderSimPnlSummary([]);
@@ -635,6 +674,10 @@ document.getElementById('loadBtn').addEventListener('click', ()=>load(false).cat
 }));
 document.getElementById('clearBtn').addEventListener('click', clearView);
 clearView();
+load(false).catch(err=>{
+  setLoading(false);
+  document.getElementById('simSourceStatus').textContent='No se pudo cargar el simulador: '+err.message;
+});
 });
 </script>
 <script>${getSharedScript()}</script>

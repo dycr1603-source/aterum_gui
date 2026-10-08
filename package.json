@@ -18,7 +18,7 @@
     "test:offline": "node scripts/test-offline.js",
     "build": "npm run check && npm run check:strategy && node scripts/check-gui.js",
     "preview:gui": "node scripts/preview-gui.js",
-    "test:gui": "node scripts/check-gui.js && node tests/gui_contract.test.js && node tests/account_snapshot.test.js && node tests/simulator_sources.test.js && node tests/gui_ngrok.test.js",
+    "test:gui": "node scripts/check-gui.js && node tests/gui_contract.test.js && node tests/account_snapshot.test.js && node tests/simulator_sources.test.js && node tests/simulator_scenarios.test.js && node tests/gui_ngrok.test.js",
     "test:telegram-control": "node telegram-control/unit-test.js && node telegram-control/tunnel.test.js",
     "test:gui:live": "node tests/gui-browser.cjs",
     "test:research-preflight": "node tests/research_ai_preflight.test.js",
