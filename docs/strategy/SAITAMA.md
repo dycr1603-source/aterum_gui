@@ -115,8 +115,11 @@ aterum start
 aterum status
 docker compose --profile trading --profile ai --profile aux ps
 curl --fail http://127.0.0.1:3001/healthz
+test "$(docker inspect aterum-dashboard-1 --format '{{.Image}}')" = "$(docker inspect aterum-position_guard-1 --format '{{.Image}}')"
 ```
 
 Comprobar en n8n que el workflow principal, SL Monitor y Trailing Manager estén publicados; comprobar que Position Guard, JEV y Telegram estén saludables. Con posiciones existentes, comprueba por cada símbolo la cantidad y el lado en Binance, la adopción en la base local y las órdenes nativas STOP y TAKE PROFIT. `portfolio-capacity` puede responder `allowed:false` por margen lleno después de adoptar las posiciones protegidas; eso no equivale a un fallo de servicio.
+
+La última comprobación de imagen es obligatoria: el análisis y Position Guard deben cargar exactamente la misma política. En Delcon, una versión anterior del guard rechazó una entrada con `STRATEGY_POLICY_CHANGED` después de añadir el cooldown. Si las imágenes difieren en Saitama, recrea solo `position_guard` con `docker compose --profile trading up -d --no-deps --force-recreate position_guard` y repite la comprobación de salud y protección antes de dejar correr el siguiente ciclo.
 
 La ruta `STRATEGY_ENGINE=two-indicator` habilita el motor de estrategia; la estrategia de entrada concreta se selecciona por `entryMode` en `config/strategy-v2.json`. En esta configuración la única estrategia elegida es `new_opportunistic` en velas de 1h, con JEV y ejecución en modo `enforce`; los nodos n8n llamados `Two Indicator Decision` son nombres históricos de la ruta, no una segunda estrategia que opere en paralelo. La activación está ligada a una autorización manual y continúa `MANUAL_UNVALIDATED`: el informe histórico está rechazado y no hay evidencia de 70% de operaciones ganadoras sostenido fuera de muestra. Los límites de cartera configurados son hasta 22% de riesgo al stop por operación y 44% agregado, tres posiciones como máximo, margen de 35% por posición y 90% total, con leverage entre 5x y 10x. Los filtros manuales están ahora alineados con la política activa: profundidad mínima de 500 y multiplicador dinámico 3; esta alineación permite evaluar la política activa, pero no valida su rentabilidad ni elimina los controles de riesgo.
