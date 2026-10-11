@@ -78,19 +78,31 @@ function stateFor(d, market, candidates) {
     operationalBlockers: operationalBlockers(d), riskDecision: d.riskDecision,
     portfolioCapacity: d.portfolioCapacity };
 }
-function choiceAnswer(body, key, criteria) {
+function choiceAnswer(body, key, criteria, { preferDirectionalNearTie = false, tieMargin = 0.05 } = {}) {
   const a = body.answers?.[key], keys = Object.keys(criteria);
   if (a?.type !== 'choice' || !keys.includes(a.choice) || !Number.isFinite(a.confidence) ||
       a.confidence < 0 || a.confidence > 1 || !a.probabilities ||
       Object.keys(a.probabilities).sort().join() !== [...keys].sort().join() ||
       keys.some(k => !Number.isFinite(a.probabilities[k]) || a.probabilities[k] < 0 || a.probabilities[k] > 1) ||
-      Math.abs(keys.reduce((sum, k) => sum + a.probabilities[k], 0) - 1) > 0.001 ||
-      keys.some(k => a.probabilities[k] > a.probabilities[a.choice])) throw new Error('JEV_INVALID_RESPONSE');
-  return a;
+      Math.abs(keys.reduce((sum, k) => sum + a.probabilities[k], 0) - 1) > 0.001)
+    throw new Error('JEV_INVALID_RESPONSE');
+  const bestChoice = keys.reduce((best, next) => a.probabilities[next] > a.probabilities[best] ? next : best, keys[0]);
+  let choice = bestChoice;
+  if (preferDirectionalNearTie && bestChoice === 'NO_TRADE') {
+    const strongestDirectional = keys.filter(k => k !== 'NO_TRADE').reduce((best, next) =>
+      a.probabilities[next] > a.probabilities[best] ? next : best,
+      keys.find(k => k !== 'NO_TRADE') || keys[0]);
+    if (strongestDirectional !== 'NO_TRADE' &&
+        a.probabilities.NO_TRADE - a.probabilities[strongestDirectional] <= tieMargin) {
+      choice = strongestDirectional;
+    }
+  }
+  return { ...a, choice };
 }
 async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
-  const simple = ['two-indicator-v1', 'consensus-10-v1'].includes(d.strategy?.version);
+  const simple = ['two-indicator-v1', 'consensus-10-v1', 'opportunistic-v1',
+    'relative-reversal-v1', 'scalp-research-v1', 'new-opportunistic-v1'].includes(d.strategy?.version);
   const id = requestId(d);
   const result = { id, symbol: d.symbol, provider: cfg.provider, mode: cfg.observe ? 'observe' : 'enforce',
     decision: 'NO_TRADE', proposedDecision: 'NO_TRADE', reason: null,
@@ -190,10 +202,15 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
     for (const side of Object.keys(available)) directionCriteria[side] = `Propose a ${side.toLowerCase()} position within the available account capacity.`;
     const referenceInstructions = state.marketContext?.intelligenceSignal
       ? ' Intelligence is a high-confidence deterministic heuristic reference, not a prior Jev decision or an operational veto. Assess it alongside the market evidence and decide independently.' : '';
+    const newOpportunity = d.strategy?.version === 'new-opportunistic-v1';
     const consensusContext = d.strategy?.version === 'consensus-10-v1'
-      ? ` This asset ranks ${d.strategy.candidateRank} of ${d.strategy.candidateCount} market-qualified candidates after a full eligible-universe scan, with ${d.strategy.voteSummary?.supporting} directional votes and ${d.strategy.voteSummary?.opposing} opposing votes. A valid consensus is an entry opportunity, not proof of profit. Choose the offered direction when timing and market context support it; use NO_TRADE for a concrete adverse factor.`
+      ? ` This asset ranks ${d.strategy.candidateRank} of ${d.strategy.candidateCount} market-qualified candidates after a full eligible-universe scan, with ${d.strategy.voteSummary?.supporting} directional votes and ${d.strategy.voteSummary?.opposing} opposing votes. Inspect the supplied closed 5-minute momentum, relative volume, volatility and spread for immediate entry timing. A valid consensus is an entry opportunity, not proof of profit. Choose the offered direction when timing and market context support it; use NO_TRADE for a concrete adverse factor.`
+      : newOpportunity
+        ? ` This candidate ranks ${d.strategy.candidateRank} of ${d.strategy.candidateCount} after the market and liquidity checks. The new opportunity model proposes only ${d.strategy.directions.join('/')} from closed candles. ADX and Bollinger are context, not required confirmations for this model. Evaluate the supplied 5-minute timing, volume, spread, funding and portfolio context. Choose the proposed direction when there is a plausible near-term move after costs and no concrete adverse evidence. Use NO_TRADE for a specific conflicting move, exhaustion, poor timing, excessive costs or exposure. The model score is not a calibrated probability of profit; do not infer an edge from the score alone.`
+      : ['opportunistic-v1', 'relative-reversal-v1', 'scalp-research-v1', 'new-opportunistic-v1'].includes(d.strategy?.version)
+        ? ` This asset ranks ${d.strategy.candidateRank} of ${d.strategy.candidateCount} market-qualified candidates. The closed-candle opportunity model is ${d.strategy.opportunity?.model} with evidence ${JSON.stringify(d.strategy.opportunity?.evidence || {})}. Independently assess whether this directional setup has enough immediate net potential after fees, spread, slippage and funding. Compare momentum, liquidity, volume, exhaustion and the existing portfolio. Use NO_TRADE if the setup is weak; scores are not calibrated profit probabilities.`
       : '';
-    const questions = { [prefix]: choice('Decide independently whether to open no position, LONG, or SHORT from this market snapshot. NO_TRADE is fully valid. Only capacity-feasible sides are offered. Evaluate entry timing, exhaustion, volume and reversal risk, not just trend direction. Prefer NO_TRADE when a timely setup is unsupported. Scores and your option probabilities are not calibrated probabilities of profit; do not chase losses.' + consensusContext + referenceInstructions, directionCriteria) };
+    const questions = { [prefix]: choice('Decide independently whether to open no position, LONG, or SHORT from this market snapshot. NO_TRADE is fully valid. Only capacity-feasible sides are offered. Evaluate entry timing, exhaustion, volume and reversal risk, not just trend direction. Scores and your option probabilities are not calibrated probabilities of profit; do not chase losses.' + consensusContext + referenceInstructions, directionCriteria) };
     if (simple) questions[`${prefix}_reason`] = choice('Choose the primary explanation for your decision. For NO_TRADE, explain missing edge, account exposure or uncertainty. This describes your choice and does not add another technical indicator.', {
       TREND_CONTINUATION: 'Trend continuation is the primary hypothesis for this opportunity.',
       BREAKOUT: 'The observed price structure supports a breakout hypothesis.',
@@ -226,7 +243,9 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
       return body;
     };
     const body = await ask(request);
-    const direction = choiceAnswer(body, prefix, questions[prefix].criteria);
+    const direction = choiceAnswer(body, prefix, questions[prefix].criteria, {
+      preferDirectionalNearTie: d.strategy?.version === 'new-opportunistic-v1',
+    });
     result.answer = { provider: cfg.provider, model: body.model, ...direction };
     result.model = body.model;
     if (simple) result.market_regime = choiceAnswer(body, `${prefix}_regime`, questions[`${prefix}_regime`].criteria).choice;

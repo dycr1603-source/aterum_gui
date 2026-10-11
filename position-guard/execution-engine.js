@@ -10,7 +10,8 @@ const EXECUTION_TYPES = new Set([
 ]);
 const TERMINAL_STATUSES = new Set(['VERIFIED', 'REJECTED', 'FAILED']);
 const ACTIVE_ORDER_STATUSES = new Set(['NEW', 'PARTIALLY_FILLED']);
-const isStrategyVersion = version => ['two-indicator-v1', 'consensus-10-v1'].includes(version);
+const isStrategyVersion = version => ['two-indicator-v1', 'consensus-10-v1',
+  'opportunistic-v1', 'relative-reversal-v1', 'scalp-research-v1', 'new-opportunistic-v1'].includes(version);
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function json(value) { return JSON.stringify(value ?? null); }
@@ -1045,6 +1046,7 @@ class ExecutionEngine {
       slPrice: trade.sl_price == null ? null : Number(trade.sl_price), qty: Number(trade.qty),
       side: closeSide(request.positionSide), entryPrice: Number(trade.entry_price),
       initialSL: Number(trade.initial_sl_price ?? trade.sl_price), stage: trade.trailing_stage || 'INITIAL',
+      policyVersion: trade.policy_version,
       tp: trade.tp_price == null ? null : Number(trade.tp_price), leverage: Number(trade.leverage),
       openedAt: new Date(trade.opened_at).getTime(), source: 'VERIFIED_EXECUTION' };
     const [monitorResponse, dashboardResponse] = await Promise.all([

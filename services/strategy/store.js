@@ -12,6 +12,13 @@ async function ensure(db) {
   );
   await db.execute("INSERT IGNORE INTO strategy_breaker (id) VALUES (1)");
 }
+// Reset peak_equity to current equity (for new strategy start)
+async function resetPeakEquity(db, equity) {
+  await db.execute(
+    "UPDATE strategy_breaker SET peak_equity=?,updated_at=NOW(3) WHERE id=1",
+    [equity],
+  );
+}
 async function record(db, key, type, payload) {
   await db.execute(
     "INSERT INTO strategy_events (event_key,event_type,payload) VALUES (?,?,?) ON DUPLICATE KEY UPDATE payload=VALUES(payload)",
@@ -63,4 +70,10 @@ async function performance(db, capital = 1000) {
     trades,
   };
 }
-module.exports = { ensure, record, halt, status, performance, parse };
+// Get current breaker state without modifying peak_equity
+async function getStatus(db) {
+  const [rows] = await db.execute("SELECT * FROM strategy_breaker WHERE id=1");
+  if (!rows[0]) throw Error("STRATEGY_BREAKER_UNAVAILABLE");
+  return { ...rows[0], _modified: false };
+}
+module.exports = { ensure, record, halt, status, performance, parse, resetPeakEquity, getStatus };

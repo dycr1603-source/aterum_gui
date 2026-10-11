@@ -4,7 +4,7 @@ const fs = require("node:fs"),
   { createHash } = require("node:crypto");
 const { validateBars } = require("../../services/strategy/indicators");
 const ROOT = path.resolve(__dirname, "../../.local/strategy-v2/market");
-const intervals = { "1h": 3600000, "4h": 14400000 };
+const intervals = { "1m": 60000, "5m": 300000, "15m": 900000, "1h": 3600000, "4h": 14400000 };
 function contentHash(d) {
   return createHash("sha256")
     .update(

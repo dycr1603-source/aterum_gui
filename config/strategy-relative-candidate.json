@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "mode": "shadow",
+  "pair": [
+    "ADX",
+    "BOLLINGER"
+  ],
+  "scale": 0.8,
+  "entryMode": "relative",
+  "minVotes": 5,
+  "adxThreshold": 22,
+  "bollingerSigma": 1.8,
+  "timeframe": "1h",
+  "directions": [
+    "LONG",
+    "SHORT"
+  ],
+  "riskFraction": 0.22,
+  "minExpectedR": 1.1,
+  "maxPortfolioRisk": 0.44,
+  "maxPositions": 3,
+  "maxDrawdown": 0.15,
+  "maxLossStreak": 10,
+  "minQuoteVolume": 5000000,
+  "minDepthQuote": 1000,
+  "depthNotionalMultiple": 5,
+  "maxSpreadBps": 10,
+  "maxAtrFraction": 0.08,
+  "feeRate": 0.001,
+  "slippageBps": 5,
+  "fundingReserve": 0.001,
+  "initialCapital": 1000,
+  "latencyBars": 1,
+  "maxHoldingBars": 24,
+  "minTrades": 30,
+  "minProfitableSymbolFraction": 0.6,
+  "maxWinnerConcentration": 0.35,
+  "monteCarloIterations": 1000,
+  "seed": 20261003,
+  "promotion": null,
+  "management": "existing",
+  "manualActivation": {
+    "enabled": false
+  },
+  "minLeverage": 5,
+  "maxLeverage": 5,
+  "maxMarginFractionPerPosition": 0.35,
+  "maxTotalMarginFraction": 0.9,
+  "minMarginFillFraction": 0.85,
+  "relative": {
+    "mode": "REVERSAL",
+    "horizon": 24,
+    "threshold": 0.015,
+    "regime": "BTC_48H",
+    "stopAtr": 2,
+    "targetR": 2,
+    "maxHours": 24,
+    "reversal": false,
+    "selectionIntervalHours": 1
+  },
+  "opportunityUniverse": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "DOGEUSDT",
+    "LINKUSDT",
+    "AVAXUSDT"
+  ]
+}

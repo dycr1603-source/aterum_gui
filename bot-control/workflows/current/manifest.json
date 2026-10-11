@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-10-01T02:42:39.227Z",
-  "source": "Repository workflow definitions; hashes refreshed after local deployment audit",
+  "generatedAt": "2026-10-10T19:57:42.072Z",
+  "source": "Repository workflow definitions; experimental 5m scalping route in shadow mode",
   "sanitized": true,
   "workflows": [
     {
       "id": "Cz4TfvaVAygWGRJm",
       "name": "Advanced AI Trading Bot v2 - Clean",
       "activeAtExport": false,
-      "nodeCount": 31,
+      "nodeCount": 37,
       "filename": "advanced-ai-trading-bot-v2-clean.workflow.json",
-      "sha256": "fc27566fce38589b1b304768e7a2db25886326c1091143dcff7e9a0c24363d0e"
+      "sha256": "416ae39319200415e554279781bc00dbd5bf68437629621fc742d2a68177d7b3"
     },
     {
       "id": "RecommendationReviewEngine",
@@ -49,7 +49,7 @@
       "activeAtExport": false,
       "nodeCount": 4,
       "filename": "trailing-manager.workflow.json",
-      "sha256": "aaf04505d56b7d121809b19e2991fa4d466ec078d781ae1c3abb17449e2c7925"
+      "sha256": "ca0bd067adf91e9f6fabd3e36eb896884bf4e3d065a61edd6cf869afc1fba110"
     }
   ]
 }

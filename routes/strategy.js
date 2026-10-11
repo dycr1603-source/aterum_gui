@@ -23,6 +23,8 @@ router.get("/internal/strategy/status", internal, (_req, res) => {
     res.json({
       engine: process.env.STRATEGY_ENGINE || "legacy",
       mode: policy.mode,
+      entryMode: policy.entryMode ?? "pair",
+      timeframe: policy.timeframe,
       promotion: promotion(policy, engine.readReport()),
     });
   } catch (e) {
@@ -30,7 +32,21 @@ router.get("/internal/strategy/status", internal, (_req, res) => {
   }
 });
 router.post("/internal/strategy/cycle", internal, async (_req, res) => {
-  if (running) return res.status(409).json({ error: "STRATEGY_CYCLE_RUNNING" });
+  if (running) {
+    return res.status(202).json({
+      strategyV2: true,
+      passAI: false,
+      allocationAllowed: false,
+      skipReason: "DUPLICATE_CYCLE",
+      cycleState: "running",
+      universeSummary: {
+        eligible: 0,
+        scanned: 0,
+        checked: [],
+        reasons: { DUPLICATE_CYCLE: 1 },
+      },
+    });
+  }
   running = true;
   try {
     if (process.env.STRATEGY_ENGINE !== "two-indicator")

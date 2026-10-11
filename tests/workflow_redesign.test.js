@@ -13,7 +13,7 @@ const removed = [
 ];
 
 assert.strictEqual(workflow.active, false, 'repository workflow must remain safe to import');
-assert.strictEqual(workflow.nodes.length, 36, '31 existing nodes plus five strategy-routing nodes');
+assert.strictEqual(workflow.nodes.length, 37, '31 existing nodes plus six strategy-routing nodes');
 assert.deepStrictEqual(workflow.connections['Main Schedule'].main[0].map(x => x.node), ['Strategy Mode']);
 for (const name of removed) assert(!names.has(name), `${name} must not remain in V2`);
 for (const name of ['Risk Guard', 'AGENTE DE MERCADO', 'Opportunity Discovery', 'Deterministic Entry Gate', 'Position Sizer', 'Execute Trade']) {
@@ -35,7 +35,8 @@ assert.deepStrictEqual(riskTargets, ['AGENTE DE MERCADO']);
 assert(gateTargets.includes('Position Sizer'));
 assert(gateTargets.includes('Build Entry Rejection'));
 assert.deepStrictEqual(workflow.connections['Execute Trade'].main[0].map(item => item.node), ['If: Execution Verified']);
-assert.deepStrictEqual(workflow.connections['If: Execution Verified'].main[0].map(item => item.node), ['Build Trade Alert']);
+assert.deepStrictEqual(workflow.connections['If: Execution Verified'].main[0].map(item => item.node), ['Build Trade Alert', 'Next Strategy Slot']);
+assert.deepStrictEqual(workflow.connections['Next Strategy Slot'].main[0].map(item => item.node), ['If: Strategy Approved']);
 assert.deepStrictEqual(workflow.connections['If: Execution Verified'].main[1].map(item => item.node), ['Build Execution Failure']);
 const alertCode = workflow.nodes.find(node => node.name === 'Build Trade Alert').parameters.jsCode;
 assert(alertCode.includes("persistenceStatus !== 'VERIFIED'"), 'open notification lacks persistence gate');

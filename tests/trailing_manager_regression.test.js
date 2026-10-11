@@ -16,8 +16,9 @@ const netAt = (side, entry, exit) => (side === 'SHORT' ? entry - exit : exit - e
 
 function klines(price, range = 1) {
   return Array.from({ length: 30 }, (_, index) => [
-    Date.now() - (30 - index) * 3600000,
-    String(price), String(price + range / 2), String(price - range / 2), String(price), '1'
+    Date.now() - (30 - index) * 300000,
+    String(price), String(price + range / 2), String(price - range / 2), String(price), '1',
+    Date.now() - (29 - index) * 300000 - 1
   ]);
 }
 
@@ -32,6 +33,7 @@ async function runScenario(overrides = {}) {
   const position = overrides.state || {
     positionSide: s.positionSide, slPrice: s.slPrice, qty: s.qty, side: s.side, entryPrice: s.entryPrice,
     initialSL: s.initialSL, stage: s.stage, tp: s.tp, leverage: s.leverage,
+    policyVersion: s.policyVersion,
     openedAt: Date.now() - s.hoursOpen * 3600000
   };
   const helpers = {
@@ -42,7 +44,7 @@ async function runScenario(overrides = {}) {
         symbol: s.symbol, filters: [{ filterType: 'PRICE_FILTER', tickSize: s.tick }]
       }] };
       if (options.url.includes('/fapi/v1/ticker/price')) return { symbol: s.symbol, price: String(s.currentPrice) };
-      if (options.url.includes('/fapi/v1/klines')) return klines(s.currentPrice, s.atrRange);
+      if (options.url.includes('/fapi/v1/klines')) return s.bars || klines(s.currentPrice, s.atrRange);
       if (options.url.endsWith('/executions')) {
         if (s.engineFailure) return {
           ok: false, executionId: options.body.executionId, finalStatus: 'FAILED',
@@ -51,7 +53,8 @@ async function runScenario(overrides = {}) {
         return {
           ok: true, executionId: options.body.executionId, exchangeOrderId: '9001',
           exchangeResponse: { create: { algoId: '9001' } },
-          verificationResult: { verified: true, requested: options.body, exchangeVerified: true },
+          verificationResult: { verified: true, requested: options.body, exchangeVerified: true,
+            after: options.body.type === 'CLOSE_POSITION' ? { position: null } : undefined },
           finalStatus: 'VERIFIED', timestamp: new Date().toISOString()
         };
       }
@@ -110,6 +113,29 @@ async function assertNoMove(name, scenario) {
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
+
+test('five-minute scalp requests its one-hour close through verified execution', async () => {
+  const early = await runScenario({ policyVersion: 'scalp-research-v1',
+    hoursOpen: .5, currentPrice: 100 });
+  assert.notEqual(early.result.status, 'CLOSED_VERIFIED');
+  const due = await runScenario({ policyVersion: 'scalp-research-v1',
+    hoursOpen: 1.1, currentPrice: 100 });
+  assert.equal(due.result.status, 'CLOSED_VERIFIED');
+  assert.equal(due.result.closeCode, 'MAX_HOLD');
+  assert.equal(due.execution.body.type, 'CLOSE_POSITION');
+});
+
+test('relative candidate retains fixed brackets until its 24-hour verified exit', async () => {
+  const early = await runScenario({ policyVersion: 'relative-reversal-v1',
+    hoursOpen: 7, currentPrice: 106 });
+  assert.equal(early.result.status, 'monitoring');
+  assert.equal(executionCall(early.calls), undefined);
+  const due = await runScenario({ policyVersion: 'relative-reversal-v1',
+    hoursOpen: 25, currentPrice: 100 });
+  assert.equal(due.result.status, 'CLOSED_VERIFIED');
+  assert.equal(due.result.closeCode, 'MAX_HOLD');
+  assert.equal(executionCall(due.calls)?.body.type, 'CLOSE_POSITION');
+});
 
 // ── Legacy R path (TP = 2R) keeps working ─────────────────────────────────────
 test('0.60R reduces risk by half for LONG and SHORT, with a detailed confirmed notice', async () => {
@@ -295,6 +321,38 @@ test('rejected Binance request does not advance local state and retries next cyc
     'Rejected Binance request updated Dashboard');
   const retry = await runScenario({ currentPrice: 110 });
   assert.equal(retry.execution.body.targetPrice, 100.3);
+});
+
+test('six-hour maximum closes each position through the verified engine with a stable id', async () => {
+  const openedAt = Date.now() - 7 * 3600000;
+  const state = { positionSide:'LONG',slPrice:90,qty:1,side:'SELL',entryPrice:100,
+    initialSL:90,stage:'INITIAL',tp:115,leverage:5,openedAt };
+  const first = await runScenario({ currentPrice:101, state });
+  const second = await runScenario({ currentPrice:101, state });
+  assert.equal(first.execution.body.type,'CLOSE_POSITION');
+  assert.equal(first.result.status,'CLOSED_VERIFIED');
+  assert.equal(first.result.closeCode,'MAX_HOLD');
+  assert.equal(first.execution.body.executionId,second.execution.body.executionId);
+  assert(!first.calls.some(c=>c.url.endsWith('/webhook/sl-monitor-set')));
+});
+test('adverse momentum exits a losing trade early; an unverified close changes no local state', async () => {
+  const bars=klines(97,1);
+  [99,97,95,94].forEach((price,i)=>{bars[bars.length-4+i][4]=String(price);});
+  const scenario={currentPrice:94,hoursOpen:1.7,bars};
+  const confirmed=await runScenario(scenario);
+  assert.equal(confirmed.execution.body.type,'CLOSE_POSITION');
+  assert.equal(confirmed.result.closeCode,'EARLY_LOSS');
+  const failed=await runScenario({...scenario,engineFailure:true});
+  assert.equal(failed.result.status,'error');
+  assert(!failed.calls.some(c=>c.url.endsWith('/webhook/sl-monitor-set')));
+});
+test('reversal of a sizable favorable move exits before giving back the gain', async () => {
+  const bars=klines(103,1);
+  bars[bars.length-10][2]='111';
+  [108,106,104,103].forEach((price,i)=>{bars[bars.length-4+i][4]=String(price);});
+  const result=await runScenario({currentPrice:103,hoursOpen:1.3,bars});
+  assert.equal(result.execution.body.type,'CLOSE_POSITION');
+  assert.equal(result.result.closeCode,'PROFIT_REVERSAL');
 });
 
 (async () => {

@@ -207,6 +207,7 @@ class PositionGuard {
         body: JSON.stringify({ symbol: position.symbol, positionSide: position.side,
           slPrice: Number(expected.sl_price), qty: position.qty, side: position.side === 'LONG' ? 'SELL' : 'BUY',
           entryPrice: position.entryPrice, initialSL: Number(expected.initial_sl_price ?? expected.sl_price),
+          policyVersion: expected.policy_version,
           stage: expected.trailing_stage || 'INITIAL', tp: expected.tp_price,
           leverage: position.leverage, openedAt: new Date(expected.opened_at).getTime(), source: 'BINANCE_SYNC' }),
         signal: AbortSignal.timeout(5000)
@@ -327,7 +328,8 @@ class PositionGuard {
       } catch (error) { await connection.rollback(); throw error; }
       finally { connection.release(); }
       const cleanup = await this.cleanupOrphanProtection(expected);
-      if (['two-indicator-v1', 'consensus-10-v1'].includes(expected.policy_version) && this.executionEngine?.captureStrategyClose) {
+      if (['two-indicator-v1', 'consensus-10-v1', 'opportunistic-v1',
+        'relative-reversal-v1', 'scalp-research-v1', 'new-opportunistic-v1'].includes(expected.policy_version) && this.executionEngine?.captureStrategyClose) {
         await this.executionEngine.captureStrategyClose(expected, { symbol: expected.symbol,
           positionSide: expected.direction, exitPrice, pnl, closeReason: 'SYNC', closedAt: Date.now() });
       }

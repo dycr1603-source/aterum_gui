@@ -9,7 +9,7 @@ const EXECUTION_ENGINE = process.env.EXECUTION_ENGINE_URL || 'http://position_gu
 const EXECUTION_TOKEN  = process.env.EXECUTION_ENGINE_TOKEN;
 
 async function executeVerified(helpers, request){
-  const executionId = crypto.randomUUID();
+  const executionId = request.executionId || crypto.randomUUID();
   if(!EXECUTION_TOKEN){
     return { ok:false, executionId, finalStatus:'FAILED', error:'EXECUTION_ENGINE_TOKEN is not configured' };
   }
@@ -53,9 +53,9 @@ function executionFailureText(result, action, symbol){
 // Every stop must also clear fees (BE and above), stay outside ATR noise and
 // strictly improve the current SL — it never moves backwards.
 const FEE_RATE_PER_SIDE = 0.001; // Binance taker + slippage reserve; matches execution engine buffer
-const ATR_MULT      = 1.0;       // trailing distance
+const ATR_MULT      = 1.0;       // trailing distance on closed 5m candles
 const ATR_PERIOD    = 14;
-const MIN_GAP_ATR   = 0.5;       // new stop must stay >= 0.5 ATR(1h) away from price
+const MIN_GAP_ATR   = 0.5;       // new stop must stay >= 0.5 ATR(5m) away from price
 const FALLBACK_GAP_R = 0.25;     // gap used when ATR is unavailable
 const MIN_STEP_R    = 0.10;      // ignore SL improvements smaller than 0.1R
 const MIN_NET_FEE_MULT = 1.0;    // net PnL must be >= round-trip fees before claiming BE or better
@@ -109,6 +109,24 @@ function stopForNetProfit(positionSide,entryPrice,netPerUnit,tick){
 function netPerUnitAt(positionSide,entryPrice,exitPrice){
   const move=positionSide==='SHORT'?entryPrice-exitPrice:exitPrice-entryPrice;
   return move-(entryPrice+exitPrice)*FEE_RATE_PER_SIDE;
+}
+function planFastExit({hoursOpen,currentR,highWaterR,momentumR,netPerUnit,policyVersion}){
+  if(policyVersion==='scalp-research-v1')
+    return hoursOpen>=1?{code:'MAX_HOLD',reason:'SCALP_TIME_EXIT_MAX_HOLD'}:null;
+  if(policyVersion==='relative-reversal-v1')
+    return hoursOpen>=24?{code:'MAX_HOLD',reason:'RELATIVE_TIME_EXIT_MAX_HOLD'}:null;
+  if(hoursOpen>=6) return { code:'MAX_HOLD', reason:'FAST_TIME_EXIT_MAX_HOLD' };
+  if(hoursOpen>=3&&netPerUnit<=0) return { code:'STALE_LOSS', reason:'FAST_TIME_EXIT_STALE_LOSS' };
+  if(hoursOpen>=1.5&&currentR<=-0.35&&momentumR<=-0.1)
+    return { code:'EARLY_LOSS', reason:'FAST_TIME_EXIT_EARLY_LOSS' };
+  if(hoursOpen>=0.75&&highWaterR>=0.75&&
+     currentR<=Math.max(0.2,highWaterR-0.4)&&momentumR<0)
+    return { code:'PROFIT_REVERSAL', reason:'FAST_TIME_EXIT_PROFIT_REVERSAL' };
+  return null;
+}
+function stableCloseId(symbol,positionSide,openedAt){
+  const h=crypto.createHash('sha256').update(`aterum-fast-exit:${symbol}:${positionSide}:${openedAt}`).digest('hex');
+  return [h.slice(0,8),h.slice(8,12),h.slice(12,16),h.slice(16,20),h.slice(20,32)].join('-');
 }
 function isSafeStop(stop,price,positionSide,tick){
   return Number.isFinite(stop)&&(positionSide==='SHORT'?stop>=price+2*tick:stop<=price-2*tick);
@@ -305,11 +323,12 @@ const results=await Promise.all(Object.keys(positions).map(async(key)=>{
   try{
     const[tickerResp,klinesResp]=await Promise.all([
       httpWithRetry(this.helpers,{method:'GET',url:`${BASE}/fapi/v1/ticker/price?symbol=${symbol}`,json:true},`ticker ${symbol}`,3),
-      httpWithRetry(this.helpers,{method:'GET',url:`${BASE}/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=30`,json:true},`klines ${symbol}`,3)
+      httpWithRetry(this.helpers,{method:'GET',url:`${BASE}/fapi/v1/klines?symbol=${symbol}&interval=5m&limit=100`,json:true},`klines ${symbol}`,3)
     ]);
 
     const price=parseFloat(tickerResp.price);
-    const atr=calcATR(klinesResp);
+    const closedKlines=klinesResp.filter(k=>Number(k[6])<Date.now());
+    const atr=calcATR(closedKlines);
 
     const symInfo=exInfo.symbols.find(s=>s.symbol===symbol);
     const tick=parseFloat(symInfo?.filters.find(f=>f.filterType==='PRICE_FILTER')?.tickSize||fallbackTick(symbol));
@@ -319,8 +338,39 @@ const results=await Promise.all(Object.keys(positions).map(async(key)=>{
     const minutesOpen  =Math.floor((Date.now()-openedAt)/60000);
     const targetPrice  =Number(pos.tp);
 
+    const direction=positionSide==='SHORT'?-1:1;
+    const sinceEntry=closedKlines.filter(k=>Number(k[0])>=openedAt+300000);
+    const favorable=sinceEntry.length
+      ?(positionSide==='SHORT'?Math.min(...sinceEntry.map(k=>Number(k[3]))):Math.max(...sinceEntry.map(k=>Number(k[2]))))
+      :entryPrice;
+    const highWaterR=direction*(favorable-entryPrice)/initialRisk;
+    const recent=closedKlines.slice(-4);
+    const momentumR=recent.length>=4
+      ?direction*(Number(recent.at(-1)[4])-Number(recent[0][4]))/initialRisk:0;
+    const exitCurrentR=direction*(price-entryPrice)/initialRisk;
+    const netPerUnit=netPerUnitAt(positionSide,entryPrice,price);
+    const fastExit=planFastExit({hoursOpen,currentR:exitCurrentR,highWaterR,momentumR,netPerUnit,
+      policyVersion:pos.policyVersion});
+    if(fastExit){
+      const execution=await executeVerified(this.helpers,{
+        executionId:stableCloseId(symbol,positionSide,openedAt),
+        type:'CLOSE_POSITION',symbol,positionSide,reason:fastExit.reason
+      });
+      if(execution.ok&&execution.verificationResult?.after?.position==null){
+        return {symbol,status:'CLOSED_VERIFIED',closeCode:fastExit.code,
+          executionId:execution.executionId,finalStatus:execution.finalStatus,
+          verificationResult:execution.verificationResult,telegramText:null};
+      }
+      return {symbol,status:'error',closeCode:fastExit.code,
+        finalStatus:execution.finalStatus,error:execution.error||'CLOSE_NOT_VERIFIED',
+        telegramText:executionFailureText(execution,'FAST EXIT',symbol)};
+    }
+
     const plan=planProtection({ positionSide, entryPrice, initialRisk, slPrice, price, tick,
       atr:Number.isFinite(atr)?atr:0, tp:targetPrice, hoursOpen, stage:stage||'INITIAL' });
+    // The relative candidate was measured with fixed brackets and a 24-hour
+    // time exit. Preserve that exit contract during shadow/live validation.
+    if(pos.policyVersion==='relative-reversal-v1') plan.chosen=null;
     const { currentR, profitProgress } = plan;
     const unitQty      =qty>0?qty:0;
     const currentPnL   =positionSide==='SHORT'?entryPrice-price:price-entryPrice;

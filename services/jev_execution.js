@@ -5,7 +5,8 @@ const { config, fresh, validateLevels } = require('./jev');
 async function validateJevExecution(request, { db, livePrice, quoteTime, rules, now = Date.now(), cfg = config() }) {
   const receipt = request.tradeContext?.jev;
   const strategyVersion = request.tradeContext?.strategy?.version;
-  const supportedStrategy = ['two-indicator-v1', 'consensus-10-v1'].includes(strategyVersion);
+  const supportedStrategy = ['two-indicator-v1', 'consensus-10-v1',
+    'opportunistic-v1', 'relative-reversal-v1', 'scalp-research-v1', 'new-opportunistic-v1'].includes(strategyVersion);
   if (process.env.STRATEGY_ENGINE === 'two-indicator' && !supportedStrategy) throw new Error('STRATEGY_RECEIPT_REQUIRED');
   const simpleRequired = process.env.STRATEGY_ENGINE === 'two-indicator' || supportedStrategy;
   if (simpleRequired && (!cfg.enabled || cfg.observe || receipt?.mode !== 'enforce')) throw new Error('STRATEGY_JEV_ENFORCEMENT_REQUIRED');
@@ -22,8 +23,10 @@ async function validateJevExecution(request, { db, livePrice, quoteTime, rules, 
   fresh(quoteTime, now, cfg.maxAgeMs);
   if (!Number.isFinite(result.expiresAt) || now > result.expiresAt) throw new Error('JEV_STALE_DATA');
   const p = result.proposal;
-  if (request.tradeContext?.strategy && !['two-indicator-v1', 'consensus-10-v1'].includes(result.strategy?.version)) throw new Error('STRATEGY_RECEIPT_REQUIRED');
-  if (['two-indicator-v1', 'consensus-10-v1'].includes(result.strategy?.version)) {
+  if (request.tradeContext?.strategy && !['two-indicator-v1', 'consensus-10-v1',
+    'opportunistic-v1', 'relative-reversal-v1', 'scalp-research-v1', 'new-opportunistic-v1'].includes(result.strategy?.version)) throw new Error('STRATEGY_RECEIPT_REQUIRED');
+  if (['two-indicator-v1', 'consensus-10-v1', 'opportunistic-v1',
+    'relative-reversal-v1', 'scalp-research-v1', 'new-opportunistic-v1'].includes(result.strategy?.version)) {
     const { load, promotion } = require('./strategy/policy');
     const policy = load();
     const report = require('./strategy/engine').readReport();
@@ -33,9 +36,11 @@ async function validateJevExecution(request, { db, livePrice, quoteTime, rules, 
     const state = await require('./strategy/store').status(db);
     if (state.halted) throw new Error('STRATEGY_CIRCUIT_BREAKER');
     if (!result.risk || request.quantity !== result.risk.quantity || JSON.stringify(request.tradeContext.strategy) !== JSON.stringify(result.strategy)) throw new Error('STRATEGY_RECEIPT_CHANGED');
-    const risk = request.quantity * (Math.abs(livePrice - request.stopLoss) + (livePrice + request.stopLoss) * (policy.feeRate + policy.slippageBps / 10000) + livePrice * policy.fundingReserve);
+    const executionCost = policy.feeRate +
+      (policy.slippageBps + (policy.spreadBps ?? 0) / 2) / 10000;
+    const risk = request.quantity * (Math.abs(livePrice - request.stopLoss) + (livePrice + request.stopLoss) * executionCost + livePrice * policy.fundingReserve);
     if (risk > result.risk.riskAtStop + 1e-8) throw new Error('STRATEGY_LIVE_RISK_INCREASED');
-    const netReward = request.quantity * (Math.abs(request.takeProfit - livePrice) - (livePrice + request.takeProfit) * (policy.feeRate + policy.slippageBps / 10000) - livePrice * policy.fundingReserve);
+    const netReward = request.quantity * (Math.abs(request.takeProfit - livePrice) - (livePrice + request.takeProfit) * executionCost - livePrice * policy.fundingReserve);
     if (!(risk > 0 && netReward / risk >= (policy.minExpectedR ?? 0))) throw new Error('STRATEGY_REWARD_RISK_TOO_LOW');
   }
   if (!Number.isInteger(p.leverage) || p.leverage < 1 || p.leverage > 10 || request.leverage !== p.leverage)

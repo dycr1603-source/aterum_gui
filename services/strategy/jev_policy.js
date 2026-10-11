@@ -6,14 +6,26 @@ function levelOptions(d, entry, filter) {
   for (const direction of d.strategy.directions) {
     try {
       const sl = {}, tp = {};
+      const volatile = d.strategy.regime === 'HIGH_VOLATILITY';
+      const relative = d.strategy.version === 'relative-reversal-v1';
+      const scalp = d.strategy.version === 'scalp-research-v1';
+      const useShortTerm = !relative && d.strategy.shortTerm?.recentCandles?.length >= 6 &&
+        Number(d.strategy.shortTerm.atr) > 0;
+      const structure = relative
+        ? d.strategy.recentCandles.slice(-12)
+        : useShortTerm
+        ? d.strategy.shortTerm.recentCandles.slice(-6)
+        : d.strategy.recentCandles.slice(-(volatile ? 6 : 4));
+      const levelAtr = useShortTerm ? d.strategy.shortTerm.atr : d.indicators.atr;
       for (const [i, scale] of [0.8, 1, 1.2].entries()) {
         const x = levels({
-          bars: d.strategy.recentCandles,
+          bars: structure,
           entry,
           side: direction,
-          atr: d.indicators.atr,
-          stopAtr: 1.5 * scale,
-          targetAtr: 3 * scale,
+          atr: levelAtr,
+          stopAtr: (relative || scalp) ? d.strategy.opportunity.params.stopAtr * scale
+            : (volatile ? 1.8 : 1.5) * scale,
+          targetAtr: 1.5 * scale,
           tick: Number(filter.tickSize),
         });
         sl[`sl${i + 1}`] = Number(x.stop.toFixed(12));
@@ -23,9 +35,22 @@ function levelOptions(d, entry, filter) {
       const widestStop = Math.max(...Object.values(sl).map((stop) => Math.abs(entry - stop)));
       const tick = Number(filter.tickSize);
       let previousDistance = 0;
-      for (const [i, multiplier] of [2.5, 3, 3.5].entries()) {
+      const riskPolicy = d.strategy.riskPolicy;
+      const costPerUnit = entry * (2 * (riskPolicy.feeRate +
+        (riskPolicy.slippageBps + (riskPolicy.spreadBps ?? 0) / 2) / 10000) +
+        riskPolicy.fundingReserve);
+      const targetMultipliers = relative
+        ? [0.75, 1, 1.25].map(n => n * d.strategy.opportunity.params.targetR)
+        : scalp
+        ? [0.8, 1, 1.2].map(n => n * d.strategy.opportunity.params.targetR)
+        : [1.3, 1.55, 1.8];
+      for (const [i, multiplier] of targetMultipliers.entries()) {
         const key = `tp${i + 1}`;
-        const distance = Math.max(Math.abs(tp[key] - entry), widestStop * multiplier, previousDistance + tick);
+        // A closer target still has to pay both trading legs and clear the
+        // configured net reward/risk floor for the widest offered stop.
+        const distance = Math.max(widestStop * multiplier,
+          widestStop * riskPolicy.minExpectedR + costPerUnit * (1 + riskPolicy.minExpectedR),
+          previousDistance + tick);
         const raw = entry + sign * distance;
         const rounded = (sign === 1 ? Math.ceil(raw / tick) : Math.floor(raw / tick)) * tick;
         tp[key] = Number(rounded.toFixed(12));
@@ -41,6 +66,19 @@ function levelOptions(d, entry, filter) {
     }
   }
   return out;
+}
+function marginAllocation(p, capacity, d) {
+  const equity = Number(capacity.account.equity);
+  const used = Number(capacity.account.marginUsed ?? 0);
+  const openCount = (capacity.positions || []).length;
+  const slots = Math.max(1, p.maxPositions - openCount);
+  const remainingBudget = Math.max(0, equity * (p.maxTotalMarginFraction ?? 0.9) - used);
+  const strongLead = openCount === 0 && d.strategy.candidateRank === 1 &&
+    Number(d.strategy.voteSummary?.supporting ?? 0) >= 6;
+  const qualityWeight = strongLead ? 1.15 : 1;
+  return Math.max(0, Math.min(equity * (p.maxMarginFractionPerPosition ?? 0.9),
+    remainingBudget, remainingBudget / slots * qualityWeight,
+    Number(capacity.capacity.remainingMargin)));
 }
 function projections({
   d,
@@ -69,13 +107,9 @@ function projections({
     (equity * Number(capacity.limits.maxDirectionExposurePct)) / 100 -
       Number(capacity.exposure.direction[side] || 0),
   );
-  const marginCap = Math.min(
-    equity * (p.maxMarginFractionPerPosition ?? 0.9),
-    equity * (p.maxTotalMarginFraction ?? 0.9) - Number(capacity.account.marginUsed ?? 0),
-  );
+  const marginCap = marginAllocation(p, capacity, d);
   const minimumMargin = d.strategy.version === 'consensus-10-v1'
-    ? Math.min(marginCap, Number(capacity.capacity.remainingMargin)) *
-      (p.minMarginFillFraction ?? 0)
+    ? marginCap * (p.minMarginFillFraction ?? 0)
     : 0;
   const result = {};
   for (let leverage = p.minLeverage ?? 1; leverage <= Math.min(maxLeverage, p.maxLeverage ?? 10); leverage++) {
@@ -89,7 +123,7 @@ function projections({
         availableMargin: Number(capacity.capacity.remainingMargin),
         leverage,
         feeRate: Math.max(feeRate, p.feeRate),
-        slippageBps: p.slippageBps,
+        slippageBps: p.slippageBps + (p.spreadBps ?? 0) / 2,
         fundingReserve: p.fundingReserve,
         ...rules,
         maxQty: Math.min(rules.maxQty, maxNotional / entry, marginCap * leverage / entry),
@@ -109,7 +143,7 @@ function projections({
         availableMargin: Number(capacity.capacity.remainingMargin),
         leverage,
         feeRate: Math.max(feeRate, p.feeRate),
-        slippageBps: p.slippageBps,
+        slippageBps: p.slippageBps + (p.spreadBps ?? 0) / 2,
         fundingReserve: p.fundingReserve,
         ...rules,
         maxQty: Math.min(rules.maxQty, maxNotional / entry, marginCap * leverage / entry),
@@ -169,7 +203,10 @@ function preflight(d, entry, symbol, candidates, capacity) {
 function state(d, market, candidates, capacity) {
   const [a, b] = d.strategy.indicators;
   return {
-    schemaVersion: d.strategy.version === "consensus-10-v1"
+    schemaVersion: d.strategy.version === "new-opportunistic-v1"
+      ? "aterum-new-opportunistic-v1" :
+      ["consensus-10-v1", "opportunistic-v1", "relative-reversal-v1",
+      "scalp-research-v1", "new-opportunistic-v1"].includes(d.strategy.version)
       ? "aterum-consensus-10-v1" : "aterum-two-indicator-v1",
     symbol: d.symbol,
     price: market.entry,
@@ -185,11 +222,13 @@ function state(d, market, candidates, capacity) {
     indicator_2_signal: b.signal,
     indicators: d.strategy.indicators,
     voteSummary: d.strategy.voteSummary || null,
+    opportunity: d.strategy.opportunity || null,
     candidateRank: d.strategy.candidateRank || null,
     candidateCount: d.strategy.candidateCount || null,
     contextualVolatility: d.indicators.atr,
     recentCandles: d.strategy.recentCandles,
     volume: d.strategy.volume,
+    shortTerm: d.strategy.shortTerm || null,
     higherTimeframeTrend: d.strategy.higherTimeframeTrend,
     currentPositions: capacity.positions,
     portfolioExposure: capacity.exposure,
@@ -201,4 +240,4 @@ function state(d, market, candidates, capacity) {
     marketRegime: d.strategy.regime,
   };
 }
-module.exports = { levelOptions, projections, preflight, state };
+module.exports = { levelOptions, projections, preflight, state, marginAllocation };

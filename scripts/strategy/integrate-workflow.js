@@ -41,6 +41,14 @@ function integrate() {
     typeVersion: 2,
     position: [-300, -100],
   };
+  const nextSlot = {
+    parameters: { jsCode: code("strategy-next-slot.js") },
+    id: "strategy-next-slot-v1",
+    name: "Next Strategy Slot",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position: [-250, -520],
+  };
   const branch = JSON.parse(
     JSON.stringify(w.nodes.find((n) => n.name === "If: AI Approves")),
   );
@@ -60,7 +68,7 @@ function integrate() {
     name: "If: Strategy Approved",
     position: [-550, -300],
   });
-  for (const n of [mode, branch, decision, approved, scanReport]) {
+  for (const n of [mode, branch, decision, approved, scanReport, nextSlot]) {
     const i = w.nodes.findIndex((x) => x.id === n.id);
     if (i >= 0) w.nodes[i] = n;
     else w.nodes.push(n);
@@ -83,6 +91,10 @@ function integrate() {
   w.connections["If: Strategy Approved"] = {
     main: [[edge("Position Sizer")], [edge("Strategy Scan Report")]],
   };
+  w.connections["If: Execution Verified"].main[0] = [
+    edge("Build Trade Alert"), edge("Next Strategy Slot"),
+  ];
+  w.connections["Next Strategy Slot"] = { main: [[edge("If: Strategy Approved")]] };
   delete w.connections["Telegram: Trade Opened"];
   w.connections["Strategy Scan Report"] = { main: [[]] };
   // New path already has cost-aware sizing from JEV + Risk Engine. Legacy branch

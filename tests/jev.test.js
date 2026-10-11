@@ -54,6 +54,18 @@ for (const choice of ['NO_TRADE','LONG','SHORT']) test(`Jev ${choice} authentic 
   assert.equal(request.questions[`entry_${result.id}`].type, 'choice');
   assert(!JSON.stringify(result).includes('test-secret'));
 });
+test('best probability option wins even when the raw model choice is worse', async () => {
+  const m = mock('NO_TRADE', body => {
+    const first = Object.keys(body.answers)[0];
+    body.answers[first] = { ...body.answers[first], choice: 'NO_TRADE',
+      probabilities: { NO_TRADE: 0.38, LONG: 0.55, SHORT: 0.07 } };
+    return body;
+  });
+  const r = await evaluate(input(), { cfg, now: () => now, ...m });
+  assert.equal(r.decision, 'LONG');
+  assert.equal(r.proposedDecision, 'LONG');
+  assert.equal(r.reason, 'JEV_PROPOSAL_VALID');
+});
 test('low, medium and missing confidence exclude the whole Intelligence opinion from Jev', async () => {
   for (const confidence of ['baja', 'media', undefined, 0.9, 'invalid']) {
     const signal = { signal: 'NO OPERAR', confidence,

@@ -4,6 +4,7 @@ const labels = {
   LOW_DEPTH: 'Profundidad insuficiente',
   ABNORMAL_VOLATILITY: 'Volatilidad excesiva',
   NO_TWO_INDICATOR_SIGNAL: 'Sin señal conjunta',
+  NO_NEW_OPPORTUNITY_SIGNAL: 'Sin señal del modelo nuevo',
   INSUFFICIENT_VOTES: 'Sin cinco votos direccionales',
   TECHNICAL_CANDIDATE: 'Candidatos técnicos',
   DIRECTION_DISABLED: 'Dirección deshabilitada',
@@ -17,7 +18,9 @@ const counts = Object.entries(summary.reasons || {})
   .map(([key, count]) => `${labels[key] || key}: ${count}`);
 const text = [
   'ℹ️ ATERUM · SIN ENTRADA',
-  `Motor: consenso de diez indicadores · ${d.skipReason || 'NO_TRADE'}`,
+  `Motor: ${d.entryMode === 'new_opportunistic' ? 'modelo oportunista' :
+    d.entryMode === 'consensus10' ? 'consenso de diez indicadores' :
+    'estrategia técnica'} · ${d.skipReason || 'NO_TRADE'}`,
   `Analizados: ${Number(summary.scanned || 0)} de ${Number(summary.eligible || 0)} elegibles.`,
   ...counts.slice(0, 6),
   'Sin orden enviada a Binance.'

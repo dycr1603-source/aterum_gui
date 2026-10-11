@@ -4,6 +4,9 @@ const fs = require("node:fs"),
   { randomUUID } = require("node:crypto");
 const { load, promotion } = require("./policy"),
   { calculate, signal, consensus, validateBars, DIRECTIONAL, CONTEXTUAL } = require("./indicators"),
+  { assess: assessOpportunity } = require("./opportunity_model"),
+  { select: selectRelative } = require("./relative_model"),
+  { inputs: scalpInputs, assess: assessScalp } = require("./scalp_model"),
   { breaker } = require("./risk"),
   { filtersFor } = require("../jev_capacity"),
   store = require("./store");
@@ -14,7 +17,8 @@ function minimumLotRisk(symbolInfo, price, atr, policy) {
   const minQuantity = Math.max(rules.minQty || 0, (rules.minNotional || 0) / price);
   const minStopDistance = 1.2 * atr;
   const costs = (Math.max(0, 2 * price - minStopDistance) *
-    (policy.feeRate + policy.slippageBps / 10000)) + price * policy.fundingReserve;
+    (policy.feeRate + (policy.slippageBps + (policy.spreadBps ?? 0) / 2) / 10000)) +
+    price * policy.fundingReserve;
   return minQuantity * (minStopDistance + costs);
 }
 function readReport() {
@@ -44,6 +48,10 @@ function universe({ info, tickers, books, now, policy }) {
         spread = ((ask - bid) / ((ask + bid) / 2)) * 10000;
       const reasons = [];
       if (s.status !== "TRADING") reasons.push("SYMBOL_NOT_TRADING");
+      // JEV's request identity and the execution path require an ASCII
+      // exchange symbol. Reject Binance's non-ASCII listings before the scan.
+      if (!/^[A-Z0-9_]{3,24}$/.test(s.symbol))
+        reasons.push("JEV_UNSUPPORTED_SYMBOL");
       if (!Number.isFinite(quote) || quote < policy.minQuoteVolume)
         reasons.push("LOW_VOLUME");
       if (
@@ -103,6 +111,7 @@ async function cycle({
   const id = randomUUID(),
     result = {
       strategyV2: true,
+      entryMode: policy.entryMode,
       opportunityCycleId: id,
       passAI: false,
       allocationAllowed: false,
@@ -214,7 +223,40 @@ async function cycle({
     const rows = universe({ info, tickers, books, now: now(), policy });
     const symbolInfo = new Map(info.symbols.map((symbol) => [symbol.symbol, symbol]));
     await store.record(db, `universe:${id}`, "UNIVERSE", { cycleId: id, rows });
-    const allowed = rows.filter((r) => r.status === "SELECTED");
+    const allowed = rows.filter((r) => r.status === "SELECTED" &&
+      (!["relative", "scalp"].includes(policy.entryMode) ||
+        policy.opportunityUniverse.includes(r.symbol)));
+    let relativeMarket = null;
+    let newOpportunityBtc = null;
+    if (policy.entryMode === "new_opportunistic") {
+      const interval = { "5m": 300000, "15m": 900000,
+        "1h": 3600000, "4h": 14400000 }[policy.timeframe];
+      const raw = await get(`${base}/klines?symbol=BTCUSDT&interval=${policy.timeframe}&limit=240`);
+      newOpportunityBtc = raw.filter(r => Number(r[6]) < now()).map(r => ({
+        time: Number(r[0]), open: Number(r[1]), high: Number(r[2]),
+        low: Number(r[3]), close: Number(r[4]), volume: Number(r[5]),
+        quoteVolume: Number(r[7]),
+      }));
+      validateBars(newOpportunityBtc, interval);
+      if (now() - (newOpportunityBtc.at(-1).time + interval) > interval)
+        throw Error("STALE_MARKET_DATA");
+    }
+    if (policy.entryMode === "relative") {
+      const raw = await get(`${base}/klines?symbol=BTCUSDT&interval=1h&limit=800`);
+      const btc = raw.filter(r => Number(r[6]) < now());
+      const horizon = policy.relative.horizon;
+      const macroBars = policy.relative.regime === "MACRO_30D" ? 720 :
+        policy.relative.regime === "MACRO_7D" ? 168 : 0;
+      if (btc.length < Math.max(49, horizon + 1, macroBars + 1))
+        throw Error("RELATIVE_REFERENCE_INCOMPLETE");
+      const last = Number(btc.at(-1)[4]);
+      relativeMarket = { time: Number(btc.at(-1)[0]),
+        reference: last / Number(btc.at(-horizon - 1)[4]) - 1,
+        regime48h: last / Number(btc.at(-49)[4]) - 1,
+        macro: macroBars ? last / Number(btc.at(-macroBars - 1)[4]) - 1 : 0 };
+      if (Object.values(relativeMarket).some(x => !Number.isFinite(x)))
+        throw Error("RELATIVE_REFERENCE_INVALID");
+    }
     const offset = batchOffset(now(), allowed.length);
     // Preserve a rotating starting point, but examine the entire eligible
     // universe until a candidate is approved or every symbol is exhausted.
@@ -254,7 +296,8 @@ async function cycle({
         note(item, "ALREADY_OPEN");
         continue;
       }
-      const interval = policy.timeframe === "1h" ? 3600000 : 14400000;
+      const interval = { "5m": 300000, "15m": 900000,
+        "1h": 3600000, "4h": 14400000 }[policy.timeframe];
       const cacheKey = `${policy.timeframe}:${item.symbol}`;
       const bucket = Math.floor(now() / interval);
       let bars = candleCache.get(cacheKey)?.bucket === bucket
@@ -279,21 +322,48 @@ async function cycle({
       }
       if (now() - (bars.at(-1).time + interval) > interval)
         throw Error("STALE_MARKET_DATA");
+      if (policy.entryMode === "relative" && bars.at(-1).time !== relativeMarket.time)
+        throw Error("RELATIVE_MARKET_TIME_MISMATCH");
+      if (policy.entryMode === "new_opportunistic" &&
+        bars.at(-1).time !== newOpportunityBtc.at(-1).time)
+        throw Error("NEW_OPPORTUNITY_REFERENCE_TIME_MISMATCH");
       if (!cached) candleCache.set(cacheKey, { bucket, bars });
-      const f = calculate(bars, policy.scale, policy).at(-1),
+      const featureRows = calculate(bars, policy.scale, policy),
+        scalpRow = policy.entryMode === "scalp"
+          ? scalpInputs(bars, featureRows).at(-1) : null,
+        f = featureRows.at(-1),
         price = bars.at(-1).close;
       const votes = policy.entryMode === "consensus10"
         ? consensus(f, policy.minVotes)
-        : { direction: signal(f, policy.pair), score: 0 };
+        : policy.entryMode === "opportunistic"
+          ? assessOpportunity(bars, bars.length - 1, f, policy.opportunity)
+          : policy.entryMode === "new_opportunistic"
+          ? require("./new_opportunity_model").assess(bars, bars.length - 1, newOpportunityBtc)
+          : policy.entryMode === "scalp"
+            ? (() => { const proposal = assessScalp(scalpRow, policy.scalp);
+              return { direction: proposal?.side || "NO_TRADE",
+                score: proposal?.score || 0,
+                inputs: proposal ? { model: policy.scalp.model,
+                  ...scalpRow } : null }; })()
+          : policy.entryMode === "relative"
+            ? { direction: "PENDING", score: 0 }
+          : { direction: signal(f, policy.pair), score: 0 };
       const direction = votes.direction;
       const failed = [];
-      if (f.atr / price > policy.maxAtrFraction)
+      if (f.atr / price > policy.maxAtrFraction * 1.5)
         failed.push("ABNORMAL_VOLATILITY");
       const minimumRisk = minimumLotRisk(symbolInfo.get(item.symbol), price, f.atr, policy);
       if (minimumRisk > equity * policy.riskFraction)
         failed.push("MIN_LOT_RISK");
-      if (direction === "NO_TRADE") failed.push(
-        policy.entryMode === "consensus10" ? "INSUFFICIENT_VOTES" : "NO_TWO_INDICATOR_SIGNAL",
+      if (policy.entryMode === "relative") {
+        if (bars.length < policy.relative.horizon + 1)
+          failed.push("RELATIVE_HISTORY_SHORT");
+      } else if (direction === "NO_TRADE") failed.push(
+        policy.entryMode === "consensus10" ? "INSUFFICIENT_VOTES" :
+          policy.entryMode === "opportunistic" ? "NO_OPPORTUNISTIC_EDGE" :
+          policy.entryMode === "new_opportunistic" ? "NO_NEW_OPPORTUNITY_SIGNAL" :
+          policy.entryMode === "scalp" ? "NO_SCALP_EDGE" :
+          "NO_TWO_INDICATOR_SIGNAL",
       );
       else if (!policy.directions.includes(direction))
         failed.push("DIRECTION_DISABLED");
@@ -304,10 +374,30 @@ async function cycle({
           signal: f.signals[name]?.signal || "UNAVAILABLE",
         })),
         votes: votes.votes || null,
+        opportunity: ["opportunistic", "scalp"].includes(policy.entryMode) ? votes.inputs : null,
         score: votes.score,
         minimumLotRisk: Number(minimumRisk.toFixed(6)),
       };
       if (failed.length) {
+        const softReasons = failed.filter((reason) =>
+          ["ABNORMAL_VOLATILITY", "MIN_LOT_RISK", "LOW_DEPTH"].includes(reason),
+        );
+        if (softReasons.length === failed.length) {
+          item.status = "SOFT_REJECTED";
+          item.reasons.push(...failed);
+          note(item, failed, detail);
+          technicalCandidates.push({
+            item,
+            bars,
+            f,
+            price,
+            direction,
+            votes,
+            detail,
+            softReasons: failed,
+          });
+          continue;
+        }
         item.status = "REJECTED";
         item.reasons.push(...failed);
         note(item, failed, detail);
@@ -316,13 +406,45 @@ async function cycle({
       technicalCandidates.push({ item, bars, f, price, direction, votes, detail });
       note(item, "TECHNICAL_CANDIDATE", detail);
     }
+    let selectedCandidates = technicalCandidates;
+    if (policy.entryMode === "relative") {
+      if (Math.floor(relativeMarket.time / 3600000) %
+        (policy.relative.selectionIntervalHours ?? 1) !== 0) {
+        for (const c of technicalCandidates) {
+          c.item.status = "REJECTED";
+          c.item.reasons.push("RELATIVE_SELECTION_INTERVAL");
+          note(c.item, "RELATIVE_SELECTION_INTERVAL", c.detail);
+        }
+        selectedCandidates = [];
+      }
+      const observations = technicalCandidates.map(c => ({
+        symbol: c.item.symbol,
+        own: c.price / c.bars.at(-policy.relative.horizon - 1).close - 1,
+      }));
+      const selected = new Map(selectRelative(observations, relativeMarket, policy.relative)
+        .map(x => [x.symbol, x]));
+      selectedCandidates = selectedCandidates.filter(c => {
+        const proposal = selected.get(c.item.symbol);
+        if (!proposal || !policy.directions.includes(proposal.side)) {
+          c.item.status = "REJECTED";
+          c.item.reasons.push("NO_RELATIVE_EDGE");
+          note(c.item, "NO_RELATIVE_EDGE", c.detail);
+          return false;
+        }
+        c.direction = proposal.side;
+        c.votes = { direction: proposal.side, score: proposal.score,
+          evidence: proposal.evidence };
+        c.detail.opportunity = proposal.evidence;
+        return true;
+      });
+    }
     const requiredDepthQuote = Math.max(
       policy.minDepthQuote,
       equity * (policy.maxMarginFractionPerPosition ?? 0.9) *
         (policy.maxLeverage ?? 10) * (policy.depthNotionalMultiple ?? 5),
     );
     const ranked = [];
-    for (const candidate of technicalCandidates) {
+    for (const candidate of selectedCandidates) {
       const { item, price, detail } = candidate;
       const depth = await get(`${base}/depth?symbol=${item.symbol}&limit=100`);
       const depthQuote = Math.min(
@@ -338,16 +460,21 @@ async function cycle({
         throw Error("INVALID_MARKET_DATA");
       detail.depthQuote = Number(depthQuote.toFixed(2));
       detail.requiredDepthQuote = Number(requiredDepthQuote.toFixed(2));
-      if (depthQuote < requiredDepthQuote) {
-        item.status = "REJECTED";
+      const relaxedDepthThreshold = Math.max(policy.minDepthQuote, requiredDepthQuote * 0.5);
+      if (depthQuote < relaxedDepthThreshold) {
+        item.status = "SOFT_REJECTED";
         item.reasons.push("LOW_DEPTH");
         note(item, "LOW_DEPTH", detail);
-        continue;
+        candidate.softReasons = [...(candidate.softReasons || []), "LOW_DEPTH"];
       }
       candidate.depthQuote = depthQuote;
+      const depthPenalty = Math.max(0, requiredDepthQuote - depthQuote) / Math.max(1, requiredDepthQuote) * 40;
+      const volatilityPenalty = Math.max(0, (candidate.f.atr / price) - policy.maxAtrFraction) /
+        Math.max(0.0001, policy.maxAtrFraction) * 15;
       candidate.rankScore = candidate.votes.score +
         Math.log10(Math.max(1, item.quoteVolume)) * 2 - item.spreadBps * 2 +
-        Math.log10(depthQuote / requiredDepthQuote) * 10;
+        Math.log10(Math.max(1, depthQuote / Math.max(1, relaxedDepthThreshold))) * 10 -
+        depthPenalty - volatilityPenalty;
       note(item, [], { ...detail, rankScore: Number(candidate.rankScore.toFixed(2)) });
       ranked.push(candidate);
     }
@@ -358,9 +485,23 @@ async function cycle({
     let invalidJevCandidates = 0;
     for (const [rankIndex, candidate] of ranked.entries()) {
       const { item, bars, f, price, direction, votes, detail } = candidate;
-      const [funding, higher] = await Promise.all([
+      if (["relative", "scalp"].includes(policy.entryMode)) {
+        const [previousSignals] = await db.execute(
+          "SELECT id FROM trades WHERE symbol=? AND policy_version=? AND opened_at>=FROM_UNIXTIME(?) LIMIT 1",
+          [item.symbol, policy.entryMode === "relative" ? "relative-reversal-v1" :
+            "scalp-research-v1", bars.at(-1).time / 1000],
+        );
+        if (previousSignals.length) {
+          item.status = "REJECTED";
+          item.reasons.push("CLOSED_BAR_ALREADY_TRADED");
+          note(item, "CLOSED_BAR_ALREADY_TRADED", detail);
+          continue;
+        }
+      }
+      const [funding, higher, shortBars] = await Promise.all([
         get(`${base}/premiumIndex?symbol=${item.symbol}`),
         get(`${base}/klines?symbol=${item.symbol}&interval=1d&limit=8`),
+        get(`${base}/klines?symbol=${item.symbol}&interval=5m&limit=25`),
       ]);
       if (!Number.isFinite(Number(funding.lastFundingRate)))
         throw Error("INVALID_MARKET_DATA");
@@ -377,6 +518,29 @@ async function cycle({
         });
       }
       const closedHigher = higher.filter((r) => Number(r[6]) < now());
+      const closedShort = shortBars.filter((r) => Number(r[6]) < now());
+      const shortLast = closedShort.at(-1);
+      const shortReference = closedShort.at(-7);
+      const priorVolume = closedShort.slice(-21, -1).reduce((sum, row) => sum + Number(row[5]), 0) / 20;
+      const shortCandles = closedShort.map((row) => ({
+        time: Number(row[0]), high: Number(row[2]), low: Number(row[3]),
+        close: Number(row[4]), volume: Number(row[5]),
+      }));
+      const trueRanges = shortCandles.slice(1).map((bar, index) =>
+        Math.max(bar.high - bar.low,
+          Math.abs(bar.high - shortCandles[index].close),
+          Math.abs(bar.low - shortCandles[index].close)));
+      const shortAtr = trueRanges.length >= 14
+        ? trueRanges.slice(-14).reduce((sum, value) => sum + value, 0) / 14 : null;
+      const shortTerm = shortLast && shortReference ? {
+        momentum30mPct: (Number(shortLast[4]) / Number(shortReference[4]) - 1) * 100,
+        relativeVolume: priorVolume > 0 ? Number(shortLast[5]) / priorVolume : null,
+        lastRangePct: (Number(shortLast[2]) - Number(shortLast[3])) / Number(shortLast[4]) * 100,
+        spreadBps: item.spreadBps,
+        closedAt: Number(shortLast[6]),
+        atr: shortAtr,
+        recentCandles: shortCandles.slice(-8),
+      } : null;
       const d = {
         symbol: item.symbol,
         timeframe: policy.timeframe,
@@ -385,20 +549,38 @@ async function cycle({
         indicators: { currentPrice: price, atr: f.atr },
         passRisk: true,
         strategy: {
-          version: policy.entryMode === "consensus10" ? "consensus-10-v1" : "two-indicator-v1",
+          version: policy.entryMode === "new_opportunistic" ? "new-opportunistic-v1" :
+            policy.entryMode === "scalp" ? "scalp-research-v1" :
+            policy.entryMode === "relative" ? "relative-reversal-v1" :
+            policy.entryMode === "opportunistic" ? "opportunistic-v1" :
+            policy.entryMode === "consensus10" ? "consensus-10-v1" : "two-indicator-v1",
           timeframe: policy.timeframe,
-          reportId: report.reportId,
+          reportId: report?.reportId ?? null,
           pair: policy.pair,
           directions: [direction],
           indicators: (policy.entryMode === "consensus10"
             ? [...DIRECTIONAL, ...CONTEXTUAL] : policy.pair)
             .map((name) => ({ name, ...f.signals[name] })),
           voteSummary: votes,
+          opportunity: policy.entryMode === "new_opportunistic"
+            ? { model: "INVERSE_MARKET_LOGIT", evidence: votes.inputs,
+              probability: votes.probability, score: votes.score,
+              params: { timeframe: policy.timeframe, maxHoldingBars: policy.maxHoldingBars } }
+            : policy.entryMode === "scalp"
+            ? { model: policy.scalp.model, evidence: votes.inputs,
+              score: votes.score, params: policy.scalp }
+            : policy.entryMode === "opportunistic"
+            ? { model: policy.opportunity.model, evidence: votes.inputs,
+              score: votes.score, params: policy.opportunity }
+            : policy.entryMode === "relative"
+              ? { model: policy.relative.mode, evidence: votes.evidence,
+                score: votes.score, params: policy.relative } : null,
           candidateRank: rankIndex + 1,
           candidateCount: ranked.length,
           regime: f.regime,
           recentCandles: bars.slice(-60),
           volume: { last: bars.at(-1).volume, quote24h: item.quoteVolume },
+          shortTerm,
           higherTimeframeTrend:
             closedHigher.length > 1
               ? Number(closedHigher.at(-1)[4]) > Number(closedHigher[0][4])
@@ -419,11 +601,23 @@ async function cycle({
       };
       let jev = await evaluateJev(d);
       if (jev.reason === "JEV_INVALID_RESPONSE") jev = await evaluateJev(d);
+      if (policy.mode === "shadow" && policy.entryMode === "scalp") {
+        (result.shadowComparison ||= []).push({
+          symbol: item.symbol, signalCandleTime: bars.at(-1).time,
+          technicalSide: direction, technicalScore: votes.score,
+          referencePrice: price, atr: f.atr,
+          technicalPolicy: policy.scalp,
+          jevSide: jev.decision, jevReason: jev.reason || null,
+          jevProposal: jev.proposal || null,
+        });
+      }
       if (jev.decision !== direction || !jev.risk) {
         const reason = String(jev.reason || "JEV_NO_TRADE");
         item.status = "REJECTED";
         item.reasons.push("JEV_NO_TRADE");
-        note(item, "JEV_NO_TRADE", { ...detail, jevReason: reason });
+        note(item, "JEV_NO_TRADE", { ...detail, jevReason: reason,
+          jevExplanationCode: jev.explanationCode || null,
+          jevConfidence: Number.isFinite(jev.confidence) ? jev.confidence : null });
         if (["JEV_INVALID_RESPONSE", "JEV_LEVERAGE_POLICY_DATA_UNAVAILABLE", "JEV_CAPACITY_UNAVAILABLE"].includes(reason)) {
           invalidJevCandidates++;
           if (invalidJevCandidates < 3) continue;

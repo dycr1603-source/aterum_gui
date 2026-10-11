@@ -38,9 +38,9 @@ function load(
     p.maxDrawdown > 0.3 ||
     !Number.isInteger(p.maxLossStreak) ||
     p.maxLossStreak < 2 ||
-    !["1h", "4h"].includes(p.timeframe) ||
+    !["5m", "15m", "1h", "4h"].includes(p.timeframe) ||
     ![0.8, 1, 1.2].includes(p.scale) ||
-    !["pair", "consensus10"].includes(p.entryMode ?? "pair") ||
+    !["pair", "consensus10", "opportunistic", "relative", "scalp", "new_opportunistic"].includes(p.entryMode ?? "pair") ||
     !Number.isInteger(p.minVotes ?? 5) ||
     (p.minVotes ?? 5) < 5 ||
     (p.minVotes ?? 5) > 8 ||
@@ -68,8 +68,51 @@ function load(
       "maxSpreadBps",
       "maxAtrFraction",
     ].every((k) => Number.isFinite(p[k]) && p[k] >= 0)
+    || (p.spreadBps !== undefined &&
+      (!Number.isFinite(p.spreadBps) || p.spreadBps < 0 || p.spreadBps > 100))
   )
     throw Error("STRATEGY_POLICY_INVALID");
+  if (p.entryMode === "opportunistic") {
+    const o = p.opportunity;
+    if (!o || !["COMPRESSION_BREAKOUT", "MOMENTUM_ACCELERATION",
+      "LIQUIDITY_RECLAIM", "TREND_PULLBACK"].includes(o.model) ||
+      !Number.isInteger(o.span) || o.span < 4 || o.span > 48 ||
+      !Number.isFinite(o.volumeMin) || o.volumeMin < 0 || o.volumeMin > 10 ||
+      !Number.isFinite(o.trendMin) || o.trendMin < 0 || o.trendMin > 10 ||
+      !Number.isFinite(o.roundTripCostFraction) || o.roundTripCostFraction < 0 ||
+      o.roundTripCostFraction > .05) throw Error("OPPORTUNITY_POLICY_INVALID");
+  }
+  if (p.entryMode === "relative") {
+    const r = p.relative;
+    if (p.timeframe !== "1h" || !r || !["MOMENTUM", "REVERSAL"].includes(r.mode) ||
+      !["NONE", "BTC_48H", "RANGE", "TREND", "MACRO_7D", "MACRO_30D"].includes(r.regime) ||
+      !Number.isInteger(r.horizon) || r.horizon < 4 || r.horizon > 48 ||
+      !Number.isFinite(r.threshold) || r.threshold <= 0 || r.threshold > .2 ||
+      !Number.isFinite(r.stopAtr) || r.stopAtr <= 0 || r.stopAtr > 5 ||
+      !Number.isFinite(r.targetR) || r.targetR < 1 || r.targetR > 5 ||
+      !Number.isFinite(r.maxHours) || r.maxHours < 1 || r.maxHours > 72 ||
+      !Number.isInteger(r.selectionIntervalHours ?? 1) ||
+      (r.selectionIntervalHours ?? 1) < 1 ||
+      (r.selectionIntervalHours ?? 1) > 24 ||
+      !Array.isArray(p.opportunityUniverse) || p.opportunityUniverse.length < 5 ||
+      p.opportunityUniverse.some(s => !/^[A-Z0-9]{3,20}$/.test(s)))
+      throw Error("RELATIVE_POLICY_INVALID");
+  }
+  if (p.entryMode === "scalp") {
+    const s = p.scalp;
+    if (p.timeframe !== "5m" || !s ||
+      !require("./scalp_model").MODELS.includes(s.model) ||
+      !Number.isFinite(s.threshold) || s.threshold <= 0 || s.threshold > 5 ||
+      !Number.isFinite(s.volumeMin) || s.volumeMin < 0 || s.volumeMin > 5 ||
+      !["ALL", "TRENDING", "RANGE", "BREAKOUT", "HIGH_VOLATILITY"].includes(s.regime) ||
+      !["ALL", "ASIA", "EUROPE", "US"].includes(s.session) ||
+      !Number.isFinite(s.stopAtr) || s.stopAtr <= 0 || s.stopAtr > 5 ||
+      !Number.isFinite(s.targetR) || s.targetR < 1 || s.targetR > 5 ||
+      !Number.isInteger(s.maxBars) || s.maxBars < 1 || s.maxBars > 72 ||
+      !Array.isArray(p.opportunityUniverse) || p.opportunityUniverse.length < 5 ||
+      p.opportunityUniverse.some(symbol => !/^[A-Z0-9]{3,20}$/.test(symbol)))
+      throw Error("SCALP_POLICY_INVALID");
+  }
   if (
     p.pair !== null &&
     (!Array.isArray(p.pair) ||
@@ -82,8 +125,10 @@ function load(
 }
 function promotion(p, report) {
   const reasons = [];
+  const permittedManagement = p.entryMode === "scalp"
+    ? ["fixed", "existing"] : ["existing"];
   if (
-    p.management !== "existing" ||
+    !permittedManagement.includes(p.management) ||
     report?.selected?.management !== p.management
   )
     reasons.push("UNVALIDATED_POSITION_MANAGEMENT");
@@ -124,7 +169,8 @@ function promotion(p, report) {
     manual.reportId === report?.reportId && typeof report?.reportId === 'string' &&
     typeof manual.reason === 'string' && manual.reason.trim().length > 0 &&
     Number.isFinite(Date.parse(manual.authorizedAt)) &&
-    p.management === 'existing' && manualCandidate?.management === 'existing' &&
+    permittedManagement.includes(p.management) &&
+    p.management === manualCandidate?.management &&
     JSON.stringify(p.pair) === JSON.stringify(manualCandidate?.pair) &&
     p.timeframe === manualCandidate?.timeframe && p.scale === manualCandidate?.scale &&
     JSON.stringify(p.directions) === JSON.stringify(manualCandidate?.directions) &&
@@ -133,11 +179,21 @@ function promotion(p, report) {
     (p.minExpectedR ?? 0) === (manualCandidate?.minExpectedR ?? 0);
   const manualSettingsMatch =
     (p.entryMode ?? "pair") === (manualCandidate?.entryMode ?? "pair") &&
+    (p.entryMode !== "opportunistic" || JSON.stringify(p.opportunity) ===
+      JSON.stringify(manualCandidate?.opportunity)) &&
+    (p.entryMode !== "relative" ||
+      (JSON.stringify(p.relative) === JSON.stringify(manualCandidate?.relative) &&
+       JSON.stringify(p.opportunityUniverse) === JSON.stringify(manualCandidate?.opportunityUniverse))) &&
+    (p.entryMode !== "scalp" ||
+      (JSON.stringify(p.scalp) === JSON.stringify(manualCandidate?.scalp) &&
+       JSON.stringify(p.opportunityUniverse) === JSON.stringify(manualCandidate?.opportunityUniverse))) &&
     (p.minVotes ?? 5) === (manualCandidate?.minVotes ?? 5) &&
     p.minDepthQuote === (manualCandidate?.minDepthQuote ?? p.minDepthQuote) &&
     (p.depthNotionalMultiple ?? 5) === (manualCandidate?.depthNotionalMultiple ?? 5) &&
     ['riskFraction', 'maxPortfolioRisk', 'maxMarginFractionPerPosition',
-      'maxTotalMarginFraction', 'minMarginFillFraction'].every(key =>
+      'maxTotalMarginFraction', 'minMarginFillFraction',
+      'minLeverage', 'maxLeverage', 'feeRate', 'slippageBps',
+      'spreadBps', 'fundingReserve'].every(key =>
       manualCandidate?.[key] === undefined || p[key] === manualCandidate[key]);
   return { allowed: !reasons.length || (manualAllowed && manualSettingsMatch), reasons,
     validationPassed: !reasons.length,

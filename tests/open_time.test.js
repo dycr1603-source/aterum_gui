@@ -24,11 +24,12 @@ test('refuses incomplete and saturated history',()=>{
 test('Position Guard persists verified Binance open time without an order', async()=>{
  const {PositionGuard}=require('../position-guard/guard');
  const writes=[];
+ const recentOpen=Date.now()-6*3600000;
  const guard=new PositionGuard({db:{execute:async(sql,args)=>{writes.push({sql,args});return [{insertId:41}]}},
-   binance:{userTrades:async()=>[{id:1,positionSide:'LONG',side:'BUY',qty:'2',time:at(6)}]},config:{}});
+   binance:{userTrades:async()=>[{id:1,positionSide:'LONG',side:'BUY',qty:'2',time:recentOpen}]},config:{}});
  guard.event=async()=>{};guard.alert=async()=>{};guard.publishPosition=async()=>{};
  const adopted=await guard.adoptPosition({symbol:'TESTUSDT',side:'LONG',entryPrice:10,qty:2,leverage:2},
    [{stopPrice:'9.5'}],[{stopPrice:'11'}]);
- assert.equal(new Date(adopted.opened_at).getTime(),at(6));
- assert.equal(new Date(writes[0].args.at(-1)).getTime(),at(6));
+ assert.equal(new Date(adopted.opened_at).getTime(),recentOpen);
+ assert.equal(new Date(writes[0].args.at(-1)).getTime(),recentOpen);
 });

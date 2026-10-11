@@ -8,24 +8,66 @@ const I = require("../services/strategy/indicators"),
   { account } = require("../services/strategy/feedback"),
   { promotion } = require("../services/strategy/policy");
 const policy = require("../config/strategy-v2.json");
-test('installed policy targets two positions with 45 percent margin each and 10 percent reserve', () => {
+test('manual activation keeps the rejected historical report visible', () => {
   const current = require('../services/strategy/policy').load();
-  assert.equal(current.maxPositions, 2);
-  assert.equal(current.maxMarginFractionPerPosition, 0.45);
+  const report = require('../docs/strategy/results.json');
+  assert.equal(current.entryMode, 'new_opportunistic');
+  assert.equal(report.selectionStatus, 'REJECTED');
+  assert(report.outOfSample.metrics.netProfit < 0);
+  const approval = promotion(current, report);
+  assert.equal(approval.allowed, false);
+  assert.equal(approval.activation, 'BLOCKED');
+  assert.equal(approval.validationPassed, false);
+  assert(approval.reasons.includes('ROBUSTNESS_REJECTED'));
+});
+test('installed policy allows three positions within 90 percent margin and a 10 percent reserve', () => {
+  const current = require('../services/strategy/policy').load();
+  assert.equal(current.maxPositions, 3);
+  assert.equal(current.maxMarginFractionPerPosition, 0.35);
   assert.equal(current.maxTotalMarginFraction, 0.9);
-  assert.equal(current.minMarginFillFraction, 0.95);
+  assert.equal(current.minMarginFillFraction, 0.85);
+  assert.equal(current.timeframe, '1h');
+  assert.equal(current.maxHoldingBars, 6);
   assert.equal(current.riskFraction, 0.22);
   assert.equal(current.maxPortfolioRisk, 0.44);
 });
-test('margin allocation caps each position at 45 percent and combined margin at 90 percent, with leverage 5–10', () => {
-  const { projections } = require('../services/strategy/jev_policy');
+test('new opportunity evidence labels match the actual directional features', () => {
+  const model = require('../services/strategy/new_opportunity_model');
+  const own = Array.from({ length: 60 }, (_, i) => ({
+    time: i * 3600000, open: 100, high: 101, low: 99,
+    close: 100, volume: 10, quoteVolume: 1000,
+  }));
+  const btc = own.map((bar, i) => ({ ...bar, close: 100 + i * .1 }));
+  const values = model.features(own, 59, 'LONG', btc);
+  assert.equal(values.length, model.NAMES.length);
+  const evidence = Object.fromEntries(model.NAMES.map((name, i) => [name, values[i]]));
+  assert(Math.abs(evidence.volumeAcceleration) < 1e-12);
+  assert(Math.abs(evidence.rangeExpansion) < 1e-12);
+  assert(Math.abs(evidence.compression) < 1e-12);
+  assert(evidence.btcRelative < 0);
+  assert.equal(evidence.body, 0);
+  assert.equal(model.features(own, 59, 'SHORT', btc)[model.NAMES.indexOf('btcRelative')],
+    -evidence.btcRelative);
+  assert.throws(() => B.unitTrades({ bars: own, features: [], intervalMs: 3600000,
+    funding: [] }, { entryMode: 'new_opportunistic', policy }),
+  /NEW_OPPORTUNITY_REFERENCE_TIME_MISMATCH/);
+});
+test('margin allocation reserves slots for three sequential positions and never exceeds 90 percent', () => {
+  const { projections, marginAllocation } = require('../services/strategy/jev_policy');
   const p = { ...policy, riskFraction: 0.02, feeRate: 0, slippageBps: 0, fundingReserve: 0, minLeverage: 5, maxLeverage: 10 };
-  const capacity = { account: { equity: 1000, marginUsed: 0 }, risk: { remainingRiskAmount: 100, openRiskAmount: 0 }, capacity: { remainingMargin: 900 }, exposure: { remaining: 100000, bySymbol: {}, direction: { LONG: 0 } }, limits: { maxSymbolExposurePct: 2000, maxDirectionExposurePct: 2000 } };
+  const capacity = { account: { equity: 1000, marginUsed: 0 }, positions: [], risk: { remainingRiskAmount: 100, openRiskAmount: 0 }, capacity: { remainingMargin: 900 }, exposure: { remaining: 100000, bySymbol: {}, direction: { LONG: 0 } }, limits: { maxSymbolExposurePct: 2000, maxDirectionExposurePct: 2000 } };
   const args = { d: { symbol: 'TESTUSDT', strategy: { riskPolicy: p } }, side: 'LONG', entry: 100, stop: 99.99, target: 102, capacity, symbol: { filters: [{ filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001', maxQty: '10000' }, { filterType: 'MIN_NOTIONAL', notional: '5' }] }, brackets: [{ notionalFloor: 0, notionalCap: 100000, initialLeverage: 10, maintMarginRatio: 0.005 }], feeRate: 0 };
   let result = projections(args);
   assert.deepEqual(result.allowedChoices, [5, 6, 7, 8, 9, 10]);
-  for (const s of Object.values(result.projections)) assert(Math.abs(s.margin - 450) < 0.1);
+  for (const s of Object.values(result.projections)) assert(Math.abs(s.margin - 300) < 0.1);
+  assert.equal(marginAllocation(p,capacity,{strategy:{candidateRank:1,voteSummary:{supporting:7}}}),345);
+  capacity.account.marginUsed = 300;
+  capacity.positions = [{symbol:'FIRSTUSDT'}];
+  result = projections(args);
+  assert(result.allowedChoices.length > 0);
+  for (const s of Object.values(result.projections)) assert(s.margin <= 300);
   capacity.account.marginUsed = 600;
+  capacity.positions.push({symbol:'SECONDUSDT'});
   result = projections(args);
   assert(result.allowedChoices.length > 0);
   for (const s of Object.values(result.projections)) assert(s.margin <= 300);
@@ -34,10 +76,10 @@ test('margin allocation caps each position at 45 percent and combined margin at 
   capacity.account.marginUsed = 0;
   assert.deepEqual(projections({ ...args, d: { ...args.d, strategy: { riskPolicy: { ...p, minExpectedR: 1.5 } } }, target: 100.01 }).allowedChoices, []);
 });
-test('HYPE sized from live account equity reaches the 45 percent margin target without breaching stop risk', () => {
+test('live-sized trades can fill three slots without breaching stop risk or the reserve', () => {
   const { projections } = require('../services/strategy/jev_policy');
   const equity = 66.6352;
-  const capacity = { account: { equity, marginUsed: 0 },
+  const capacity = { account: { equity, marginUsed: 0 }, positions: [],
     risk: { remainingRiskAmount: equity * 0.44, openRiskAmount: 0 },
     capacity: { remainingMargin: equity * 0.9 },
     exposure: { remaining: equity * 9, bySymbol: {}, direction: { LONG: 0 } },
@@ -50,23 +92,32 @@ test('HYPE sized from live account equity reaches the 45 percent margin target w
   const result = projections(args);
   assert(result.allowedChoices.includes(5));
   const first = result.projections[5];
-  assert(first.margin >= equity * 0.45 * 0.95);
-  assert(first.margin <= equity * 0.45);
+  assert(first.margin >= equity * 0.30 * 0.85);
+  assert(first.margin <= equity * 0.30);
   assert(first.riskAtStop <= equity * policy.riskFraction);
   capacity.account.marginUsed = first.margin;
+  capacity.positions = [{symbol:'HYPEUSDT'}];
   capacity.capacity.remainingMargin = equity * 0.9 - first.margin;
   capacity.exposure.remaining -= first.notional;
   capacity.exposure.direction.LONG += first.notional;
   const second = projections({ ...args, d: { ...args.d, symbol: 'OTHERUSDT' } }).projections[5];
   assert(second);
-  assert(first.margin + second.margin <= equity * 0.9 + 1e-8);
-  assert(equity - first.margin - second.margin >= equity * 0.1 - 1e-8);
+  capacity.account.marginUsed += second.margin;
+  capacity.positions.push({symbol:'OTHERUSDT'});
+  capacity.capacity.remainingMargin -= second.margin;
+  const third = projections({ ...args, d: { ...args.d, symbol: 'THIRDUSDT' } }).projections[5];
+  assert(third);
+  assert(first.margin + second.margin + third.margin <= equity * 0.9 + 1e-8);
+  assert(equity - first.margin - second.margin - third.margin >= equity * 0.1 - 1e-8);
   const smallRisk = { ...args, d: { ...args.d, strategy: { ...args.d.strategy,
     riskPolicy: { ...policy, riskFraction: 0.005 } } } };
   assert.deepEqual(projections(smallRisk).allowedChoices, []);
 });
 test('manual activation preserves failed validation and is bound to its report and candidate', () => {
-  const candidate = { pair: ['ADX', 'BOLLINGER'], timeframe: '4h', scale: 0.8, directions: ['SHORT'], management: 'existing' };
+  const candidate = { pair: ['ADX', 'BOLLINGER'], timeframe: '4h', scale: 0.8,
+    directions: ['SHORT'], management: 'existing', entryMode: 'pair',
+    minVotes: 5, minDepthQuote: policy.minDepthQuote,
+    depthNotionalMultiple: policy.depthNotionalMultiple };
   const report = { reportId: 'test-report', frozenCandidate: candidate };
   const p = { ...policy, ...candidate, entryMode: 'pair', adxThreshold: 25, bollingerSigma: 2, minExpectedR: 0, manualActivation: { enabled: true, reportId: 'test-report', reason: 'Operator request', authorizedAt: '2026-10-04T00:00:00Z' } };
   const result = promotion(p, report);
@@ -80,9 +131,18 @@ test('manual activation preserves failed validation and is bound to its report a
 });
 test('manual override binds the wider signal and reward policy exactly', () => {
   const report = { reportId: policy.manualActivation.reportId, frozenCandidate: { pair: policy.pair, timeframe: policy.timeframe, scale: policy.scale, directions: ['SHORT'], management: 'existing' } };
-  assert.equal(promotion(policy, report).activation, 'MANUAL_UNVALIDATED');
-  for (const edit of [{ adxThreshold: 20 }, { bollingerSigma: 1.5 }, { minExpectedR: 1 }, { directions: ['SHORT'] }, { minVotes: 6 }, { minDepthQuote: 500 }, { riskFraction: 0.2 }, { maxPortfolioRisk: 0.4 }, { maxMarginFractionPerPosition: 0.4 }, { minMarginFillFraction: 0.9 }])
-    assert.equal(promotion({ ...policy, ...edit }, report).allowed, false);
+  const disabled = { ...policy, manualActivation: { ...policy.manualActivation, enabled: false } };
+  assert.equal(promotion(disabled, report).activation, 'BLOCKED');
+  assert.equal(promotion(disabled, report).allowed, false);
+  const enabled = { ...disabled, minDepthQuote: policy.manualActivation.overrideCandidate.minDepthQuote,
+    depthNotionalMultiple: policy.manualActivation.overrideCandidate.depthNotionalMultiple,
+    manualActivation: { ...disabled.manualActivation, enabled: true } };
+  assert.equal(promotion(enabled, report).activation, 'MANUAL_UNVALIDATED');
+  for (const edit of [{ adxThreshold: 20 }, { bollingerSigma: 1.5 }, { minExpectedR: 1 },
+    { directions: ['SHORT'] }, { minVotes: 6 }, { minDepthQuote: 500 },
+    { depthNotionalMultiple: 3 }, { riskFraction: 0.2 }, { maxPortfolioRisk: 0.4 },
+    { maxMarginFractionPerPosition: 0.4 }, { minMarginFillFraction: 0.9 }])
+    assert.equal(promotion({ ...enabled, ...edit }, report).allowed, false);
 });
 const bars = (n = 100) =>
   Array.from({ length: n }, (_, i) => ({
@@ -128,15 +188,53 @@ test('lower ADX and Bollinger thresholds increase eligible signals without chang
   assert.equal(I.calculate(bandBars, 0.8).at(-1).signals.BOLLINGER.signal, 'NEUTRAL');
   assert.equal(I.calculate(bandBars, 0.8, { adxThreshold: 22, bollingerSigma: 1.8 }).at(-1).signals.BOLLINGER.signal, 'SHORT');
 });
-test('JEV target choices offer at least two gross reward units for the widest stop', () => {
+test('JEV offers shorter targets that still clear costs and the net reward floor', () => {
   const { levelOptions } = require('../services/strategy/jev_policy');
-  const result = levelOptions({ strategy: { directions: ['LONG', 'SHORT'], recentCandles: bars() }, indicators: { atr: 2 } }, 110, { tickSize: '0.1' });
+  const result = levelOptions({ strategy: { directions: ['LONG', 'SHORT'], recentCandles: bars(), riskPolicy:policy }, indicators: { atr: 2 } }, 110, { tickSize: '0.1' });
   for (const [side, options] of Object.entries(result)) {
     const stop = Math.max(...Object.values(options.sl).map(x => Math.abs(110 - x)));
     const targets = Object.values(options.tp).map(x => Math.abs(110 - x));
-    assert(targets[0] >= stop * 2 - 1e-8, side);
+    assert(targets[0] >= stop * 1.3 - 1e-8, side);
+    assert(targets[0] < stop * 2.5, side);
     assert(targets[1] > targets[0] && targets[2] > targets[1], side);
   }
+});
+test('five-minute structure makes the live stop and target closer for quick trades', () => {
+  const { levelOptions } = require('../services/strategy/jev_policy');
+  const hourly = Array.from({ length: 8 }, (_, i) => ({high: 105 + i * .1, low: 95 + i * .1}));
+  const fiveMinute = Array.from({ length: 8 }, (_, i) => ({high: 100.3 + i * .01, low: 99.7 + i * .01}));
+  const base = {directions:['LONG','SHORT'],recentCandles:hourly,riskPolicy:policy};
+  const old = levelOptions({strategy:base,indicators:{atr:2}},100,{tickSize:'.01'});
+  const fast = levelOptions({strategy:{...base,shortTerm:{atr:.3,recentCandles:fiveMinute}},indicators:{atr:2}},100,{tickSize:'.01'});
+  for (const side of ['LONG','SHORT']) {
+    assert(Math.abs(fast[side].sl.sl2-100)<Math.abs(old[side].sl.sl2-100));
+    assert(Math.abs(fast[side].tp.tp2-100)<Math.abs(old[side].tp.tp2-100));
+  }
+});
+test('research breakout and portfolio use closed history, ranked slots, real margin and liquidation guard', () => {
+  const {researchRule,portfolio}=require('../services/strategy/backtest');
+  const candles=Array.from({length:21},(_,i)=>({time:i*3600000,open:100,
+    high:i===20?103:101,low:99,close:i===20?102:100,volume:100,
+    quoteVolume:1000000}));
+  const f={signals:{RSI:{value:60},RVOL:{value:1.5},ADX:{value:{adx:25}}}};
+  assert.equal(researchRule(f,candles,20,'BREAKOUT'),'LONG');
+  assert.equal(researchRule(f,candles,19,'BREAKOUT'),'NO_TRADE');
+  const units=['A','B','C','D'].map((symbol,i)=>({symbol,side:'LONG',sign:1,
+    entry:100,stop:99,target:102,entryTime:0,exitTime:3600000,
+    rankScore:4-i,riskPerUnit:1.3,net:1,gross:1.2,fees:.2,funding:0}));
+  const data=units.map(x=>({symbol:x.symbol,intervalMs:3600000,
+    bars:[{time:0,close:100},{time:3600000,close:101}],funding:[]}));
+  const p={...policy,initialCapital:1000,maxPositions:3,maxDrawdown:.5,
+    riskFraction:.22,maxPortfolioRisk:.44,maxLossStreak:10,feeRate:.001};
+  const r=portfolio(units,data,{policy:p,start:0,end:7200000,
+    leverage:5,maxMarginFractionPerPosition:.35});
+  assert.deepEqual(r.trades.map(x=>x.symbol).sort(),['A','B','C']);
+  assert(r.trades.every(x=>x.margin<=350+1e-8));
+  assert(r.trades.reduce((s,x)=>s+x.margin,0)<=900+1e-8);
+  assert(r.trades.every(x=>x.leverage===5));
+  const unsafe=portfolio([{...units[0],stop:70,riskPerUnit:30}],data.slice(0,1),
+    {policy:p,start:0,end:7200000,leverage:10,maxMarginFractionPerPosition:.35});
+  assert.equal(unsafe.trades.length,0);
 });
 test("no future bars influence indicators; all ten families calculated", () => {
   const a = bars(150),
@@ -457,4 +555,80 @@ test("missing funding coverage remains pending even with balanced entry and exit
 test("invalid quantity caps cannot escape sizing as NaN", () => {
   for (const maxQty of [NaN, -1, 0, "100"])
     assert.throws(() => R.size({ ...sizing, maxQty }), /INVALID_RISK_INPUT/);
+});
+
+test("opportunity hypotheses use only closed bars and require net movement potential", () => {
+  const { assess } = require("../services/strategy/opportunity_model");
+  const bars = Array.from({ length: 65 }, (_, i) => ({
+    time: i * 900000, open: 99.5, high: i < 56 ? 101 : 100,
+    low: 99, close: 99.5, volume: 10, quoteVolume: 995,
+  }));
+  bars[64] = { ...bars[64], high: 101, close: 100.6,
+    volume: 20, quoteVolume: 2012 };
+  const options = { model: "COMPRESSION_BREAKOUT", span: 8,
+    volumeMin: 1.2, trendMin: 0, compressionMax: .9,
+    roundTripCostFraction: .001, costMultiple: 1 };
+  const signal = assess(bars, 64, { atr: 1 }, options);
+  assert.equal(signal.direction, "LONG");
+  bars.push({ ...bars[64], time: 65 * 900000, close: 1 });
+  assert.deepEqual(assess(bars, 64, { atr: 1 }, options), signal);
+  assert.equal(assess(bars, 64, { atr: 1 }, {
+    ...options, roundTripCostFraction: .05, costMultiple: 2,
+  }).direction, "NO_TRADE");
+});
+
+test("relative candidate selects opposite extremes and remains in shadow mode", () => {
+  const { select } = require("../services/strategy/relative_model");
+  const { load, promotion } = require("../services/strategy/policy");
+  const p = load(require("node:path").resolve(__dirname,
+    "../config/strategy-relative-candidate.json"));
+  assert.equal(p.mode, "shadow");
+  assert.equal(p.manualActivation.enabled, false);
+  assert.equal(promotion(p, null).allowed, false);
+  const x = select([
+    { symbol: "BTCUSDT", own: .01 },
+    { symbol: "ETHUSDT", own: .04 },
+    { symbol: "SOLUSDT", own: -.03 },
+    { symbol: "BNBUSDT", own: .009 },
+    { symbol: "XRPUSDT", own: .01 },
+  ], { reference: .01, regime48h: .02 }, p.relative);
+  assert.deepEqual(x.map(v => [v.symbol, v.side]), [["ETHUSDT", "SHORT"]]);
+  assert.equal(x[0].evidence.residual, .03);
+});
+
+test("five-minute scalping signals use closed candles and respect regime and side", () => {
+  const { inputs, assess } = require("../services/strategy/scalp_model");
+  const bars = Array.from({ length: 75 }, (_, i) => ({
+    time: i * 300000, open: 100 + i * .01, high: 100.2 + i * .01,
+    low: 99.8 + i * .01, close: 100 + i * .01,
+    volume: 10, quoteVolume: 1000,
+  }));
+  bars[70] = { ...bars[70], open: 100, high: 102, low: 99.9,
+    close: 101.9, volume: 30, quoteVolume: 3057 };
+  const prepared = B.prepare({ symbol: "TESTUSDT", timeframe: "5m",
+    intervalMs: 300000, start: 0, end: bars.length * 300000,
+    bars, funding: [] }, .8);
+  const original = inputs(prepared.bars, prepared.features)[70];
+  const p = { model: "MOMENTUM", threshold: .5, volumeMin: 1.2,
+    regime: "ALL", session: "ALL" };
+  assert.equal(assess(original, p)?.side, "LONG");
+  assert.equal(assess(original, { ...p, regime: "RANGE" }), null);
+  bars[74] = { ...bars[74], open: 100, high: 100, low: 1,
+    close: 1, volume: 1000, quoteVolume: 1000 };
+  const changed = B.prepare({ ...prepared, bars }, .8);
+  assert.deepEqual(inputs(changed.bars, changed.features)[70], original);
+});
+
+test("six-month scalping candidate is valid but cannot authorize real orders", () => {
+  const { load, promotion } = require("../services/strategy/policy");
+  const p = load(require("node:path").resolve(__dirname,
+    "../config/strategy-scalp-candidate.json"));
+  assert.equal(p.entryMode, "scalp");
+  assert.equal(p.timeframe, "5m");
+  assert.equal(p.mode, "shadow");
+  assert.equal(p.manualActivation.enabled, false);
+  assert.equal(p.maxPositions, 3);
+  assert.equal(p.maxTotalMarginFraction, .9);
+  assert.equal(p.scalp.maxBars, 12);
+  assert.equal(promotion(p, null).allowed, false);
 });
