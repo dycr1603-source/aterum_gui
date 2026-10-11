@@ -33,6 +33,9 @@ function load(
     !Number.isInteger(p.maxPositions) ||
     p.maxPositions < 1 ||
     p.maxPositions > 10 ||
+    !Number.isInteger(p.reentryCooldownMinutes ?? 60) ||
+    (p.reentryCooldownMinutes ?? 60) < 1 ||
+    (p.reentryCooldownMinutes ?? 60) > 1440 ||
     !Number.isFinite(p.maxDrawdown) ||
     p.maxDrawdown <= 0 ||
     p.maxDrawdown > 0.3 ||

@@ -19,6 +19,7 @@
   "minExpectedR": 1.1,
   "maxPortfolioRisk": 0.44,
   "maxPositions": 3,
+  "reentryCooldownMinutes": 60,
   "maxDrawdown": 0.15,
   "maxLossStreak": 10,
   "minQuoteVolume": 3000000,

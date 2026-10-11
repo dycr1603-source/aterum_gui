@@ -1,5 +1,11 @@
 # Verificación de Aterum — 11 de octubre de 2026 (Costa Rica)
 
+## Actualización: reentrada tras un cierre
+
+- La operación 64, WUSDT SHORT, cerró a las 21:00:22 UTC y la operación 66 abrió de nuevo WUSDT SHORT a las 21:15:25 UTC: apenas 15 minutos después. API3USDT LONG también cerró a las 21:15:06 UTC. La ejecución n8n 51277 (21:30:13–21:30:24 UTC) revisó 250 símbolos, calificó tres y JEV rechazó los tres; terminó `NO_OPPORTUNITY`.
+- `new_opportunistic` consulta los cierres registrados en MySQL y excluye durante 60 minutos la misma combinación símbolo/dirección. La dirección contraria sigue disponible. El rechazo `REENTRY_COOLDOWN` ocurre antes de ordenar candidatos y consultar JEV, por lo que el siguiente candidato elegible asciende en la clasificación. El resumen de Telegram muestra solo el recuento agregado. Se mantiene el límite de tres posiciones y los controles de entrada; no se fuerza una apertura si ninguna alternativa pasa JEV y la ejecución.
+- Pruebas completadas: estrategia 61/61, JEV 54/54, workflow 4/4, offline 52/52 archivos y build. Se respaldó el volumen n8n en `.local/backups/reentry-cooldown-VjKKXB` y la imagen previa en `.local/strategy-backup-o0uDTY`. Los cuatro workflows se sincronizaron y publicaron sin duplicados. La imagen nueva se instaló y n8n/Telegram se reanudaron con `N8N_TRADING_DISABLED=0`.
+
 ## Actualización: selección oportunista y JEV
 
 - El motor `new_opportunistic` ordena primero los candidatos con profundidad suficiente y, dentro de ese grupo, por la puntuación de su señal. JEV evalúa ese orden hasta aprobar una entrada viable. Conserva los controles de capacidad, precio, SL/TP, comisiones, apalancamiento y confirmación de Binance. No abre una operación si todos los candidatos reciben veto.

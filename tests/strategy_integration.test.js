@@ -5,7 +5,7 @@ const { test } = require("node:test"),
   vm = require("node:vm");
 const { evaluate, config } = require("../services/jev"),
   { universe, cycle, batchOffset, compareCandidates,
-    executionReferencePrice } = require("../services/strategy/engine"),
+    executionReferencePrice, recentCloseCooldowns } = require("../services/strategy/engine"),
   { ExecutionEngine } = require("../position-guard/execution-engine");
 const policy = require("../config/strategy-v2.json"),
   now = 1800000000000;
@@ -430,13 +430,29 @@ test('opportunistic execution compares the live quote with the recent five-minut
   assert.throws(() => executionReferencePrice('new_opportunistic', closedHour, null),
     /STALE_SHORT_TERM_DATA/);
 });
+test('recent closes cool down only the same symbol and direction for one hour', async () => {
+  const at = 1800000000000;
+  const db = { execute: async (sql, args) => {
+    assert.match(sql, /trade_closes c JOIN trades t/);
+    assert.equal(args[0], (at - 3600000) / 1000);
+    return [[
+      { symbol: 'WUSDT', direction: 'SHORT', closedMs: at - 15 * 60000 },
+      { symbol: 'WUSDT', direction: 'LONG', closedMs: at - 3600001 },
+      { symbol: 'API3USDT', direction: 'LONG', closedMs: at - 30 * 60000 },
+    ]];
+  } };
+  const recent = await recentCloseCooldowns(db, at, 60);
+  assert.equal(recent.has('WUSDT:SHORT'), true);
+  assert.equal(recent.has('WUSDT:LONG'), false);
+  assert.equal(recent.has('API3USDT:LONG'), true);
+});
 test('a no-opportunity report sends one compact hourly summary without symbol lists', async () => {
   const code = fs.readFileSync(require.resolve('../bot-control/workflows/code/strategy-no-trade.js'), 'utf8');
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const run = new AsyncFunction('$input', code);
   const posted = [];
   const checked = Array.from({ length: 175 }, (_, i) => ({ symbol: `TOKEN${i}USDT`, reasons: ['LOW_DEPTH', 'NO_TWO_INDICATOR_SIGNAL'], depthQuote: 1200 + i, requiredDepthQuote: 100000, indicators: [{ name: 'ADX', signal: 'SHORT' }, { name: 'BOLLINGER', signal: 'NO_TRADE' }] }));
-  const input = { first: () => ({ json: { strategyV2: true, entryMode: 'new_opportunistic', opportunityCycleId: 'cycle-1', passAI: false, skipReason: 'NO_OPPORTUNITY', universeSummary: { scanned: 175, eligible: 175, checked, reasons: { LOW_DEPTH: 175 } } } }) };
+  const input = { first: () => ({ json: { strategyV2: true, entryMode: 'new_opportunistic', opportunityCycleId: 'cycle-1', passAI: false, skipReason: 'NO_OPPORTUNITY', universeSummary: { scanned: 175, eligible: 175, checked, reasons: { LOW_DEPTH: 175, REENTRY_COOLDOWN: 1 } } } }) };
   const helper = { helpers: { httpRequest: async request => { posted.push(request); return { status: 'SENT' }; } } };
   const first = await run.call(helper, input);
   const second = await run.call(helper, input);
@@ -444,6 +460,7 @@ test('a no-opportunity report sends one compact hourly summary without symbol li
   assert.equal(first[0].json.notificationEventKey, second[0].json.notificationEventKey);
   assert.match(posted[0].body.text, /Analizados: 175 de 175/);
   assert.match(posted[0].body.text, /Profundidad insuficiente: 175/);
+  assert.match(posted[0].body.text, /Reentrada en espera: 1/);
   assert.match(posted[0].body.text, /Motor: modelo oportunista/);
   assert(!posted[0].body.text.includes('TOKEN0USDT'));
   assert(posted[0].body.text.length < 500);
@@ -468,7 +485,9 @@ test('engine checks every eligible symbol when no entry is found', async () => {
     const open = when - (240 - i) * 3600000;
     return [open, '100', '101', '99', '100', '100', open + 3600000 - 1, '10000'];
   });
+  let recentCloses = [];
   const db = { execute: async sql => {
+    if (sql.includes('FROM trade_closes c JOIN trades t')) return [recentCloses];
     if (sql.includes('FROM strategy_breaker')) return [[{ halted: 0, peak_equity: 1000 }]];
     if (sql.includes('FROM trades WHERE')) return [[]];
     if (sql.includes('FROM strategy_events WHERE event_type=')) return [[]];
@@ -511,6 +530,16 @@ test('engine checks every eligible symbol when no entry is found', async () => {
   assert.equal(repeated.universeSummary.scanned, 30);
   assert.equal(repeated.skipReason, 'NO_OPPORTUNITY');
   assert(klineRequests >= 32, 'closed 1h symbol candles are cached; the engine still evaluates the best soft candidate across the cycle');
+  const evaluatedBeforeCooldown = seen.length;
+  recentCloses = symbols.flatMap(symbol => ['LONG', 'SHORT'].map(direction =>
+    ({ symbol, direction, closedMs: when - 15 * 60000 })));
+  const cooling = await cycle({ db, fetchImpl, policy: scanPolicy, report,
+    now: () => when, evaluateJev: async () => assert.fail('cooling symbols reached JEV') });
+  assert.equal(cooling.skipReason, 'NO_OPPORTUNITY');
+  assert.equal(cooling.universeSummary.scanned, 30);
+  assert.equal(cooling.universeSummary.reasons.REENTRY_COOLDOWN, 30);
+  assert.equal(cooling.universeSummary.marketQualified, 0);
+  assert.equal(seen.length, evaluatedBeforeCooldown);
 });
 test('engine ranks the full universe and asks JEV about the next candidate after a veto', async () => {
   const rankingPolicy = { ...policy, mode: 'shadow', entryMode: 'consensus10', timeframe: '4h' };

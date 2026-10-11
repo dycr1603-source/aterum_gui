@@ -9,6 +9,7 @@ const labels = {
   TECHNICAL_CANDIDATE: 'Candidatos técnicos',
   DIRECTION_DISABLED: 'Dirección deshabilitada',
   ALREADY_OPEN: 'Posición existente',
+  REENTRY_COOLDOWN: 'Reentrada en espera',
   MIN_LOT_RISK: 'Lote mínimo supera el riesgo',
   JEV_NO_TRADE: 'Rechazadas por JEV'
 };

@@ -56,6 +56,24 @@ function executionReferencePrice(entryMode, signalClose, shortLast) {
     throw Error("STALE_SHORT_TERM_DATA");
   return price;
 }
+async function recentCloseCooldowns(db, nowMs, minutes = 60) {
+  const durationMs = minutes * 60000;
+  const [rows] = await db.execute(
+    `SELECT c.symbol,t.direction,UNIX_TIMESTAMP(MAX(c.closed_at))*1000 AS closedMs
+       FROM trade_closes c JOIN trades t ON t.id=c.trade_id
+      WHERE c.closed_at>=FROM_UNIXTIME(?)
+      GROUP BY c.symbol,t.direction`,
+    [(nowMs - durationMs) / 1000],
+  );
+  const recent = new Map();
+  for (const row of rows) {
+    const closedMs = Number(row.closedMs);
+    if (!Number.isFinite(closedMs)) throw Error("INVALID_TRADE_CLOSE_DATA");
+    if (nowMs - closedMs < durationMs)
+      recent.set(`${row.symbol}:${row.direction}`, closedMs);
+  }
+  return recent;
+}
 function universe({ info, tickers, books, now, policy }) {
   const byTicker = new Map(tickers.map((t) => [t.symbol, t])),
     byBook = new Map(books.map((b) => [b.symbol, b]));
@@ -293,6 +311,9 @@ async function cycle({
       checked: [],
     };
     const checkedBySymbol = new Map();
+    const cooldownMinutes = policy.reentryCooldownMinutes ?? 60;
+    const recentCloses = policy.entryMode === "new_opportunistic"
+      ? await recentCloseCooldowns(db, now(), cooldownMinutes) : new Map();
     const note = (item, reasons, detail = {}) => {
       const list = Array.isArray(reasons) ? reasons : [reasons];
       let checked = checkedBySymbol.get(item.symbol);
@@ -389,6 +410,10 @@ async function cycle({
       );
       else if (!policy.directions.includes(direction))
         failed.push("DIRECTION_DISABLED");
+      const lastClosedMs = recentCloses.get(`${item.symbol}:${direction}`);
+      if (lastClosedMs !== undefined &&
+          now() - lastClosedMs < cooldownMinutes * 60000)
+        failed.push("REENTRY_COOLDOWN");
       const detail = {
         indicators: (policy.entryMode === "consensus10"
           ? [...DIRECTIONAL, ...CONTEXTUAL] : policy.pair).map((name) => ({
@@ -399,6 +424,9 @@ async function cycle({
         opportunity: ["opportunistic", "scalp"].includes(policy.entryMode) ? votes.inputs : null,
         score: votes.score,
         minimumLotRisk: Number(minimumRisk.toFixed(6)),
+        ...(failed.includes("REENTRY_COOLDOWN")
+          ? { cooldownUntil: new Date(lastClosedMs + cooldownMinutes * 60000).toISOString() }
+          : {}),
       };
       if (failed.length) {
         const softReasons = failed.filter((reason) =>
@@ -706,4 +734,5 @@ async function cycle({
   }
 }
 module.exports = { cycle, universe, logDecision, readReport, batchOffset,
-  minimumLotRisk, compareCandidates, executionReferencePrice };
+  minimumLotRisk, compareCandidates, executionReferencePrice,
+  recentCloseCooldowns };
