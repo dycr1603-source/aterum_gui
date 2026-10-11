@@ -4,7 +4,8 @@ const { test } = require("node:test"),
   fs = require("node:fs"),
   vm = require("node:vm");
 const { evaluate, config } = require("../services/jev"),
-  { universe, cycle, batchOffset } = require("../services/strategy/engine"),
+  { universe, cycle, batchOffset, compareCandidates,
+    executionReferencePrice } = require("../services/strategy/engine"),
   { ExecutionEngine } = require("../position-guard/execution-engine");
 const policy = require("../config/strategy-v2.json"),
   now = 1800000000000;
@@ -403,6 +404,32 @@ test('each scheduled scan moves by a full batch across the liquid universe', () 
   assert.deepEqual(offsets, [0, 24, 48, 72, 96, 120, 144]);
   assert.equal(new Set(offsets).size, 7);
 });
+test('new model offers its strongest market-qualified signal to JEV first', () => {
+  const candidates = [
+    { item: { symbol: 'LIQUIDUSDT' }, votes: { score: .61 },
+      rankScore: 50, depthQuote: 100000 },
+    { item: { symbol: 'STRONGUSDT' }, votes: { score: .83 },
+      rankScore: 30, depthQuote: 5000 },
+  ];
+  assert.equal([...candidates].sort((a, b) =>
+    compareCandidates(a, b, 'new_opportunistic'))[0].item.symbol,
+  'STRONGUSDT');
+  assert.equal([...candidates].sort((a, b) =>
+    compareCandidates(a, b, 'consensus10'))[0].item.symbol,
+  'LIQUIDUSDT');
+  candidates[1].softReasons = ['LOW_DEPTH'];
+  assert.equal([...candidates].sort((a, b) =>
+    compareCandidates(a, b, 'new_opportunistic'))[0].item.symbol,
+  'LIQUIDUSDT');
+});
+test('opportunistic execution compares the live quote with the recent five-minute close', () => {
+  const closedHour = 100, closedFiveMinute = 102;
+  const lastFiveMinute = [0, 0, 0, 0, String(closedFiveMinute)];
+  assert.equal(executionReferencePrice('new_opportunistic', closedHour, lastFiveMinute), 102);
+  assert.equal(executionReferencePrice('consensus10', closedHour, lastFiveMinute), 100);
+  assert.throws(() => executionReferencePrice('new_opportunistic', closedHour, null),
+    /STALE_SHORT_TERM_DATA/);
+});
 test('a no-opportunity report sends one compact hourly summary without symbol lists', async () => {
   const code = fs.readFileSync(require.resolve('../bot-control/workflows/code/strategy-no-trade.js'), 'utf8');
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -454,7 +481,7 @@ test('engine checks every eligible symbol when no entry is found', async () => {
     else if (url.endsWith('/exchangeInfo')) data = { symbols: symbols.map(symbol => ({ symbol, quoteAsset: 'USDT', contractType: 'PERPETUAL', status: 'TRADING', onboardDate: when - 120 * 86400000 })) };
     else if (url.endsWith('/ticker/24hr')) data = symbols.map(symbol => ({ symbol, quoteVolume: '10000000' }));
     else if (url.endsWith('/ticker/bookTicker')) data = symbols.map(symbol => ({ symbol, bidPrice: '99.99', askPrice: '100.01' }));
-    else if (url.includes('/depth')) { depthRequests++; data = { bids: [], asks: [] }; }
+    else if (url.includes('/depth')) { depthRequests++; data = { bids: [['102', '1']], asks: [['102.01', '1']] }; }
     else if (url.includes('/premiumIndex')) data = { lastFundingRate: '0.0001' };
     else if (url.includes('/klines')) { klineRequests++; data = candles; }
     else throw Error(`Unexpected URL ${url}`);
@@ -472,6 +499,8 @@ test('engine checks every eligible symbol when no entry is found', async () => {
   assert.equal(result.universeSummary.scanned, 30);
   assert(result.universeSummary && result.universeSummary.checked && result.universeSummary.checked.length === 30);
   assert(result.universeSummary.checked.every(x => x.reasons.includes('LOW_DEPTH')));
+  assert(result.universeSummary.checked.every(x => x.depthQuote > 0),
+    'depth is measured around the current order book, even after the signal close moves');
   assert(seen.length > 0, 'the best remaining candidate is still evaluated instead of bailing immediately');
   assert.equal(depthRequests, 30);
   const repeated = await cycle({ db, fetchImpl, policy: scanPolicy, report, now: () => when,

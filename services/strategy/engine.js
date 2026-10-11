@@ -34,6 +34,28 @@ function batchOffset(nowMs, eligibleCount, batchSize = 24) {
   // Main Schedule runs every fifteen minutes.
   return (Math.floor(nowMs / 900000) * batchSize) % Math.max(1, eligibleCount);
 }
+function compareCandidates(a, b, entryMode) {
+  // Give liquid candidates priority, then ask JEV about the strongest model
+  // signal in that tier. Low depth remains a soft rejection for opportunistic
+  // fallback only after the liquid tier has been considered.
+  const depthTier = entryMode === "new_opportunistic"
+    ? Number(Boolean(a.softReasons?.includes("LOW_DEPTH"))) -
+      Number(Boolean(b.softReasons?.includes("LOW_DEPTH"))) : 0;
+  const signal = entryMode === "new_opportunistic"
+    ? b.votes.score - a.votes.score : 0;
+  return depthTier || signal || b.rankScore - a.rankScore ||
+    b.depthQuote - a.depthQuote || a.item.symbol.localeCompare(b.item.symbol);
+}
+function executionReferencePrice(entryMode, signalClose, shortLast) {
+  // The new model scores a closed 1h candle, but JEV checks drift against a
+  // live Binance quote. Use the latest closed 5m close for that timing check.
+  // The 1h close is a signal input, not a current executable price.
+  if (entryMode !== "new_opportunistic") return signalClose;
+  const price = Number(shortLast?.[4]);
+  if (!Number.isFinite(price) || price <= 0)
+    throw Error("STALE_SHORT_TERM_DATA");
+  return price;
+}
 function universe({ info, tickers, books, now, policy }) {
   const byTicker = new Map(tickers.map((t) => [t.symbol, t])),
     byBook = new Map(books.map((b) => [b.symbol, b]));
@@ -447,10 +469,19 @@ async function cycle({
     for (const candidate of selectedCandidates) {
       const { item, price, detail } = candidate;
       const depth = await get(`${base}/depth?symbol=${item.symbol}&limit=100`);
+      const bestBid = Number(depth.bids?.[0]?.[0]);
+      const bestAsk = Number(depth.asks?.[0]?.[0]);
+      if (!(bestBid > 0 && bestAsk >= bestBid)) {
+        item.status = "REJECTED";
+        item.reasons.push("LOW_DEPTH");
+        note(item, "LOW_DEPTH", detail);
+        continue;
+      }
+      const depthReference = (bestBid + bestAsk) / 2;
       const depthQuote = Math.min(
         ...["bids", "asks"].map((side) =>
           (depth[side] || [])
-            .filter(([p]) => Math.abs(Number(p) / price - 1) <= 0.005)
+            .filter(([p]) => Math.abs(Number(p) / depthReference - 1) <= 0.005)
             .reduce((s, [p, q]) => s + Number(p) * Number(q), 0),
         ),
       );
@@ -478,8 +509,7 @@ async function cycle({
       note(item, [], { ...detail, rankScore: Number(candidate.rankScore.toFixed(2)) });
       ranked.push(candidate);
     }
-    ranked.sort((a, b) => b.rankScore - a.rankScore ||
-      b.depthQuote - a.depthQuote || a.item.symbol.localeCompare(b.item.symbol));
+    ranked.sort((a, b) => compareCandidates(a, b, policy.entryMode));
     result.universeSummary.technicalCandidates = technicalCandidates.length;
     result.universeSummary.marketQualified = ranked.length;
     let invalidJevCandidates = 0;
@@ -546,7 +576,10 @@ async function cycle({
         timeframe: policy.timeframe,
         opportunityCycleId: id,
         marketDataAt: now(),
-        indicators: { currentPrice: price, atr: f.atr },
+        indicators: {
+          currentPrice: executionReferencePrice(policy.entryMode, price, shortLast),
+          atr: f.atr,
+        },
         passRisk: true,
         strategy: {
           version: policy.entryMode === "new_opportunistic" ? "new-opportunistic-v1" :
@@ -672,4 +705,5 @@ async function cycle({
     return finish();
   }
 }
-module.exports = { cycle, universe, logDecision, readReport, batchOffset, minimumLotRisk };
+module.exports = { cycle, universe, logDecision, readReport, batchOffset,
+  minimumLotRisk, compareCandidates, executionReferencePrice };

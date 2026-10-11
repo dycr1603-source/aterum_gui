@@ -1,4 +1,19 @@
-# Verificación de Aterum — 10 de octubre de 2026 (Costa Rica)
+# Verificación de Aterum — 11 de octubre de 2026 (Costa Rica)
+
+## Actualización: selección oportunista y JEV
+
+- El motor `new_opportunistic` ordena primero los candidatos con profundidad suficiente y, dentro de ese grupo, por la puntuación de su señal. JEV evalúa ese orden hasta aprobar una entrada viable. Conserva los controles de capacidad, precio, SL/TP, comisiones, apalancamiento y confirmación de Binance. No abre una operación si todos los candidatos reciben veto.
+- La señal usa ahora los 15 atributos y pesos congelados del experimento `inverse-market`; el backtest exige velas BTC alineadas. El modelo fue entrenado con velas de 5 minutos y se aplica a velas de 1 hora en vivo: su puntuación no es una probabilidad calibrada de ganancia.
+- JEV recibe un contexto específico para esta señal: ADX y Bollinger son contexto, no requisitos adicionales. Un empate cercano entre `NO_TRADE` y la dirección propuesta puede resolverse a favor de la dirección, pero no se ignora un veto claro.
+- Se corrigieron dos referencias de mercado que impedían oportunidades reales: la profundidad se mide alrededor del bid/ask actual del libro, y el desplazamiento de precio se compara con el último cierre de 5 minutos en lugar del cierre de la vela de 1 hora. Un libro sin bid/ask válido sigue rechazado.
+- Primer diagnóstico sin órdenes: 245/245 elegibles, 129 señales, cero aprobaciones; 51 `JEV_PRICE_DRIFT`, 20 `JEV_STALE_DATA` y 58 `JEV_NO_TRADE`. Tras las correcciones: 245/245 elegibles, 129 señales, **JEV aprobó YBUSDT SHORT** después de 39 descartes. La decisión tuvo `passAI=true`, pero fue un diagnóstico con n8n detenido y `N8N_TRADING_DISABLED=1`, por lo que **no se envió una orden**.
+- Los cuatro workflows están guardados/publicados y verificados sin duplicados. La imagen nueva está en dashboard; n8n, Telegram, dashboard, chart API, guard, nginx, MySQL, Redis y adaptador JEV están iniciados y sanos. `.env` y el proceso n8n tienen `N8N_TRADING_DISABLED=0`. La cuenta mostraba 59,1155 USDT de equity, cero margen usado, cero posiciones y `portfolio-capacity.allowed=true` al reactivar.
+- La primera ejecución programada posterior, n8n **50840** (20:45:13–20:54:14 UTC), terminó `success`. JEV aprobó y Binance confirmó **WUSDT SHORT** (4055,8 unidades, apertura 20:45:58 UTC) y **API3USDT LONG** (289,5 unidades, apertura 20:48:43 UTC). Las dos operaciones aparecen `OPEN` con las mismas cantidades en MySQL. El tercer análisis revisó 245/245 elegibles y terminó `NO_OPPORTUNITY`; no se forzó una tercera orden.
+- Al cierre de la comprobación, el guard estaba en `enforce`, con **2 posiciones protegidas de 2**, cero sin protección, cero ejecuciones pendientes y cero errores. Binance mostró margen usado 35,7458 USDT sobre equity fluctuante de 64,2545 USDT (55,6 % en ese instante), capacidad aún permitida y ninguna posición duplicada. El breaker seguía libre. Estas cifras son instantáneas y cambian con el mercado.
+- Pasaron `npm run test:strategy` (60/60), `npm run test:jev` (54/54), `npm run test:workflow` (4/4) y `git diff --check`. Copias del volumen: `.local/backups/jev-relax-yxpmg4` y `.local/backups/workflow-draft-ZCQLik`.
+- La autorización manual `MANUAL_UNVALIDATED` y el informe histórico rechazado permanecen. No hay evidencia de rentabilidad neta positiva fuera de muestra; este cambio corrige la ruta de selección y ejecución, no demuestra que la estrategia sea rentable.
+
+## Informe anterior (10 de octubre)
 
 ## Estado de producción
 
