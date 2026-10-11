@@ -15,8 +15,8 @@ test('manual activation keeps the rejected historical report visible', () => {
   assert.equal(report.selectionStatus, 'REJECTED');
   assert(report.outOfSample.metrics.netProfit < 0);
   const approval = promotion(current, report);
-  assert.equal(approval.allowed, false);
-  assert.equal(approval.activation, 'BLOCKED');
+  assert.equal(approval.allowed, true);
+  assert.equal(approval.activation, 'MANUAL_UNVALIDATED');
   assert.equal(approval.validationPassed, false);
   assert(approval.reasons.includes('ROBUSTNESS_REJECTED'));
 });
@@ -139,8 +139,8 @@ test('manual override binds the wider signal and reward policy exactly', () => {
     manualActivation: { ...disabled.manualActivation, enabled: true } };
   assert.equal(promotion(enabled, report).activation, 'MANUAL_UNVALIDATED');
   for (const edit of [{ adxThreshold: 20 }, { bollingerSigma: 1.5 }, { minExpectedR: 1 },
-    { directions: ['SHORT'] }, { minVotes: 6 }, { minDepthQuote: 500 },
-    { depthNotionalMultiple: 3 }, { riskFraction: 0.2 }, { maxPortfolioRisk: 0.4 },
+    { directions: ['SHORT'] }, { minVotes: 6 }, { minDepthQuote: 1000 },
+    { depthNotionalMultiple: 5 }, { riskFraction: 0.2 }, { maxPortfolioRisk: 0.4 },
     { maxMarginFractionPerPosition: 0.4 }, { minMarginFillFraction: 0.9 }])
     assert.equal(promotion({ ...enabled, ...edit }, report).allowed, false);
 });
