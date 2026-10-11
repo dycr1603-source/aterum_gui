@@ -21,7 +21,8 @@ const text = [
   `Motor: ${d.entryMode === 'new_opportunistic' ? 'modelo oportunista' :
     d.entryMode === 'consensus10' ? 'consenso de diez indicadores' :
     'estrategia técnica'} · ${d.skipReason || 'NO_TRADE'}`,
-  `Analizados: ${Number(summary.scanned || 0)} de ${Number(summary.eligible || 0)} elegibles.`,
+  ...(d.universeSummary ? [`Analizados: ${Number(summary.scanned || 0)} de ${Number(summary.eligible || 0)} elegibles.`]
+    : ['Escaneo omitido por control de estrategia.']),
   ...counts.slice(0, 6),
   'Sin orden enviada a Binance.'
 ].join('\n');

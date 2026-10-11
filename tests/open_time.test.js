@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { inferOpenTime } = require('../position-guard/open-time');
-const now = Date.parse('2026-09-30T12:00:00Z');
+const now = Date.now();
 const at = h => now - h * 3600000;
 const opts={now,historyStart:now-7*86400000};
 test('reconstructs current LONG after partial close and add, retaining original time',()=>{
