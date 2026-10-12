@@ -1,5 +1,11 @@
 # Verificación de Aterum — 11 de octubre de 2026 (Costa Rica)
 
+## Actualización: variación de precio JEV (12 de octubre UTC)
+
+- USUSDT LONG (`859b489f-723c-7a03-2294-b2262600891a`) se rechazó antes de abrir con `JEV_PRICE_DRIFT`. La propuesta JEV tenía entrada 0,012572, cantidad 6951, SL 0,011587 y TP 0,013853; el límite configurado de variación sigue en 0,5 %. La cotización exacta que recibió el guard no quedó registrada, por lo que solo puede afirmarse que superó ese límite. Binance y MySQL tenían cero posiciones después del rechazo.
+- Se amplió la distinción de fallos previos a la orden: riesgo vivo incrementado, reward/risk insuficiente al precio vivo, variación de precio JEV y datos JEV vencidos rechazan solo la propuesta. El breaker sigue activándose por discrepancias de política, fallos de Binance/protección o persistencia. Pruebas de ejecución, estrategia (61/61), build y `git diff --check` pasaron.
+- Se desplegó una misma imagen en dashboard y Position Guard, se recreó n8n con la red del dashboard nuevo y se comprobó `portfolio-capacity.allowed=true`, cero posiciones y cero ejecuciones pendientes. Se reinició el breaker con razón auditada; estado final `halted=0`, `reason=null`.
+
 ## Actualización: rechazo de riesgo vivo (12 de octubre UTC)
 
 - Tras liberar el breaker anterior, Binance confirmó ZROUSDT LONG y luego ZROUSDT SHORT; ambas operaciones cerraron. A las 00:30 UTC se propuso EDENUSDT LONG (1381 unidades, entrada JEV 0,06429, SL 0,06354, riesgo estimado 1,389334335 USDT). El guard la rechazó antes de enviar orden por `STRATEGY_LIVE_RISK_INCREASED`: el riesgo al precio vivo superó el aprobado en la propuesta. El executor activaba el breaker por cualquier rechazo de estrategia, y los ciclos siguientes hasta las 01:45 UTC se omitieron con ese motivo.

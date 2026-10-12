@@ -245,7 +245,8 @@ async function testPortfolioRejectionIsTerminalOutcome() {
 }
 
 async function testLiveRiskDriftRejectsOnlyTheEntry() {
-  for (const message of ['STRATEGY_LIVE_RISK_INCREASED', 'STRATEGY_POLICY_CHANGED']) {
+  for (const message of ['STRATEGY_LIVE_RISK_INCREASED', 'STRATEGY_REWARD_RISK_TOO_LOW',
+    'JEV_PRICE_DRIFT', 'JEV_STALE_DATA', 'STRATEGY_POLICY_CHANGED']) {
     const writes = [];
     const db = { execute: async (sql, params) => {
       writes.push({ sql, params });
@@ -261,7 +262,7 @@ async function testLiveRiskDriftRejectsOnlyTheEntry() {
     assert.equal(result.finalStatus, 'FAILED');
     assert.equal(result.error, message);
     assert.equal(writes.some(row => row.sql.includes('UPDATE strategy_breaker')),
-      message !== 'STRATEGY_LIVE_RISK_INCREASED');
+      message === 'STRATEGY_POLICY_CHANGED');
   }
 }
 

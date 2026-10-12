@@ -13,6 +13,10 @@ const TERMINAL_STATUSES = new Set(['VERIFIED', 'REJECTED', 'FAILED']);
 const ACTIVE_ORDER_STATUSES = new Set(['NEW', 'PARTIALLY_FILLED']);
 const isStrategyVersion = version => ['two-indicator-v1', 'consensus-10-v1',
   'opportunistic-v1', 'relative-reversal-v1', 'scalp-research-v1', 'new-opportunistic-v1'].includes(version);
+const PRE_ORDER_MARKET_REJECTIONS = new Set([
+  'STRATEGY_LIVE_RISK_INCREASED', 'STRATEGY_REWARD_RISK_TOO_LOW',
+  'JEV_PRICE_DRIFT', 'JEV_STALE_DATA'
+]);
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function json(value) { return JSON.stringify(value ?? null); }
@@ -466,11 +470,12 @@ class ExecutionEngine {
           verificationResult, timestamp: new Date().toISOString(), finalStatus: 'VERIFIED', attemptCount: attempts };
       } catch (error) {
         lastError = error;
-        // A moving quote can raise the risk of this proposed entry before any
-        // order is sent. Reject that entry, but keep the rest of the market
-        // eligible for the next scan. Other failures still halt the strategy.
+        // Quote movement or an expired JEV receipt invalidates this proposed
+        // entry before any order is sent. Keep the rest of the market eligible.
+        // Policy, exchange, protection, and persistence failures still halt.
         if (isStrategyVersion(request.tradeContext?.strategy?.version) &&
-            !(request.type === 'OPEN_POSITION' && error.message === 'STRATEGY_LIVE_RISK_INCREASED')) {
+            !(request.type === 'OPEN_POSITION' &&
+              PRE_ORDER_MARKET_REJECTIONS.has(error.message) && !error.exchangeOrderId)) {
           await require('../services/strategy/store').halt(this.db, error.message);
         }
         verificationResult = error.verificationResult || verificationResult;
