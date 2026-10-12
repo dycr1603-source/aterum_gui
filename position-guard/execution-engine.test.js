@@ -244,6 +244,27 @@ async function testPortfolioRejectionIsTerminalOutcome() {
   assert(writes.some(row => /final_status=\?/.test(row.sql) && row.params.includes('REJECTED')));
 }
 
+async function testLiveRiskDriftRejectsOnlyTheEntry() {
+  for (const message of ['STRATEGY_LIVE_RISK_INCREASED', 'STRATEGY_POLICY_CHANGED']) {
+    const writes = [];
+    const db = { execute: async (sql, params) => {
+      writes.push({ sql, params });
+      if (sql.startsWith('SELECT * FROM trade_executions')) return [[], []];
+      return [{ affectedRows: 1 }, []];
+    } };
+    const instance = engine(new FakeBinance(), db);
+    instance.dispatch = async () => { throw new Error(message); };
+    instance.notifyFailure = async () => false;
+    const result = await instance.run({ executionId: '14141414-1414-4414-8414-141414141414',
+      type: 'OPEN_POSITION', symbol: 'BTCUSDT', positionSide: 'LONG', maxAttempts: 1,
+      tradeContext: { strategy: { version: 'new-opportunistic-v1' } } });
+    assert.equal(result.finalStatus, 'FAILED');
+    assert.equal(result.error, message);
+    assert.equal(writes.some(row => row.sql.includes('UPDATE strategy_breaker')),
+      message !== 'STRATEGY_LIVE_RISK_INCREASED');
+  }
+}
+
 async function testFailureNeverUpdatesTradeState() {
   const queries = [];
   const db = {
@@ -337,6 +358,7 @@ function testActionableFailuresStillNotify() {
   await testVerifiedOpenDoesNotChangeExistingHedgeMode();
   await testPortfolioCapacityRejectsOpenBeforeBinance();
   await testPortfolioRejectionIsTerminalOutcome();
+  await testLiveRiskDriftRejectsOnlyTheEntry();
   await testFailureNeverUpdatesTradeState();
   await testTerminalSuccessRequiresPersistence();
   await testLocalFailureBlocksTerminalSuccess();

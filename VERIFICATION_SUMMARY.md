@@ -1,5 +1,11 @@
 # Verificación de Aterum — 11 de octubre de 2026 (Costa Rica)
 
+## Actualización: rechazo de riesgo vivo (12 de octubre UTC)
+
+- Tras liberar el breaker anterior, Binance confirmó ZROUSDT LONG y luego ZROUSDT SHORT; ambas operaciones cerraron. A las 00:30 UTC se propuso EDENUSDT LONG (1381 unidades, entrada JEV 0,06429, SL 0,06354, riesgo estimado 1,389334335 USDT). El guard la rechazó antes de enviar orden por `STRATEGY_LIVE_RISK_INCREASED`: el riesgo al precio vivo superó el aprobado en la propuesta. El executor activaba el breaker por cualquier rechazo de estrategia, y los ciclos siguientes hasta las 01:45 UTC se omitieron con ese motivo.
+- El executor ahora rechaza únicamente esa entrada cuando el precio vivo aumenta el riesgo antes de la orden. Sigue activando el breaker para los demás errores, incluidas discrepancias de política y fallos de persistencia. No se modificaron la señal, el scoring, el umbral de JEV ni los límites de riesgo. Se añadió una prueba que distingue el rechazo de riesgo vivo de un fallo de política.
+- Pasaron `npm run test:execution`, `npm run test:strategy` (61/61), `npm run build` y `git diff --check`. Se reconstruyó la imagen y se recrearon dashboard, chart API, Position Guard, Telegram y nginx; dashboard y guard cargan el mismo SHA. Se verificó Binance y MySQL con cero posiciones, cero pendientes y `portfolio-capacity.allowed=true`; se reinició el breaker con razón auditada. Estado final: `halted=0`, `reason=null`, equity 58,265 USDT al comprobar. El pico del breaker se reinició a esa equity según el script; las pérdidas y eventos anteriores permanecen registrados.
+
 ## Actualización: reentrada tras un cierre
 
 - La entrada FFUSDT LONG (`4c3375e3-83c4-01de-73f0-d53e48962769`) falló con `STRATEGY_POLICY_CHANGED` antes de enviar una orden: dashboard ejecutaba la imagen nueva con `reentryCooldownMinutes=60`, mientras Position Guard conservaba la imagen anterior. Se recreó Position Guard con la imagen nueva. Ambos contenedores tienen ahora la misma imagen y cargan cooldown 60; la comprobación del guard devolvió HTTP 200, todos los servicios auxiliares sanos y una posición protegida de una. Se añadió una verificación de igualdad de imagen al procedimiento de Saitama. No se reenvió la ejecución fallida.

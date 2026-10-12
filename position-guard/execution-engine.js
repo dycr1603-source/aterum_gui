@@ -466,7 +466,11 @@ class ExecutionEngine {
           verificationResult, timestamp: new Date().toISOString(), finalStatus: 'VERIFIED', attemptCount: attempts };
       } catch (error) {
         lastError = error;
-        if (isStrategyVersion(request.tradeContext?.strategy?.version)) {
+        // A moving quote can raise the risk of this proposed entry before any
+        // order is sent. Reject that entry, but keep the rest of the market
+        // eligible for the next scan. Other failures still halt the strategy.
+        if (isStrategyVersion(request.tradeContext?.strategy?.version) &&
+            !(request.type === 'OPEN_POSITION' && error.message === 'STRATEGY_LIVE_RISK_INCREASED')) {
           await require('../services/strategy/store').halt(this.db, error.message);
         }
         verificationResult = error.verificationResult || verificationResult;
