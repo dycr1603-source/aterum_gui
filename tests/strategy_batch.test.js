@@ -14,7 +14,8 @@ const source = fs.readFileSync(path.join(root,'bot-control/workflows/code/strate
 
 test('verified positions alone can request the next slot, at most three per run', async () => {
   assert.equal(next.parameters.jsCode, source);
-  assert(workflow.connections['If: Execution Verified'].main[0].some(e => e.node === next.name));
+  assert(workflow.connections['If: Execution Verified'].main[0].some(e => e.node === 'Build Trade Alert'));
+  assert(workflow.connections['Telegram: Trade Opened'].main[0].some(e => e.node === next.name));
   assert.equal(workflow.connections[next.name].main[0][0].node,'If: Strategy Approved');
   const run = new AsyncFunction('$input','process',next.parameters.jsCode);
   const calls=[];

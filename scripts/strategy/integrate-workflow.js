@@ -100,11 +100,9 @@ function integrate() {
   w.connections["If: Strategy Approved"] = {
     main: [[edge("Position Sizer")], [edge("Strategy Scan Report")]],
   };
-  w.connections["If: Execution Verified"].main[0] = [
-    edge("Build Trade Alert"), edge("Next Strategy Slot"),
-  ];
+  w.connections["If: Execution Verified"].main[0] = [edge("Build Trade Alert")];
+  w.connections["Telegram: Trade Opened"] = { main: [[edge("Next Strategy Slot")]] };
   w.connections["Next Strategy Slot"] = { main: [[edge("If: Strategy Approved")]] };
-  delete w.connections["Telegram: Trade Opened"];
   w.connections["Strategy Scan Report"] = { main: [[]] };
   // New path already has cost-aware sizing from JEV + Risk Engine. Legacy branch
   // remains rollback-only and is never evaluated by the new path.

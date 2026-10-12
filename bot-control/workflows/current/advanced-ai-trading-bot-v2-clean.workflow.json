@@ -942,11 +942,6 @@
               "node": "Build Trade Alert",
               "type": "main",
               "index": 0
-            },
-            {
-              "node": "Next Strategy Slot",
-              "type": "main",
-              "index": 0
             }
           ],
           [
@@ -1065,6 +1060,17 @@
           [
             {
               "node": "If: Strategy Approved",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Telegram: Trade Opened": {
+        "main": [
+          [
+            {
+              "node": "Next Strategy Slot",
               "type": "main",
               "index": 0
             }

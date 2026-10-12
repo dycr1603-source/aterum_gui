@@ -402,7 +402,7 @@ test("GUI scripts compile and new workflow bypasses legacy scoring gates", () =>
     "Position Sizer",
   );
   assert.equal(w.connections["If: Strategy Approved"].main[1][0].node, "Strategy Scan Report");
-  assert.equal(w.connections["Telegram: Trade Opened"], undefined);
+  assert.equal(w.connections["Telegram: Trade Opened"].main[0][0].node, "Next Strategy Slot");
 });
 test('each scheduled scan moves by a full batch across the liquid universe', () => {
   const count = 163, size = 24, start = 0;
