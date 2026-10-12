@@ -22,6 +22,19 @@ test('workflow uses the shared ledger sender without old Telegram credentials or
   assert.equal(node.parameters.jsCode, code);
   assert.equal(node.credentials, undefined);
   assert.equal(node.parameters.chatId, undefined);
+  assert.deepEqual(workflow.connections['If: SL Updated'].main.map(group => group.map(edge => edge.node)),
+    [['Telegram: SL Updated'], ['Telegram: SL Updated']]);
+});
+test('monitoring updates use one delivery key per position and half hour', async () => {
+  const posted = [];
+  const item = { status: 'monitoring', symbol: 'BERAUSDT', positionSide: 'LONG',
+    openedAt: 1791783025000, telegramText: '📊 Posición en seguimiento' };
+  const handler = async request => { posted.push(request.body); return { status: 'SENT' }; };
+  const [first] = await run([item], handler);
+  const [replay] = await run([item], handler);
+  assert.equal(first.json.notificationEventKey, replay.json.notificationEventKey);
+  assert.match(first.json.notificationEventKey, /^position-status:BERAUSDT:LONG:/);
+  assert.equal(posted.length, 2);
 });
 test('all positions are delivered, response is recorded and duplicate executions send only once', async () => {
   const ledger = new Map(); let messages = 0;

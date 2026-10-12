@@ -502,9 +502,23 @@ const results=await Promise.all(Object.keys(positions).map(async(key)=>{
 
     console.log(`[${symbol}] R=${currentR.toFixed(2)} PnLnet=${netPnL.toFixed(3)} TP=${(profitProgress*100).toFixed(1)}% stage=${newStage} ${Math.floor(hoursOpen)}h +${(currentPct*100).toFixed(2)}% | ${reason}`);
 
+    if(!slChanged&&!telegramText){
+      telegramText=[
+        '📊 ATERUM · POSICIÓN EN SEGUIMIENTO',
+        `${positionSide==='SHORT'?'🔴 SHORT':'🟢 LONG'} · ${symbol}`,
+        `Abierta: ${minutesOpen} min · Etapa: ${newStage}`,
+        `Entrada: ${entryPrice} · Precio: ${price}`,
+        `SL: ${slPrice} · TP: ${targetPrice}`,
+        `PnL neto estimado: ${netPnL>=0?'+':''}${netPnL.toFixed(3)} USDT · ${currentR.toFixed(2)}R`,
+        `Gestión: ${reason}`,
+        'Sin cambio de órdenes en este control.'
+      ].join('\n');
+    }
+
     return{
       symbol,
       status:       slChanged?'SL_UPDATED':'monitoring',
+      positionSide,openedAt,
       currentR:     +currentR.toFixed(3),
       price,entryPrice,initialSL,
       initialRisk:  +initialRisk.toFixed(8),

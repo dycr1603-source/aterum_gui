@@ -312,6 +312,28 @@ class ExecutionEngine {
     return { messageId: delivered.messageId };
   }
 
+  async enrichCloseFromEntry(trade, close) {
+    if (!trade.execution_id) return null;
+    try {
+      const [entries] = await this.db.execute('SELECT request_payload FROM trade_executions WHERE execution_id=?', [trade.execution_id]);
+      const original = parsedJson(entries[0]?.request_payload);
+      const receipt = original?.tradeContext?.jev;
+      let decision = null;
+      if (receipt?.id) {
+        const [decisions] = await this.db.execute('SELECT result FROM jev_decisions WHERE id=?', [receipt.id]);
+        decision = parsedJson(decisions[0]?.result);
+      }
+      const provider = decision?.provider || receipt?.provider;
+      const model = decision?.model || receipt?.model;
+      close.providerLabel = provider === 'typesafe-jev' ? `Jev real · ${model || 'modelo no registrado'}`
+        : provider === 'typesafe-adapter' ? `Haiku adapter · ${model || 'modelo no registrado'}` : null;
+      close.entryLeverage = Number(original?.leverage) || null;
+      close.entryTp = Number(original?.takeProfit) || null;
+      close.entrySl = Number(original?.stopLoss) || null;
+      return isStrategyVersion(original?.tradeContext?.strategy?.version) ? original : null;
+    } catch (_) { return null; }
+  }
+
   async finalizeExternalClose(input) {
     if (input.verificationResult?.verified !== true) {
       throw new Error('External close finalization requires verified Binance evidence');
@@ -335,24 +357,7 @@ class ExecutionEngine {
       correlationId: reconciliation.correlationId, symbol: input.symbol, positionSide: input.positionSide,
       exchangeOrderId: String(input.exchangeOrderId), exitPrice, pnl, rFinal, closeReason,
       trailingStage, durationMinutes, closedAt };
-    let strategyOriginal = null;
-    if (trade.execution_id) {
-      try {
-        const [entries] = await this.db.execute('SELECT request_payload FROM trade_executions WHERE execution_id=?', [trade.execution_id]);
-        const original = parsedJson(entries[0]?.request_payload);
-        if (isStrategyVersion(original?.tradeContext?.strategy?.version)) strategyOriginal = original;
-        const receiptId = original?.tradeContext?.jev?.id;
-        if (receiptId) {
-          const [decisions] = await this.db.execute('SELECT result FROM jev_decisions WHERE id=?', [receiptId]);
-          const decision = parsedJson(decisions[0]?.result);
-          close.providerLabel = decision?.provider === 'typesafe-jev' ? `Jev real · ${decision.model}`
-            : decision?.provider === 'typesafe-adapter' ? `Haiku adapter · ${decision.model}` : null;
-        }
-        close.entryLeverage = Number(original?.leverage) || null;
-        close.entryTp = Number(original?.takeProfit) || null;
-        close.entrySl = Number(original?.stopLoss) || null;
-      } catch (_) { /* Closing and its canonical alert must continue if entry metadata is absent. */ }
-    }
+    const strategyOriginal = await this.enrichCloseFromEntry(trade, close);
 
     const connection = await this.db.getConnection();
     let lifecycleId;
@@ -1019,7 +1024,8 @@ class ExecutionEngine {
       finally { connection.release(); }
       await this.removeLocalState(request, exchangeResponse);
       if (closedTrade) {
-        const feedback = await this.captureStrategyClose(closedTrade.trade, closedTrade.close);
+        const original = await this.enrichCloseFromEntry(closedTrade.trade, closedTrade.close);
+        const feedback = await this.captureStrategyClose(closedTrade.trade, closedTrade.close, original);
         if (feedback) {
           closedTrade.close.strategyFeedback = feedback;
           await this.sendCanonicalClose(closedTrade.close).catch(error => console.error('[Strategy close notification]', error.message));

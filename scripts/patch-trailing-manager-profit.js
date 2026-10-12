@@ -22,5 +22,9 @@ sender.typeVersion = 2;
 sender.parameters = { jsCode: senderCode };
 delete sender.credentials;
 delete sender.webhookId;
+const branch = workflow.connections['If: SL Updated'];
+if (!branch?.main?.[0]?.some(edge => edge.node === sender.name))
+  throw new Error('Trailing notification success route missing');
+branch.main[1] = [{ node: sender.name, type: 'main', index: 0 }];
 fs.writeFileSync(workflowPath, JSON.stringify(workflow, null, 2) + '\n');
 console.log('Patched trailing details and persisted Telegram sender');

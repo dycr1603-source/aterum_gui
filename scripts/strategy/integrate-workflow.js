@@ -17,6 +17,15 @@ function integrate() {
           "utf8",
         )
         .trimEnd();
+  const setup = w.nodes.find((n) => n.name === "Setup Instructions");
+  if (setup) setup.parameters.content = [
+    "## Aterum · ruta activa",
+    "`new_opportunistic` examina el universo de futuros con velas de 1h, ordena candidatos por señal y liquidez, y consulta JEV antes de proponer una orden.",
+    "El motor de ejecución confirma Binance, SL/TP y persistencia antes de anunciar una apertura. Hasta tres posiciones; cada una se protege y gestiona por separado.",
+    "El cooldown de 60 minutos empieza después de cerrar la misma combinación símbolo/dirección. La gestión rápida puede cerrar antes; el máximo actual de permanencia es seis horas.",
+    "Telegram informa cada ciclo sin entrada, aperturas verificadas, cierres y cambios de stop; el monitor envía un estado de posición cada media hora.",
+    "La ruta histórica de Risk Guard y el resto de nodos heredados permanece disponible solo para revertir la estrategia."
+  ].join("\n\n");
   const mode = {
     parameters: { jsCode: code("strategy-mode.js") },
     id: "strategy-mode-v1",

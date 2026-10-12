@@ -14,12 +14,18 @@ if (d.success !== true || d.finalStatus !== 'VERIFIED' || verification.verified 
 if (d.strategyV2 === true) {
   if (![2, 10].includes(d.strategy?.indicators?.length) || !d.jev?.risk || allocation.allowed !== true) throw new Error('STRATEGY_OPEN_PROVENANCE_MISSING');
   const votes = d.strategy.voteSummary;
+  const rank = Number.isInteger(d.strategy.candidateRank) && Number.isInteger(d.strategy.candidateCount)
+    ? ` · rango ${d.strategy.candidateRank}/${d.strategy.candidateCount}` : '';
+  const evidence = Number.isFinite(votes?.supporting) && Number.isFinite(votes?.opposing)
+    ? [`Consenso: ${votes.supporting}/8 a favor · ${votes.opposing}/8 en contra${rank}`]
+    : Number.isFinite(votes?.score)
+      ? [`Modelo: ${d.strategy.opportunity?.model || d.strategy.version} · score ${votes.score.toFixed(3)}${rank}`]
+      : d.strategy.indicators.map(i => `${i.name}: ${JSON.stringify(i.value)} / ${i.signal}`);
   const text = ['✅ ATERUM · BINANCE CONFIRMED', `${d.symbol} ${position.side || d.direction}`,
     `Entry: ${position.entryPrice} · SL: ${requested.stopLoss} · TP: ${requested.takeProfit}`,
     `Leverage: ${d.leverage}x · capital at risk (incl. costs): ${d.jev.risk.riskAtStop} USDT`,
     `Expected net R: ${d.jev.risk.expectedR} · JEV confidence: ${d.jev.confidence}%`,
-    ...(votes ? [`Consenso: ${votes.supporting}/8 a favor · ${votes.opposing}/8 en contra · rango ${d.strategy.candidateRank}/${d.strategy.candidateCount}`]
-      : d.strategy.indicators.map(i => `${i.name}: ${JSON.stringify(i.value)} / ${i.signal}`)),
+    ...evidence,
     `Binance order: ${d.exchangeOrderId} · execution: ${d.executionId}`].join('\n');
   return [{json:{...d,text,notificationEventKey:`open:${d.executionId}`,notificationState:'TRADE_OPENED_VERIFIED_STRATEGY'}}];
 }

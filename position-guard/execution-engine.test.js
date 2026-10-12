@@ -266,6 +266,21 @@ async function testLiveRiskDriftRejectsOnlyTheEntry() {
   }
 }
 
+async function testDirectCloseUsesEntryJevIdentity() {
+  const request = { leverage: 5, stopLoss: 0.2292, takeProfit: 0.2371,
+    tradeContext: { strategy: { version: 'new-opportunistic-v1' },
+      jev: { id: 'receipt-1', provider: 'typesafe-jev', model: 'jev-1.13.0' } } };
+  const db = { execute: async sql => sql.includes('FROM trade_executions')
+    ? [[{ request_payload: JSON.stringify(request) }]]
+    : sql.includes('FROM jev_decisions') ? [[{ result: JSON.stringify({ provider: 'typesafe-jev', model: 'jev-1.13.0' }) }]]
+    : [[]] };
+  const close = {};
+  const original = await engine(new FakeBinance(), db).enrichCloseFromEntry({ execution_id: 'entry-1' }, close);
+  assert.deepEqual(original, request);
+  assert.equal(close.providerLabel, 'Jev real · jev-1.13.0');
+  assert.deepEqual([close.entryLeverage, close.entrySl, close.entryTp], [5, 0.2292, 0.2371]);
+}
+
 async function testFailureNeverUpdatesTradeState() {
   const queries = [];
   const db = {
@@ -360,6 +375,7 @@ function testActionableFailuresStillNotify() {
   await testPortfolioCapacityRejectsOpenBeforeBinance();
   await testPortfolioRejectionIsTerminalOutcome();
   await testLiveRiskDriftRejectsOnlyTheEntry();
+  await testDirectCloseUsesEntryJevIdentity();
   await testFailureNeverUpdatesTradeState();
   await testTerminalSuccessRequiresPersistence();
   await testLocalFailureBlocksTerminalSuccess();

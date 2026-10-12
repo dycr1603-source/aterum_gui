@@ -376,6 +376,12 @@ test("unverified open notification cannot be emitted; confirmed two-indicator al
   assert(result[0].json.text.includes("BINANCE CONFIRMED"));
   assert(result[0].json.text.includes("EMA"));
   assert.equal(result[0].json.notificationEventKey, "open:test");
+  const model = await run({ ...x, strategy: { ...x.strategy,
+    version: "new-opportunistic-v1", candidateRank: 2, candidateCount: 10,
+    voteSummary: { direction: "LONG", score: 0.821636 },
+    opportunity: { model: "INVERSE_MARKET_LOGIT" } } });
+  assert.match(model[0].json.text, /Modelo: INVERSE_MARKET_LOGIT · score 0\.822 · rango 2\/10/);
+  assert.doesNotMatch(model[0].json.text, /undefined\/8/);
 });
 test("GUI scripts compile and new workflow bypasses legacy scoring gates", () => {
   const html = require("../views/strategy").getStrategyHTML();
@@ -446,7 +452,7 @@ test('recent closes cool down only the same symbol and direction for one hour', 
   assert.equal(recent.has('WUSDT:LONG'), false);
   assert.equal(recent.has('API3USDT:LONG'), true);
 });
-test('a no-opportunity report sends one compact hourly summary without symbol lists', async () => {
+test('a no-opportunity report sends one detailed summary per cycle without full symbol lists', async () => {
   const code = fs.readFileSync(require.resolve('../bot-control/workflows/code/strategy-no-trade.js'), 'utf8');
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const run = new AsyncFunction('$input', code);
@@ -456,14 +462,28 @@ test('a no-opportunity report sends one compact hourly summary without symbol li
   const helper = { helpers: { httpRequest: async request => { posted.push(request); return { status: 'SENT' }; } } };
   const first = await run.call(helper, input);
   const second = await run.call(helper, input);
-  assert.equal(posted.length, 2);
+  const next = await run.call(helper, { first: () => ({ json: {
+    ...input.first().json, opportunityCycleId: 'cycle-2',
+    universeSummary: { ...input.first().json.universeSummary, marketQualified: 1,
+      checked: [...checked, { symbol: 'CUSDT', reasons: ['TECHNICAL_CANDIDATE', 'JEV_NO_TRADE'],
+        score: 0.8216, jevExplanationCode: 'EXPOSURE_RISK', jevConfidence: 48 }] }
+  } }) });
+  assert.equal(posted.length, 3);
   assert.equal(first[0].json.notificationEventKey, second[0].json.notificationEventKey);
+  assert.notEqual(first[0].json.notificationEventKey, next[0].json.notificationEventKey);
   assert.match(posted[0].body.text, /Analizados: 175 de 175/);
   assert.match(posted[0].body.text, /Profundidad insuficiente: 175/);
   assert.match(posted[0].body.text, /Reentrada en espera: 1/);
   assert.match(posted[0].body.text, /Motor: modelo oportunista/);
   assert(!posted[0].body.text.includes('TOKEN0USDT'));
   assert(posted[0].body.text.length < 500);
+  assert.match(posted[2].body.text, /CUSDT: JEV EXPOSURE_RISK, confianza 48/);
+  assert(!posted[2].body.text.includes('TOKEN0USDT'));
+  await run.call(helper, { first: () => ({ json: {
+    ...input.first().json, opportunityCycleId: 'cycle-3', strategySlot: 2
+  } }) });
+  assert.match(posted[3].body.text, /SIN ENTRADA ADICIONAL/);
+  assert.match(posted[3].body.text, /una entrada anterior de este recorrido ya fue confirmada/);
 });
 test('a breaker summary says the scan was skipped instead of reporting zero eligible symbols', async () => {
   const code = fs.readFileSync(require.resolve('../bot-control/workflows/code/strategy-no-trade.js'), 'utf8');

@@ -108,6 +108,7 @@ async function assertNoMove(name, scenario) {
   assert.equal(execution, undefined, `${name}: unexpected execution to ${execution?.body?.targetPrice} (${result.reason})`);
   assert.equal(result.status, 'monitoring', `${name}: status changed`);
   assert.equal(result.newSL, result.oldSL, `${name}: SL changed without execution`);
+  assert.match(result.telegramText, /POSICIÓN EN SEGUIMIENTO/, `${name}: status notice missing`);
   return result;
 }
 
@@ -163,7 +164,7 @@ test('ZETA historical 0.543R / 31.6% TP reduces risk once, and 0.63R does not re
   assert(r.result.telegramText.includes('Pérdida máx. al SL'));
   const later = await runScenario({ ...s, currentPrice: .05111, state: r.nextState });
   assert.equal(later.execution, undefined);
-  assert.equal(later.result.telegramText, null);
+  assert.match(later.result.telegramText, /POSICIÓN EN SEGUIMIENTO/);
   assert.equal(later.result.newSL, .05215);
 });
 test('R path: break-even at 1R is fee-covered', async () => {

@@ -16,7 +16,9 @@ for (const item of $input.all()) {
     continue;
   }
   const identity = p.executionId || `${$execution.id}:${p.symbol}`;
-  const eventKey = `${p.status === 'SL_UPDATED' ? 'stop-update' : 'stop-management-failure'}:${identity}`;
+  const eventKey = p.status === 'monitoring'
+    ? `position-status:${p.symbol}:${p.positionSide}:${p.openedAt}:${Math.floor(Date.now() / 1800000)}`
+    : `${p.status === 'SL_UPDATED' ? 'stop-update' : 'stop-management-failure'}:${identity}`;
   try {
     const r = await this.helpers.httpRequest({
       method: 'POST',
