@@ -120,6 +120,9 @@ function integrate() {
   w.nodes.find((n) => n.name === "Build Trade Alert").parameters.jsCode = code(
     "build-verified-open-notification-v1.js",
   );
+  w.nodes.find((n) => n.name === "Build Execution Failure").parameters.jsCode = code(
+    "build-execution-failure-notification-v2.js",
+  );
   const text = JSON.stringify(raw, null, 2) + "\n";
   fs.writeFileSync(file, text);
   console.log(

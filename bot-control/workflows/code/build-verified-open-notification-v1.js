@@ -22,12 +22,34 @@ if (d.strategyV2 === true) {
       ? [`Modelo: ${d.strategy.opportunity?.model || d.strategy.version} · score ${votes.score.toFixed(3)}${rank}`]
       : d.strategy.indicators.map(i => `${i.name}: ${JSON.stringify(i.value)} / ${i.signal}`);
   const modelName = d.jev?.provider === 'laya-local' ? 'Laya' : 'JEV';
-  const text = ['✅ ATERUM · BINANCE CONFIRMÓ', `${d.symbol} ${position.side || d.direction}`,
-    `Entry: ${position.entryPrice} · SL: ${requested.stopLoss} · TP: ${requested.takeProfit}`,
-    `Leverage: ${d.leverage}x · capital at risk (incl. costs): ${d.jev.risk.riskAtStop} USDT`,
-    `R neta estimada: ${d.jev.risk.expectedR} · ${modelName} confianza no calibrada: ${d.jev.confidence}%`,
-    ...evidence,
-    `Binance order: ${d.exchangeOrderId} · execution: ${d.executionId}`].join('\n');
+  const number = (value, digits = 2) => value !== null && value !== undefined && Number.isFinite(Number(value))
+    ? Number(value).toFixed(digits) : 'N/D';
+  const qty = Number(position.qty ?? requested.quantity ?? NaN);
+  const entry = Number(position.entryPrice);
+  const margin = Number.isFinite(qty) && Number.isFinite(entry) && Number(d.leverage) > 0
+    ? qty * entry / Number(d.leverage) : null;
+  const equity = Number(allocation.account?.equity);
+  const equityShare = margin !== null && equity > 0 ? margin / equity * 100 : null;
+  const side = String(position.side || d.direction || d.positionSide || '').toUpperCase();
+  const direction = side === 'SHORT' ? '🔴 SHORT · busca una bajada' : '🟢 LONG · busca una subida';
+  const strategyRisk = d.jev.risk;
+  const text = [
+    '✅ ATERUM · BINANCE CONFIRMÓ', `${direction} · ${d.symbol}`,
+    '🧭 ESTADO DE LA APERTURA',
+    `Señal técnica [██████████] ✅ ${evidence[0]}`,
+    `${modelName} [██████████] ✅ Aprobó esta dirección. ${modelName} confianza no calibrada: ${number(d.jev.confidence, 0)}% (no es probabilidad de ganancia).`,
+    'Control de riesgo [██████████] ✅ Tamaño y capacidad autorizados.',
+    'Binance [██████████] ✅ Entrada, SL y TP comprobados en la lectura posterior.',
+    'Registro local [██████████] ✅ Posición persistida.',
+    '📐 POSICIÓN CONFIRMADA',
+    `Entrada: ${number(entry, 8)} · Cantidad: ${number(qty, 8)} · Apalancamiento: ${d.leverage}x`,
+    `Margen propio estimado: ${number(margin)} USDT${equityShare !== null ? ` (${number(equityShare, 1)}% del capital)` : ''}. El apalancamiento no aumenta el capital propio.`,
+    `SL: ${requested.stopLoss} · TP: ${requested.takeProfit}`,
+    `Pérdida estimada si llega al SL (con costos): ${number(strategyRisk.riskAtStop)} USDT.`,
+    `Relación recompensa/riesgo neta estimada: ${number(strategyRisk.expectedR, 2)}R; depende del precio real de salida y los costos.`,
+    `🆔 Orden Binance: ${d.exchangeOrderId} · Ejecución: ${d.executionId}`,
+    '➡️ La posición se vigila y gestiona por separado; un TP o SL puede cerrar antes del siguiente informe.'
+  ].join('\n');
   return [{json:{...d,text,notificationEventKey:`open:${d.executionId}`,notificationState:'TRADE_OPENED_VERIFIED_STRATEGY'}}];
 }
 

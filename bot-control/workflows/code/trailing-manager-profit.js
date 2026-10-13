@@ -454,6 +454,8 @@ const results=await Promise.all(Object.keys(positions).map(async(key)=>{
         const remainingGrossRisk=Math.max(0,positionSide==='SHORT'?newSL-entryPrice:entryPrice-newSL)*unitQty;
         const remainingRiskPct=initialGrossRisk>0?remainingGrossRisk/initialGrossRisk*100:0;
         const previousNetAtSL=netPerUnitAt(positionSide,entryPrice,slPrice)*unitQty;
+        const progressSteps=Math.max(0,Math.min(10,Math.round(profitProgress*10)));
+        const progressBar=`[${'█'.repeat(progressSteps)}${'░'.repeat(10-progressSteps)}]`;
 
         telegramText=[
           `━━━━━━━━━━━━━━━━━━━`,
@@ -484,7 +486,7 @@ const results=await Promise.all(Object.keys(positions).map(async(key)=>{
           `├ R actual:  ${currentR.toFixed(3)}R`,
           `├ PnL bruto: ${unrealizedPnL>=0?'+':''}$${esc(unrealizedPnL)} (${pnlPct>=0?'+':''}${pnlPct}%)`,
           `├ PnL neto estimado: ${netPnL>=0?'+':''}$${netPnL.toFixed(2)}`,
-          `├ Avance al TP: ${(profitProgress*100).toFixed(1)}% del PnL neto objetivo`,
+          `├ Avance al TP: ${progressBar} ${(profitProgress*100).toFixed(1)}% del PnL neto objetivo`,
           protectedNetPnL>=0
             ?`└ Protegido al SL (neto estimado): +$${protectedNetPnL.toFixed(2)}`
             :`└ Pérdida máx. al SL (neto estimado): -$${Math.abs(protectedNetPnL).toFixed(2)}`,
@@ -503,6 +505,8 @@ const results=await Promise.all(Object.keys(positions).map(async(key)=>{
     console.log(`[${symbol}] R=${currentR.toFixed(2)} PnLnet=${netPnL.toFixed(3)} TP=${(profitProgress*100).toFixed(1)}% stage=${newStage} ${Math.floor(hoursOpen)}h +${(currentPct*100).toFixed(2)}% | ${reason}`);
 
     if(!slChanged&&!telegramText){
+      const progressSteps=Math.max(0,Math.min(10,Math.round(profitProgress*10)));
+      const progressBar=`[${'█'.repeat(progressSteps)}${'░'.repeat(10-progressSteps)}]`;
       telegramText=[
         '📊 ATERUM · POSICIÓN EN SEGUIMIENTO',
         `${positionSide==='SHORT'?'🔴 SHORT':'🟢 LONG'} · ${symbol}`,
@@ -510,8 +514,9 @@ const results=await Promise.all(Object.keys(positions).map(async(key)=>{
         `Entrada: ${entryPrice} · Precio: ${price}`,
         `SL: ${slPrice} · TP: ${targetPrice}`,
         `PnL neto estimado: ${netPnL>=0?'+':''}${netPnL.toFixed(3)} USDT · ${currentR.toFixed(2)}R`,
-        `Gestión: ${reason}`,
-        'Sin cambio de órdenes en este control.'
+        `🎯 Avance al objetivo neto: ${progressBar} ${(profitProgress*100).toFixed(1)}%.`,
+        `🧭 Gestión: ${reason}`,
+        'Binance [░░░░░░░░░░] ⏭ Sin cambio de órdenes en este control; la posición sigue abierta.'
       ].join('\n');
     }
 

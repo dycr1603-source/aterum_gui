@@ -22,6 +22,17 @@ const counts = Object.entries(summary.reasons || {})
   .filter(([key]) => key !== 'APPROVED')
   .sort((a, b) => b[1] - a[1])
   .map(([key, count]) => `${labels[key] || key}: ${count}`);
+const reason = String(d.skipReason || 'NO_TRADE');
+const explanation = reason.startsWith('CIRCUIT_BREAKER:')
+  ? 'Pausa automática: el control de estrategia detuvo este ciclo. Hay que resolver el código indicado antes de esperar nuevas entradas.'
+  : ({ NO_OPPORTUNITY: 'Ningún activo llegó a una propuesta ejecutable tras revisar señal, mercado y decisión del modelo.',
+    PORTFOLIO_CAPACITY_FULL: 'La cartera no tiene margen o cupo de riesgo para otra posición.',
+    SHADOW_ONLY: 'La estrategia está en observación; evalúa señales pero no autoriza órdenes.' })[reason]
+    || 'El ciclo terminó sin una propuesta autorizada; el código permite identificar el control que lo detuvo.';
+const eligible = Number(summary.eligible || 0);
+const scanned = Number(summary.scanned || 0);
+const progress = eligible > 0 ? Math.min(10, Math.round(10 * scanned / eligible)) : 0;
+const scanBar = `[${'█'.repeat(progress)}${'░'.repeat(10 - progress)}]`;
 const finalists = (summary.checked || [])
   .filter(item => item.reasons?.includes('JEV_NO_TRADE'))
   .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
@@ -36,12 +47,15 @@ const text = [
   `Motor: ${d.entryMode === 'new_opportunistic' ? 'modelo oportunista' :
     d.entryMode === 'consensus10' ? 'consenso de diez indicadores' :
     'estrategia técnica'} · ${d.skipReason || 'NO_TRADE'}`,
-  ...(d.universeSummary ? [`Analizados: ${Number(summary.scanned || 0)} de ${Number(summary.eligible || 0)} elegibles.`]
-    : ['Escaneo omitido por control de estrategia.']),
-  ...(d.universeSummary ? [`Aptos para ${modelName}: ${Number(summary.marketQualified || 0)}.`] : []),
-  ...counts.slice(0, 6),
-  ...(finalists.length ? ['Mejores candidatos descartados:', ...finalists] : []),
-  additionalSlot ? 'No se envió otra orden a Binance en este cupo.' : 'Sin orden enviada a Binance.'
+  `🔎 ${explanation}`,
+  ...(d.universeSummary ? [`📊 Escaneo ${scanBar} Analizados: ${scanned} de ${eligible} elegibles.`,
+    `Señal técnica: ${Number(summary.technicalCandidates || 0)} · Aptos para ${modelName}: ${Number(summary.marketQualified || 0)}.`]
+    : ['📊 Escaneo [░░░░░░░░░░] Escaneo omitido por control de estrategia.']),
+  ...(counts.length ? ['🧭 Motivos principales (un activo puede tener varios):', ...counts.slice(0, 4)] : []),
+  ...(finalists.length ? [`🤖 Propuestas revisadas por ${modelName}:`, ...finalists] : []),
+  '🏦 Binance [░░░░░░░░░░] Sin orden enviada.',
+  additionalSlot ? '➡️ Este cupo no añadió otra posición; las ya abiertas siguen gestionadas.'
+    : '➡️ El siguiente ciclo volverá a evaluar el mercado con datos nuevos.'
 ].join('\n');
 // One report per actual strategy cycle. Replays of the same cycle stay idempotent.
 const reasonKey = String(d.skipReason || 'NO_TRADE').replace(/[^A-Z0-9_]/gi, '_').slice(0, 32);

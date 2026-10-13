@@ -62,6 +62,11 @@ test('engine failure and confirmed-close delivery inspect Telegram response', as
     assert.equal(await e.notifyFailure({executionId:'failure-1',symbol:'BTCUSDT',positionSide:'LONG',type:'OPEN_POSITION'},new Error('rejected'),false,'EXECUTION_FAILURE'),true);
     assert.equal((await e.sendCanonicalClose({executionId:'close-1',symbol:'BTCUSDT',positionSide:'LONG',closeReason:'SL',pnl:1,rFinal:1,durationMinutes:1})).messageId,7);
     assert(messages[0].includes('EJECUCIÓN FALLIDA')); assert(messages[1].includes('OPERACIÓN CERRADA'));
+    assert.match(messages[0], /Binance\s+\[░░░░░░░░░░\].*SIN CONFIRMAR/);
+    assert.match(messages[1], /Registro local \[██████████\].*persistido/);
+    assert.equal(await e.notifyFailure({executionId:'failure-market',symbol:'BTCUSDT',positionSide:'LONG',type:'OPEN_POSITION',quantity:2,leverage:5,stopLoss:98,takeProfit:106,tradeContext:{jev:{provider:'laya-local'}}},new Error('JEV_PRICE_DRIFT'),false,'PRE_ORDER_MARKET_REJECTION'),true);
+    assert.match(messages[2], /Laya \[██████████\].*Propuso/);
+    assert.match(messages[2], /Binance \[░░░░░░░░░░\].*No se envió ninguna orden/);
     global.fetch=async()=>({ok:true,status:200,json:async()=>({ok:false,error_code:400})});
     assert.equal(await e.notifyFailure({executionId:'failure-2',symbol:'BTCUSDT'},new Error('rejected')),false);
     await assert.rejects(e.sendCanonicalClose({executionId:'close-2',symbol:'BTCUSDT'}),/TELEGRAM_CLOSE/);

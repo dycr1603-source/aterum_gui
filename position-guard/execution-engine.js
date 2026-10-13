@@ -297,15 +297,25 @@ class ExecutionEngine {
     }
     const pnl = Number(close.pnl || 0);
     const rFinal = Number(close.rFinal || 0);
-    const message = ['🛑 OPERACIÓN CERRADA', close.providerLabel || 'Proveedor de entrada no registrado',
-      `${close.symbol} ${close.positionSide}`,
-      close.entryLeverage ? `Entrada: ${close.entryLeverage}× · TP ${close.entryTp} · SL ${close.entrySl}` : null,
-      `Reason: ${this.closeReasonLabel(close.closeReason, close.trailingStage)}`,
-      `Execution ID: ${close.executionId}`, `Final Stage: ${close.trailingStage}`,
-      close.strategyFeedback ? null : `PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} USDT`,
-      close.strategyFeedback ? `Gross PnL: ${close.strategyFeedback.gross ?? 'pendiente'} · fees: ${close.strategyFeedback.fees ?? 'pendiente'} · funding: ${close.strategyFeedback.funding ?? 'pendiente'} · NET: ${close.strategyFeedback.net ?? 'pendiente'} USDT · net R: ${close.strategyFeedback.r ?? 'pendiente'}` : null,
-      `Final R: ${rFinal >= 0 ? '+' : ''}${rFinal.toFixed(2)}R`,
-      `Duration: ${close.durationMinutes} minutes`].filter(Boolean).join('\n');
+    const feedback = close.strategyFeedback;
+    const signed = value => Number.isFinite(Number(value))
+      ? `${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(2)}` : 'pendiente';
+    const message = ['🛑 ATERUM · OPERACIÓN CERRADA',
+      `${close.positionSide === 'SHORT' ? '🔴' : '🟢'} ${close.positionSide} · ${close.symbol}`,
+      `🤖 Entrada: ${close.providerLabel || 'Proveedor no registrado'}`,
+      '🧭 ESTADO DEL CIERRE',
+      'Binance [██████████] ✅ Cierre confirmado por lectura posterior.',
+      'Registro local [██████████] ✅ Cierre persistido.',
+      `📍 Motivo: ${this.closeReasonLabel(close.closeReason, close.trailingStage)}`,
+      close.entryLeverage ? `📐 Entrada ${close.entryLeverage}x · TP ${close.entryTp} · SL ${close.entrySl}` : null,
+      `⏱ Duración: ${close.durationMinutes ?? 'N/D'} min · Etapa final: ${close.trailingStage || 'N/D'}`,
+      feedback ? '💰 RESULTADO REALIZADO' : '💰 RESULTADO ESTIMADO',
+      feedback ? `Bruto: ${signed(feedback.gross)} USDT · Comisiones: ${feedback.fees ?? 'pendiente'} USDT · Funding: ${feedback.funding ?? 'pendiente'} USDT` : null,
+      feedback ? `Neto: ${signed(feedback.net)} USDT · R neta: ${feedback.r ?? 'pendiente'}`
+        : `PnL disponible: ${signed(pnl)} USDT · R final estimada: ${signed(rFinal)}R. El desglose de costos aún no está disponible.`,
+      `🆔 Ejecución: ${close.executionId}`,
+      '➡️ Esta posición ya no se gestiona como abierta; las demás siguen independientes.'
+    ].filter(Boolean).join('\n');
     const delivered = await deliver({ db: this.db, eventKey: `close:${close.executionId}`, text: message,
       token: this.config.telegramToken, chatId: this.config.telegramChatId });
     if (!delivered.sent) throw new Error(`TELEGRAM_CLOSE_${delivered.errorCode || delivered.status}`);
@@ -1117,11 +1127,18 @@ class ExecutionEngine {
         JEV_STALE_DATA: 'La propuesta o la cotización caducó antes de ejecutar.'
       }[code] || 'La propuesta dejó de cumplir los controles previos.';
       const provider = request.tradeContext?.jev?.provider === 'laya-local' ? 'Laya' : 'el modelo';
-      const message = ['⏸ ATERUM · ENTRADA DESCARTADA', `${request.positionSide} · ${request.symbol}`,
-        `${provider} propuso la entrada, pero el control de ejecución la detuvo.`,
-        explanation, `Código: ${code}`, 'Binance: no se envió ninguna orden.',
-        'El siguiente ciclo evaluará oportunidades con precios nuevos.',
-        `Ejecución: ${request.executionId}`].join('\n');
+      const message = ['⏸ ATERUM · ENTRADA DESCARTADA',
+        `${request.positionSide === 'SHORT' ? '🔴' : '🟢'} ${request.positionSide} · ${request.symbol}`,
+        '🧭 ESTADO DE LA PROPUESTA',
+        `${provider} [██████████] ✅ Propuso esta entrada.`,
+        'Precio y riesgo [██████░░░░] ⛔ El control previo no la autorizó.',
+        'Binance [░░░░░░░░░░] ⏭ No se envió ninguna orden.',
+        'Registro local [░░░░░░░░░░] ⏭ No se abrió posición.',
+        `🔎 Qué pasó: ${explanation}`,
+        `📐 Propuesta: cantidad ${request.quantity ?? 'N/D'} · ${request.leverage ?? 'N/D'}x · SL ${request.stopLoss ?? 'N/D'} · TP ${request.takeProfit ?? 'N/D'}`,
+        `Código: ${code} · Ejecución: ${request.executionId}`,
+        '➡️ El siguiente ciclo evaluará otros precios; este rechazo no confirma una operación.'
+      ].join('\n');
       const delivered = await deliver({ db: this.db, eventKey: `execution-failure:${request.executionId}`, text: message,
         token: this.config.telegramToken, chatId: this.config.telegramChatId });
       await this.event(request.executionId, 'TELEGRAM_DELIVERY', delivered);
@@ -1139,12 +1156,16 @@ class ExecutionEngine {
       const label = String(reason.code || 'PORTFOLIO_CAPACITY_REJECTED')
         .toLowerCase().split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
       const direction = String(reason.direction || request.positionSide || '').toUpperCase();
-      const message = ['❌ TRADE REJECTED', request.symbol, '', `Reason: ${label}`,
-        direction ? `Current ${direction} Exposure: ${current.toFixed(2)} USDT (${currentPct.toFixed(2)}% equity)` : null,
-        maximum > 0 ? `Maximum Allowed: ${maximum.toFixed(2)} USDT (${maximumPct.toFixed(2)}% equity)` : null,
-        maximum > 0 ? `Remaining Capacity: ${remaining.toFixed(2)} USDT` : null,
-        `Execution ID: ${request.executionId}`, 'No Binance order was created.',
-        'Verification and persistence were not started.', 'This is an expected risk protection.']
+      const message = ['⛔ ATERUM · ENTRADA RECHAZADA', `${direction || 'DIRECCIÓN N/D'} · ${request.symbol}`,
+        '🧭 ESTADO DE LA PROPUESTA',
+        'Capacidad [██████░░░░] ⛔ La cartera no autorizó esta entrada.',
+        'Binance [░░░░░░░░░░] ⏭ No se envió orden.',
+        'Registro local [░░░░░░░░░░] ⏭ No se abrió posición.',
+        `🔎 Motivo: ${label} (${reason.code || 'PORTFOLIO_CAPACITY_REJECTED'}).`,
+        direction ? `Exposición ${direction} actual: ${current.toFixed(2)} USDT (${currentPct.toFixed(2)}% del capital).` : null,
+        maximum > 0 ? `Máximo permitido: ${maximum.toFixed(2)} USDT (${maximumPct.toFixed(2)}% del capital).` : null,
+        maximum > 0 ? `Cupo restante: ${remaining.toFixed(2)} USDT.` : null,
+        `🆔 Ejecución: ${request.executionId}`, '➡️ Se revisará otra oportunidad cuando haya capacidad.' ]
         .filter(Boolean).join('\n');
       const delivered = await deliver({ db: this.db, eventKey: `execution-failure:${request.executionId}`, text: message,
         token: this.config.telegramToken, chatId: this.config.telegramChatId });
@@ -1158,25 +1179,25 @@ class ExecutionEngine {
     const bar = (filled, total = 10) => '█'.repeat(filled) + '░'.repeat(total - filled);
     const state = exchangeWasVerified
       ? 'Binance confirmó la operación; el estado local requiere atención.'
-      : verificationFailure ? 'Binance no confirmó la operación mediante read-back.'
-        : 'Binance rechazó o no confirmó la solicitud.';
+      : verificationFailure ? 'La lectura posterior no confirmó el estado esperado en Binance. Verificar la cuenta antes de reintentar.'
+        : 'La ejecución se interrumpió antes de confirmar una orden. Verificar Binance antes de reintentar.';
     const nextAction = exchangeWasVerified
       ? 'Revisar Monitor SL y Dashboard; no modificar la posición hasta confirmar ambos.'
-      : 'No se avanzó el estado local. Revisar el error antes de reintentar.';
+      : 'No se registró una apertura verificada. Revisar el error y la cuenta antes de reintentar.';
     const message = [
       '━━━━━━━━━━━━━━━━━━━━━━━', title, '━━━━━━━━━━━━━━━━━━━━━━━', '',
       `${request.positionSide === 'SHORT' ? '🔴' : '🟢'} ${request.positionSide}  ·  ${request.symbol}`,
       `Execution ID: ${request.executionId}`, `Correlation ID: ${request.correlationId || request.executionId}`, '',
       '━━━ ESTADO DEL PIPELINE ━━━',
-      `Binance       [${bar(exchangeWasVerified ? 10 : verificationFailure ? 5 : 2)}] ${exchangeWasVerified ? '✅ VERIFIED' : verificationFailure ? '⚠ UNCONFIRMED' : '❌ FAILED'}`,
-      `Persistencia  [${bar(exchangeWasVerified ? 2 : 0)}] ${exchangeWasVerified ? '❌ FAILED' : '⏸ NOT STARTED'}`,
+      `Binance       [${bar(exchangeWasVerified ? 10 : verificationFailure ? 5 : 0)}] ${exchangeWasVerified ? '✅ CONFIRMADO' : '⚠ SIN CONFIRMAR'}`,
+      `Persistencia  [${bar(exchangeWasVerified ? 2 : 0)}] ${exchangeWasVerified ? '❌ PENDIENTE' : '⏭ NO INICIADA'}`,
       '', '━━━ SOLICITUD ━━━',
       `Tipo          ${request.type}`, request.quantity ? `Cantidad      ${request.quantity}` : null,
       request.leverage ? `Leverage      ${request.leverage}x` : null,
       request.stopLoss ? `Stop Loss     ${request.stopLoss}` : null,
       request.takeProfit ? `Take Profit   ${request.takeProfit}` : null,
       '', '━━━ DETALLE ━━━', state,
-      `Error: ${String(error?.message || error || 'unknown').slice(0, 700)}`,
+      `Código o error: ${String(error?.message || error || 'desconocido').slice(0, 700)}`,
       '', `Acción: ${nextAction}`, '━━━━━━━━━━━━━━━━━━━━━━━'
     ].filter(Boolean).join('\n');
     const delivered = await deliver({ db: this.db, eventKey: `execution-failure:${request.executionId}`, text: message,

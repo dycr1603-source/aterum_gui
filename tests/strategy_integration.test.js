@@ -365,9 +365,9 @@ test("unverified open notification cannot be emitted; confirmed two-indicator al
       verified: true,
       pipelineVerified: true,
       persistenceStatus: "VERIFIED",
-      after: { position: { side: "LONG", entryPrice: 100 } },
-      requested: { stopLoss: 98, takeProfit: 106 },
-      portfolioAllocation: { allowed: true },
+      after: { position: { side: "LONG", entryPrice: 100, qty: 2 } },
+      requested: { quantity: 2, stopLoss: 98, takeProfit: 106 },
+      portfolioAllocation: { allowed: true, account: { equity: 100 } },
     },
   };
   const run = (x) => fn({ first: () => ({ json: x }) });
@@ -375,6 +375,8 @@ test("unverified open notification cannot be emitted; confirmed two-indicator al
   const result = await run(x);
   assert(result[0].json.text.includes("BINANCE CONFIRMÓ"));
   assert(result[0].json.text.includes("EMA"));
+  assert.match(result[0].json.text, /Binance \[██████████\].*SL y TP comprobados/);
+  assert.match(result[0].json.text, /Margen propio estimado: 40\.00 USDT \(40\.0% del capital\)/);
   assert.equal(result[0].json.notificationEventKey, "open:test");
   const model = await run({ ...x, strategy: { ...x.strategy,
     version: "new-opportunistic-v1", candidateRank: 2, candidateCount: 10,
