@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { HostController } = require('../scripts/aterum-control');
 const { operationDrain } = require('../position-guard/operation-drain');
-const SERVICES = ['mysql','redis','dashboard','aterum_gui','n8n','position_guard','telegram_control','typesafe_adapter','nginx'];
+const SERVICES = ['mysql','redis','dashboard','aterum_gui','n8n','position_guard','telegram_control','typesafe_adapter','laya','nginx'];
 
 function fixture(t, { running = true, drain = { workflows: 0, executions: 0 }, unclean = null, badHealth = false,
   tunnelError = false, externalTunnel = false } = {}) {

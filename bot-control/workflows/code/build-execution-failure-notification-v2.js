@@ -19,6 +19,7 @@ const REASONS = Object.freeze({
   JEV_PRICE_DRIFT: { label: 'el precio se movió demasiado desde el análisis', why: 'La entrada ya no coincide con lo que se evaluó.' },
   JEV_MARKET_UNAVAILABLE: { label: 'Binance no devolvió datos del mercado', why: 'Sin precio y filtros actuales no se puede validar la orden.' },
   JEV_API_UNAVAILABLE: { label: 'Jev no respondió correctamente', why: 'Ante un fallo del modelo el sistema no opera.' },
+  JEV_LOCAL_UNAVAILABLE: { label: 'Laya local no respondió correctamente', why: 'Ante un fallo del modelo el sistema no opera.' },
   JEV_TIMEOUT: { label: 'Jev tardó demasiado en responder', why: 'Ante un fallo del modelo el sistema no opera.' },
   JEV_INVALID_RESPONSE: { label: 'respuesta de Jev no válida', why: 'La respuesta no superó las validaciones; no se usa.' },
   JEV_INVALID_LEVELS: { label: 'TP/SL propuestos no válidos', why: 'Los niveles no respetan la dirección o los filtros de precio de Binance.' },

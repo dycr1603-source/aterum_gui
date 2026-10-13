@@ -154,7 +154,7 @@ class HostController {
       if (id.trim()) await this.run('docker', ['kill', '--signal=SIGINT', id.trim()]);
     });
     this.log('[Aterum] Deteniendo GUI, adaptador y proxy…');
-    await attempt(() => this.compose(['stop', '--timeout', '-1', 'nginx', 'aterum_gui', 'typesafe_adapter', 'dashboard']));
+    await attempt(() => this.compose(['stop', '--timeout', '-1', 'nginx', 'aterum_gui', 'typesafe_adapter', 'laya', 'dashboard']));
     this.log('[Aterum] Deteniendo Redis y MariaDB; conservando los volúmenes…');
     await attempt(() => this.compose(['stop', '--timeout', '-1', 'redis', 'mysql']));
     await attempt(() => this.compose(['stop', '--timeout', '-1']));
@@ -220,8 +220,8 @@ class HostController {
       await this.compose(['up', '-d', 'mysql', 'redis']);
       await this.healthy(['mysql', 'redis']);
       this.log('[Aterum] Iniciando GUI, Chart API, adaptador y Position Guard…');
-      await this.compose(['up', '-d', 'dashboard', 'aterum_gui', 'typesafe_adapter', 'position_guard']);
-      await this.healthy(['dashboard', 'aterum_gui', 'typesafe_adapter', 'position_guard']);
+      await this.compose(['up', '-d', 'dashboard', 'aterum_gui', 'laya', 'position_guard']);
+      await this.healthy(['dashboard', 'aterum_gui', 'laya', 'position_guard']);
       if (this.telegramSync) {
         this.log('[Aterum] Importando historial cifrado de Telegram antes de iniciar el bot…');
         const synced = await this.telegramSync.pull({ requireOtherHost: previous?.mode === 'RETIRED'

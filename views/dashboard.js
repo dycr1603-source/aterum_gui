@@ -4279,7 +4279,7 @@ ${getSharedNav('dashboard', user, 'blue',
         <div class="terminal-card-title">Inteligencia de trade</div>
         <div class="terminal-card-meta" id="detailUpdated">—</div>
       </div>
-      <div class="terminal-card-meta" style="padding:8px 14px;border-bottom:1px solid var(--border)">Proveedor de entradas: ${process.env.JEV_ENABLED === 'true' ? (process.env.JEV_PROVIDER === 'typesafe-jev' ? 'Jev real' : process.env.JEV_PROVIDER === 'typesafe-adapter' ? 'Haiku adapter' : 'No configurado') : 'Desactivado'}${process.env.JEV_OBSERVE_ONLY !== 'false' ? ' · observación' : ' · activo'}</div>
+      <div class="terminal-card-meta" style="padding:8px 14px;border-bottom:1px solid var(--border)">Proveedor de entradas: ${process.env.JEV_ENABLED === 'true' ? (process.env.JEV_PROVIDER === 'typesafe-jev' ? 'Jev real' : process.env.JEV_PROVIDER === 'typesafe-adapter' ? 'Haiku adapter' : process.env.JEV_PROVIDER === 'laya-local' ? 'Laya local' : 'No configurado') : 'Desactivado'}${process.env.JEV_OBSERVE_ONLY !== 'false' ? ' · observación' : ' · activo'}</div>
       <div id="closedBanner"></div>
       <div class="pnl-hero" id="pnlHero">
         <div class="pnl-lbl" id="pnlLbl">PnL No Realizado</div>

@@ -304,6 +304,34 @@ test('adapter unavailable or missing token fails closed with no retry', async ()
   assert.equal(unavailable.reason, 'JEV_ADAPTER_UNAVAILABLE');
   assert.equal(adapterCalls, 1);
 });
+test('local Laya uses internal token and preserves risk veto', async () => {
+  const local = config({ JEV_PROVIDER: 'laya-local', EXECUTION_ENGINE_TOKEN: 'local-secret', JEV_ENABLED: 'true' });
+  assert.equal(local.provider, 'laya-local');
+  assert.equal(local.localUrl, 'http://laya:8000/v1/systemone');
+  const calls = [];
+  const base = mock();
+  const fetchImpl = async (url, args) => {
+    if (url === local.localUrl) {
+      calls.push({ url, args });
+      const request = JSON.parse(args.body);
+      return { ok: true, json: async () => ({ model: 'laya-english',
+        answers: answersFor(request.questions, 'NO_TRADE') }) };
+    }
+    return base.fetchImpl(url, args);
+  };
+  const result = await evaluate(input(), { cfg: local, now: () => now, fetchImpl });
+  assert.equal(result.decision, 'NO_TRADE');
+  assert.equal(result.reason, 'JEV_NO_TRADE');
+  assert.equal(calls[0].args.headers.authorization, 'Bearer local-secret');
+  assert(!JSON.stringify(result).includes('local-secret'));
+  const blocked = await evaluate({ ...input(), passRisk: false }, { cfg: local, now: () => now, fetchImpl });
+  assert.equal(blocked.reason, 'JEV_RISK_REJECTED');
+  assert.equal(calls.length, 1);
+  const unavailable = await evaluate(input(), { cfg: local, now: () => now,
+    fetchImpl: async (url, args) => url === local.localUrl
+      ? { ok: false, status: 503, json: async () => ({}) } : base.fetchImpl(url, args) });
+  assert.equal(unavailable.reason, 'JEV_LOCAL_UNAVAILABLE');
+});
 test('NO_TRADE is never overridden by an aggressive-entry legacy flag', async () => {
   const previous = process.env.JEV_AGGRESSIVE_ENTRY;
   process.env.JEV_AGGRESSIVE_ENTRY = 'true';

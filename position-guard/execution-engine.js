@@ -326,7 +326,8 @@ class ExecutionEngine {
       const provider = decision?.provider || receipt?.provider;
       const model = decision?.model || receipt?.model;
       close.providerLabel = provider === 'typesafe-jev' ? `Jev real · ${model || 'modelo no registrado'}`
-        : provider === 'typesafe-adapter' ? `Haiku adapter · ${model || 'modelo no registrado'}` : null;
+        : provider === 'typesafe-adapter' ? `Haiku adapter · ${model || 'modelo no registrado'}`
+          : provider === 'laya-local' ? `Laya local · ${model || 'modelo no registrado'}` : null;
       close.entryLeverage = Number(original?.leverage) || null;
       close.entryTp = Number(original?.takeProfit) || null;
       close.entrySl = Number(original?.stopLoss) || null;

@@ -40,7 +40,8 @@ for key, value in {
     'STRATEGY_ENGINE': 'two-indicator',
     'JEV_ENABLED': 'true',
     'JEV_OBSERVE_ONLY': 'false',
-    'JEV_PROVIDER': 'typesafe-jev',
+    'JEV_PROVIDER': 'laya-local',
+    'JEV_TIMEOUT_MS': '15000',
     'JEV_DYNAMIC_LEVERAGE_ENABLED': 'true',
     'JEV_MAX_LEVERAGE': '10',
     'N8N_TRADING_DISABLED': '1',
@@ -61,7 +62,7 @@ node - <<'NODE'
 require('./services/load_env');
 const required = ['DB_PASSWORD', 'REDIS_PASSWORD', 'N8N_ENCRYPTION_KEY',
   'EXECUTION_ENGINE_TOKEN', 'BINANCE_API_KEY', 'BINANCE_API_SECRET',
-  'TYPESAFE_API_KEY', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'];
+  'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'];
 const missing = required.filter(key => !String(process.env[key] || '').trim());
 if (missing.length) {
   console.error('Faltan credenciales locales:', missing.join(', '));
@@ -75,7 +76,9 @@ Hacer backup y sincronizar con n8n/Telegram detenidos:
 ```bash
 node scripts/strategy/backup-deployment.js
 npm run strategy:workflow
-docker compose --profile trading --profile ai --profile aux build dashboard
+docker compose --profile trading --profile ai --profile aux build dashboard laya
+docker compose --profile ai up -d laya
+docker compose --profile ai ps laya
 docker compose --profile trading --profile ai --profile aux stop n8n telegram_control
 N8N_TRADING_DISABLED=1 node scripts/sync-local-workflows.js --publish
 ```
@@ -119,6 +122,8 @@ test "$(docker inspect aterum-dashboard-1 --format '{{.Image}}')" = "$(docker in
 ```
 
 Comprobar en n8n que el workflow principal, SL Monitor y Trailing Manager estén publicados; comprobar que Position Guard, JEV y Telegram estén saludables. Con posiciones existentes, comprueba por cada símbolo la cantidad y el lado en Binance, la adopción en la base local y las órdenes nativas STOP y TAKE PROFIT. `portfolio-capacity` puede responder `allowed:false` por margen lleno después de adoptar las posiciones protegidas; eso no equivale a un fallo de servicio.
+
+Laya se ejecuta localmente en CPU, sin llamadas de decisión a TypeSafe. Su primera carga descarga los pesos al volumen `laya_model_cache`; espera a que `docker compose --profile ai ps laya` indique `healthy` antes de liberar cualquier breaker. La compatibilidad de la respuesta con JEV no demuestra rentabilidad ni calibra sus probabilidades: conserva la conciliación con Binance y los límites de riesgo.
 
 La última comprobación de imagen es obligatoria: el análisis y Position Guard deben cargar exactamente la misma política. En Delcon, una versión anterior del guard rechazó una entrada con `STRATEGY_POLICY_CHANGED` después de añadir el cooldown. Si las imágenes difieren en Saitama, recrea solo `position_guard` con `docker compose --profile trading up -d --no-deps --force-recreate position_guard` y repite la comprobación de salud y protección antes de dejar correr el siguiente ciclo.
 

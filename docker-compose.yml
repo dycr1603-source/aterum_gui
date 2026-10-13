@@ -91,6 +91,7 @@ services:
       JEV_LEVERAGE_POLICY_PATH: ${JEV_LEVERAGE_POLICY_PATH:-/app/config/jev-leverage-policy.json}
       JEV_ADAPTER_URL: ${JEV_ADAPTER_URL:-http://typesafe_adapter:8088}
       JEV_ADAPTER_TOKEN: ${JEV_ADAPTER_TOKEN:-}
+      JEV_LOCAL_URL: http://laya:8000/v1/systemone
       JEV_TIMEOUT_MS: ${JEV_TIMEOUT_MS:-5000}
       JEV_MAX_DATA_AGE_MS: ${JEV_MAX_DATA_AGE_MS:-120000}
       JEV_MAX_PRICE_DRIFT_PCT: ${JEV_MAX_PRICE_DRIFT_PCT:-0.5}
@@ -302,6 +303,31 @@ services:
       start_period: 10s
     logging: *default-logging
 
+  laya:
+    profiles: [ai]
+    build:
+      context: ./laya-local
+    image: aterum-laya:local
+    restart: unless-stopped
+    environment:
+      LAYA_API_KEY: ${EXECUTION_ENGINE_TOKEN:?set EXECUTION_ENGINE_TOKEN in .env}
+      LAYA_DEVICE: cpu
+      LAYA_PRELOAD: '1'
+      LAYA_MODELS: english
+      LAYA_DEFAULT_MODEL: english
+      LAYA_THREADS: '4'
+      LAYA_JEV_STRICT: '1'
+      HF_HOME: /home/laya/.cache/huggingface
+    volumes:
+      - laya_model_cache:/home/laya/.cache/huggingface
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 180s
+    logging: *default-logging
+
   telegram_control:
     profiles: [aux]
     image: aterum-dashboard:local
@@ -375,6 +401,7 @@ services:
     logging: *default-logging
 
 volumes:
+  laya_model_cache:
   mysql_data:
   redis_data:
   dashboard_data:

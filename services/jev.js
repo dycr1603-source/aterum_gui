@@ -16,11 +16,13 @@ function config(env = process.env) {
     return n;
   };
   const provider = env.JEV_PROVIDER || 'typesafe-jev';
-  if (!['typesafe-jev', 'typesafe-adapter'].includes(provider)) throw new Error('JEV_INVALID_PROVIDER');
+  if (!['typesafe-jev', 'typesafe-adapter', 'laya-local'].includes(provider)) throw new Error('JEV_INVALID_PROVIDER');
   const maxLeverage = setting('JEV_MAX_LEVERAGE', 10, 1, 10);
   if (!Number.isInteger(maxLeverage)) throw new Error('JEV_INVALID_CONFIG');
   return { enabled: env.JEV_ENABLED === 'true', observe: env.JEV_OBSERVE_ONLY !== 'false',
     provider, apiKey: env.TYPESAFE_API_KEY, model: env.JEV_MODEL || 'jev-latest',
+    localUrl: env.JEV_LOCAL_URL || 'http://laya:8000/v1/systemone',
+    localToken: env.EXECUTION_ENGINE_TOKEN || '',
     dynamicLeverageEnabled: env.JEV_DYNAMIC_LEVERAGE_ENABLED === 'true' && provider === 'typesafe-jev',
     maxLeverage, entryQualityEnabled: env.JEV_ENTRY_QUALITY_ENABLED === 'true',
     binanceApiKey: env.BINANCE_API_KEY || '', binanceApiSecret: env.BINANCE_API_SECRET || '',
@@ -116,8 +118,9 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
     if (operationalBlockers(d).length || d.passRisk === false || d.riskDecision?.allowed === false ||
         d.portfolioCapacity?.allowed === false)
       throw new Error('JEV_RISK_REJECTED');
-    if (!adapterEnabled(cfg) && !cfg.apiKey) throw new Error('JEV_NOT_CONFIGURED');
+    if (cfg.provider === 'typesafe-jev' && !cfg.apiKey) throw new Error('JEV_NOT_CONFIGURED');
     if (adapterEnabled(cfg) && !cfg.adapterToken) throw new Error('JEV_ADAPTER_NOT_CONFIGURED');
+    if (cfg.provider === 'laya-local' && !cfg.localToken) throw new Error('JEV_NOT_CONFIGURED');
     if (!cfg.executionToken) throw new Error('JEV_CAPACITY_UNAVAILABLE');
     let capacity;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -231,14 +234,16 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
     result.request = request;
     const ask = async payload => {
       const modelStarted = now();
-      const response = await fetchImpl(adapterEnabled(cfg) ? `${cfg.adapterUrl}/v1/systemone` : ENDPOINT, {
-        method: 'POST', headers: { authorization: `Bearer ${adapterEnabled(cfg) ? cfg.adapterToken : cfg.apiKey}`,
+      const endpoint = cfg.provider === 'laya-local' ? cfg.localUrl : adapterEnabled(cfg) ? `${cfg.adapterUrl}/v1/systemone` : ENDPOINT;
+      const token = cfg.provider === 'laya-local' ? cfg.localToken : adapterEnabled(cfg) ? cfg.adapterToken : cfg.apiKey;
+      const response = await fetchImpl(endpoint, {
+        method: 'POST', headers: { authorization: `Bearer ${token}`,
           'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(cfg.timeoutMs) });
-      if (!response.ok) throw new Error(adapterEnabled(cfg) ? 'JEV_ADAPTER_UNAVAILABLE' : 'JEV_API_UNAVAILABLE');
+      if (!response.ok) throw new Error(cfg.provider === 'laya-local' ? 'JEV_LOCAL_UNAVAILABLE' : adapterEnabled(cfg) ? 'JEV_ADAPTER_UNAVAILABLE' : 'JEV_API_UNAVAILABLE');
       const body = await response.json();
       fresh(d.marketDataAt, now(), cfg.maxAgeMs);
       if (now() - modelStarted > cfg.timeoutMs) throw new Error('JEV_TIMEOUT');
-      if (typeof body.model !== 'string' || (!adapterEnabled(cfg) && !body.model.startsWith('jev-')))
+      if (typeof body.model !== 'string' || (cfg.provider === 'typesafe-jev' && !body.model.startsWith('jev-')))
         throw new Error('JEV_INVALID_RESPONSE');
       return body;
     };
@@ -317,7 +322,8 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
     return result;
   } catch (error) {
     result.reason = /^JEV_[A-Z_]+$/.test(error.message) ? error.message
-      : simple && ['INVALID_STRUCTURE', 'INVALID_LEVELS', 'INVALID_MARKET_DATA'].includes(error.message) ? `JEV_${error.message}` : 'JEV_API_UNAVAILABLE';
+      : simple && ['INVALID_STRUCTURE', 'INVALID_LEVELS', 'INVALID_MARKET_DATA'].includes(error.message) ? `JEV_${error.message}`
+        : cfg.provider === 'laya-local' ? 'JEV_LOCAL_UNAVAILABLE' : 'JEV_API_UNAVAILABLE';
     return result;
   }
 }
