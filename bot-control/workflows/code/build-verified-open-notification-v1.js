@@ -21,10 +21,11 @@ if (d.strategyV2 === true) {
     : Number.isFinite(votes?.score)
       ? [`Modelo: ${d.strategy.opportunity?.model || d.strategy.version} · score ${votes.score.toFixed(3)}${rank}`]
       : d.strategy.indicators.map(i => `${i.name}: ${JSON.stringify(i.value)} / ${i.signal}`);
-  const text = ['✅ ATERUM · BINANCE CONFIRMED', `${d.symbol} ${position.side || d.direction}`,
+  const modelName = d.jev?.provider === 'laya-local' ? 'Laya' : 'JEV';
+  const text = ['✅ ATERUM · BINANCE CONFIRMÓ', `${d.symbol} ${position.side || d.direction}`,
     `Entry: ${position.entryPrice} · SL: ${requested.stopLoss} · TP: ${requested.takeProfit}`,
     `Leverage: ${d.leverage}x · capital at risk (incl. costs): ${d.jev.risk.riskAtStop} USDT`,
-    `Expected net R: ${d.jev.risk.expectedR} · JEV confidence: ${d.jev.confidence}%`,
+    `R neta estimada: ${d.jev.risk.expectedR} · ${modelName} confianza no calibrada: ${d.jev.confidence}%`,
     ...evidence,
     `Binance order: ${d.exchangeOrderId} · execution: ${d.executionId}`].join('\n');
   return [{json:{...d,text,notificationEventKey:`open:${d.executionId}`,notificationState:'TRADE_OPENED_VERIFIED_STRATEGY'}}];

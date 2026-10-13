@@ -41,7 +41,9 @@ async function validateJevExecution(request, { db, livePrice, quoteTime, rules, 
       stop: request.stopLoss, target: request.takeProfit, feeRate: policy.feeRate,
       slippageBps: policy.slippageBps + (policy.spreadBps ?? 0) / 2,
       fundingReserve: policy.fundingReserve });
-    if (risk > result.risk.riskAtStop + 1e-8) throw new Error('STRATEGY_LIVE_RISK_INCREASED');
+    const riskLimit = result.risk.maxLiveRiskAtStop ?? result.risk.riskAtStop;
+    if (!Number.isFinite(riskLimit) || riskLimit + 1e-8 < result.risk.riskAtStop ||
+        risk > riskLimit + 1e-8) throw new Error('STRATEGY_LIVE_RISK_INCREASED');
     if (expectedR < (policy.minExpectedR ?? 0)) throw new Error('STRATEGY_REWARD_RISK_TOO_LOW');
   }
   if (!Number.isInteger(p.leverage) || p.leverage < 1 || p.leverage > 10 || request.leverage !== p.leverage)

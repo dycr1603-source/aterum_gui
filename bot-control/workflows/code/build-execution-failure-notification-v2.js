@@ -54,7 +54,10 @@ const REASONS = Object.freeze({
 });
 function describeReason(code) {
   const key = String(code || '');
-  return REASONS[key] || { label: key ? key.toLowerCase().replace(/_/g, ' ') : 'motivo no informado', why: '' };
+  const found = REASONS[key] || { label: key ? key.toLowerCase().replace(/_/g, ' ') : 'motivo no informado', why: '' };
+  return process.env.JEV_PROVIDER === 'laya-local'
+    ? { label: found.label.replace(/Jev/g, 'Laya'), why: found.why.replace(/Jev/g, 'Laya') }
+    : found;
 }
 
 const engineAlreadyNotified = d.failureNotificationSent === true;

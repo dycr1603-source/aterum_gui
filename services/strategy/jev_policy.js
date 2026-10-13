@@ -1,7 +1,7 @@
 "use strict";
 const { levels, size } = require("./risk"),
   { filtersFor } = require("../jev_capacity");
-function levelOptions(d, entry, filter) {
+function levelOptions(d, entry, filter, maxDriftPct = 0) {
   const out = {};
   for (const direction of d.strategy.directions) {
     try {
@@ -36,9 +36,24 @@ function levelOptions(d, entry, filter) {
       const tick = Number(filter.tickSize);
       let previousDistance = 0;
       const riskPolicy = d.strategy.riskPolicy;
-      const costPerUnit = entry * (2 * (riskPolicy.feeRate +
-        (riskPolicy.slippageBps + (riskPolicy.spreadBps ?? 0) / 2) / 10000) +
-        riskPolicy.fundingReserve);
+      const costRate = riskPolicy.feeRate +
+        (riskPolicy.slippageBps + (riskPolicy.spreadBps ?? 0) / 2) / 10000;
+      const costPerUnit = entry * (2 * costRate + riskPolicy.fundingReserve);
+      // A target barely above minExpectedR at the proposal quote is likely to
+      // fail the live writer after even one price tick. Reserve one adverse
+      // tick (or 0.05%) without extending the configured drift allowance.
+      const driftFraction = Math.min(Math.max(0, maxDriftPct) / 100,
+        Math.max(tick / entry, 0.0005));
+      const adverseEntry = entry * (1 + sign * driftFraction);
+      const widestStopPrice = sign === 1 ? Math.min(...Object.values(sl)) : Math.max(...Object.values(sl));
+      const adverseRiskPerUnit = Math.abs(adverseEntry - widestStopPrice) +
+        (adverseEntry + widestStopPrice) * costRate + adverseEntry * riskPolicy.fundingReserve;
+      const robustTarget = sign === 1
+        ? (riskPolicy.minExpectedR * adverseRiskPerUnit +
+          adverseEntry * (1 + costRate + riskPolicy.fundingReserve)) / (1 - costRate)
+        : (adverseEntry * (1 - costRate - riskPolicy.fundingReserve) -
+          riskPolicy.minExpectedR * adverseRiskPerUnit) / (1 + costRate);
+      const robustDistance = sign * (robustTarget - entry);
       const targetMultipliers = relative
         ? [0.75, 1, 1.25].map(n => n * d.strategy.opportunity.params.targetR)
         : scalp
@@ -50,6 +65,7 @@ function levelOptions(d, entry, filter) {
         // configured net reward/risk floor for the widest offered stop.
         const distance = Math.max(widestStop * multiplier,
           widestStop * riskPolicy.minExpectedR + costPerUnit * (1 + riskPolicy.minExpectedR),
+          robustDistance,
           previousDistance + tick);
         const raw = entry + sign * distance;
         const rounded = (sign === 1 ? Math.ceil(raw / tick) : Math.floor(raw / tick)) * tick;

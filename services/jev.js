@@ -7,6 +7,7 @@ const { BinanceFutures } = require('../position-guard/binance');
 const { intelligenceReference, marketContextForJev } = require('./intelligence_reference');
 const entryQuality = require('./jev_entry_quality');
 const simpleStrategy = require('./strategy/jev_policy');
+const { executionRiskLimit } = require('./strategy/live-risk');
 const ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 const positive = n => typeof n === 'number' && Number.isFinite(n) && n > 0;
 function config(env = process.env) {
@@ -154,7 +155,7 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
     const entry = Number(ticker.price);
     fresh(Number(ticker.time), now(), cfg.maxAgeMs);
     if (!positive(d.indicators?.currentPrice) || Math.abs(entry / d.indicators.currentPrice - 1) * 100 > cfg.maxDriftPct) throw new Error('JEV_PRICE_DRIFT');
-    const candidates = simple ? simpleStrategy.levelOptions(d, entry, filter) : options(d, entry, filter);
+    const candidates = simple ? simpleStrategy.levelOptions(d, entry, filter, cfg.maxDriftPct) : options(d, entry, filter);
     result.validations.candidatesValid = true;
     const preflight = simple ? simpleStrategy.preflight(d, entry, symbol, candidates, capacity) : assessCapacity(d, entry, symbol, candidates, capacity);
     result.preflight = { allowed: preflight.allowed, blockedSides: preflight.blockedSides,
@@ -314,6 +315,20 @@ async function evaluate(d, { cfg = config(), fetchImpl = fetch, now = Date.now,
       result.confidence = direction.confidence * 100;
       result.contextualRegime = d.strategy.regime;
       result.risk = result.leveragePolicy.selectedProjection;
+      const equity = Number(capacity.account.equity);
+      const riskPolicy = d.strategy.riskPolicy;
+      const allowedRisk = Math.min(equity * riskPolicy.riskFraction,
+        Number(capacity.risk.remainingRiskAmount),
+        equity * riskPolicy.maxPortfolioRisk - Number(capacity.risk.openRiskAmount));
+      if (!Number.isFinite(allowedRisk) || allowedRisk <= 0)
+        throw new Error('JEV_RISK_REJECTED');
+      result.risk.maxLiveRiskAtStop = executionRiskLimit({ quantity: result.risk.quantity,
+        entry, stop: result.proposal.sl, target: result.proposal.tp, side: direction.choice,
+        maxDriftPct: cfg.maxDriftPct, allowedRisk, feeRate: riskPolicy.feeRate,
+        slippageBps: riskPolicy.slippageBps + (riskPolicy.spreadBps ?? 0) / 2,
+        fundingReserve: riskPolicy.fundingReserve });
+      if (result.risk.maxLiveRiskAtStop + 1e-8 < result.risk.riskAtStop)
+        throw new Error('JEV_NO_FEASIBLE_POSITION');
       // Explanation is the model's validated reason choice, not an inferred win probability.
     }
     result.validations.riskAllowed = true;

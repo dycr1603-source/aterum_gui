@@ -493,13 +493,16 @@ class ExecutionEngine {
       }
     }
     const exchangeWasVerified = verificationResult?.verified === true;
+    const marketRejected = request.type === 'OPEN_POSITION' &&
+      PRE_ORDER_MARKET_REJECTIONS.has(lastError?.message) && !exchangeOrderId && !lastError?.exchangeOrderId;
     const portfolioRejected = request.type === 'OPEN_POSITION'
       && lastError?.code === 'PORTFOLIO_CAPACITY_REJECTED';
-    const failureCategory = portfolioRejected ? 'EXECUTION_REJECTED'
+    const failureCategory = marketRejected ? 'PRE_ORDER_MARKET_REJECTION'
+      : portfolioRejected ? 'EXECUTION_REJECTED'
       : exchangeWasVerified ? 'PERSISTENCE_FAILURE'
       : (lastError?.verificationResult || /verif|read-back|visible on Binance/i.test(String(lastError?.message || '')))
         ? 'VERIFICATION_FAILURE' : 'EXECUTION_FAILURE';
-    const finalStatus = portfolioRejected ? 'REJECTED' : 'FAILED';
+    const finalStatus = marketRejected || portfolioRejected ? 'REJECTED' : 'FAILED';
     const failureVerification = { ...(verificationResult || {}), verified: false,
       exchangeVerified: exchangeWasVerified, pipelineVerified: false,
       checkedAt: verificationResult?.checkedAt || new Date().toISOString(), error: serializeError(lastError) };
@@ -509,7 +512,7 @@ class ExecutionEngine {
       exchangeOrderId == null ? null : String(exchangeOrderId), json(exchangeResponse), json(failureVerification), finalStatus, attempts,
       String(lastError?.message || lastError || 'Execution failed').slice(0, 10000), request.executionId
     ]);
-    await this.event(request.executionId, portfolioRejected ? 'EXECUTION_REJECTED' : 'EXECUTION_FAILED', failureVerification);
+    await this.event(request.executionId, marketRejected || portfolioRejected ? 'EXECUTION_REJECTED' : 'EXECUTION_FAILED', failureVerification);
     const notificationPolicy = failureNotificationPolicy(request, lastError, exchangeWasVerified, failureCategory);
     let failureNotificationSent = false;
     if (notificationPolicy.notify) {
@@ -1105,6 +1108,25 @@ class ExecutionEngine {
 
   async notifyFailure(request, error, exchangeWasVerified = false, failureCategory = null) {
     if (!this.config.telegramToken || !this.config.telegramChatId) return false;
+    if (failureCategory === 'PRE_ORDER_MARKET_REJECTION') {
+      const code = String(error?.message || error);
+      const explanation = {
+        STRATEGY_LIVE_RISK_INCREASED: 'El precio cambió y la pérdida estimada al stop superó el límite reservado para esta propuesta.',
+        STRATEGY_REWARD_RISK_TOO_LOW: 'El precio cambió y la recompensa neta ya no compensa el riesgo.',
+        JEV_PRICE_DRIFT: 'El precio se alejó demasiado del que evaluó el modelo.',
+        JEV_STALE_DATA: 'La propuesta o la cotización caducó antes de ejecutar.'
+      }[code] || 'La propuesta dejó de cumplir los controles previos.';
+      const provider = request.tradeContext?.jev?.provider === 'laya-local' ? 'Laya' : 'el modelo';
+      const message = ['⏸ ATERUM · ENTRADA DESCARTADA', `${request.positionSide} · ${request.symbol}`,
+        `${provider} propuso la entrada, pero el control de ejecución la detuvo.`,
+        explanation, `Código: ${code}`, 'Binance: no se envió ninguna orden.',
+        'El siguiente ciclo evaluará oportunidades con precios nuevos.',
+        `Ejecución: ${request.executionId}`].join('\n');
+      const delivered = await deliver({ db: this.db, eventKey: `execution-failure:${request.executionId}`, text: message,
+        token: this.config.telegramToken, chatId: this.config.telegramChatId });
+      await this.event(request.executionId, 'TELEGRAM_DELIVERY', delivered);
+      return delivered.sent;
+    }
     if (failureCategory === 'EXECUTION_REJECTED') {
       const capacity = error?.body || {};
       const reason = capacity.primaryReason || {};

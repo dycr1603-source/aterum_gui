@@ -373,7 +373,7 @@ test("unverified open notification cannot be emitted; confirmed two-indicator al
   const run = (x) => fn({ first: () => ({ json: x }) });
   await assert.rejects(() => run({ ...x, success: false }));
   const result = await run(x);
-  assert(result[0].json.text.includes("BINANCE CONFIRMED"));
+  assert(result[0].json.text.includes("BINANCE CONFIRMÓ"));
   assert(result[0].json.text.includes("EMA"));
   assert.equal(result[0].json.notificationEventKey, "open:test");
   const model = await run({ ...x, strategy: { ...x.strategy,
@@ -382,6 +382,8 @@ test("unverified open notification cannot be emitted; confirmed two-indicator al
     opportunity: { model: "INVERSE_MARKET_LOGIT" } } });
   assert.match(model[0].json.text, /Modelo: INVERSE_MARKET_LOGIT · score 0\.822 · rango 2\/10/);
   assert.doesNotMatch(model[0].json.text, /undefined\/8/);
+  const laya = await run({ ...x, jev: { ...x.jev, provider: 'laya-local' } });
+  assert.match(laya[0].json.text, /Laya confianza no calibrada/);
 });
 test("GUI scripts compile and new workflow bypasses legacy scoring gates", () => {
   const html = require("../views/strategy").getStrategyHTML();
@@ -496,6 +498,31 @@ test('a breaker summary says the scan was skipped instead of reporting zero elig
   } } }, { first: () => ({ json: { skipReason: 'CIRCUIT_BREAKER: TEST' } }) });
   assert.match(message, /Escaneo omitido por control de estrategia/);
   assert.doesNotMatch(message, /0 de 0 elegibles/);
+});
+test('a concurrent cycle is silent and never claims that zero assets were analyzed', async () => {
+  const code = fs.readFileSync(require.resolve('../bot-control/workflows/code/strategy-no-trade.js'), 'utf8');
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const run = new AsyncFunction('$input', code);
+  let sent = 0;
+  const result = await run.call({ helpers: { httpRequest: async () => { sent++; } } },
+    { first: () => ({ json: { skipReason: 'DUPLICATE_CYCLE', cycleState: 'running' } }) });
+  assert.equal(sent, 0);
+  assert.equal(result[0].json.notificationStatus, 'SUPPRESSED_CONCURRENT_CYCLE');
+});
+test('a no-entry report names Laya when it is the configured provider', async () => {
+  const code = fs.readFileSync(require.resolve('../bot-control/workflows/code/strategy-no-trade.js'), 'utf8');
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const run = new AsyncFunction('$input', 'process', code);
+  let text;
+  await run.call({ helpers: { httpRequest: async request => {
+    text = request.body.text;
+    return { status: 'SENT' };
+  } } }, { first: () => ({ json: { strategyV2: true, entryMode: 'new_opportunistic',
+    opportunityCycleId: 'cycle-laya', skipReason: 'NO_OPPORTUNITY',
+    universeSummary: { scanned: 3, eligible: 3, marketQualified: 1, checked: [], reasons: {} } } }) },
+  { env: { JEV_PROVIDER: 'laya-local', INTERNAL_DASHBOARD_BASE: 'http://dashboard:3001' } });
+  assert.match(text, /Aptos para Laya: 1/);
+  assert.doesNotMatch(text, /Aptos para JEV/);
 });
 test('engine checks every eligible symbol when no entry is found', async () => {
   const when = 1800000000000;

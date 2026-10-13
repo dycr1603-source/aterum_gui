@@ -259,8 +259,10 @@ async function testLiveRiskDriftRejectsOnlyTheEntry() {
     const result = await instance.run({ executionId: '14141414-1414-4414-8414-141414141414',
       type: 'OPEN_POSITION', symbol: 'BTCUSDT', positionSide: 'LONG', maxAttempts: 1,
       tradeContext: { strategy: { version: 'new-opportunistic-v1' } } });
-    assert.equal(result.finalStatus, 'FAILED');
+    assert.equal(result.finalStatus, message === 'STRATEGY_POLICY_CHANGED' ? 'FAILED' : 'REJECTED');
     assert.equal(result.error, message);
+    if (message !== 'STRATEGY_POLICY_CHANGED')
+      assert.equal(result.failureCategory, 'PRE_ORDER_MARKET_REJECTION');
     assert.equal(writes.some(row => row.sql.includes('UPDATE strategy_breaker')),
       message === 'STRATEGY_POLICY_CHANGED');
   }

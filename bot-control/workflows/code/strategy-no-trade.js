@@ -1,5 +1,10 @@
 const d = $input.first().json;
+if (d.skipReason === 'DUPLICATE_CYCLE' && d.cycleState === 'running') {
+  return [{ json: { ...d, notificationStatus: 'SUPPRESSED_CONCURRENT_CYCLE' } }];
+}
 const summary = d.universeSummary || {};
+const modelName = d.jev?.provider === 'laya-local' || process.env.JEV_PROVIDER === 'laya-local'
+  ? 'Laya' : 'JEV';
 const labels = {
   LOW_DEPTH: 'Profundidad insuficiente',
   ABNORMAL_VOLATILITY: 'Volatilidad excesiva',
@@ -11,7 +16,7 @@ const labels = {
   ALREADY_OPEN: 'Posición existente',
   REENTRY_COOLDOWN: 'Reentrada en espera',
   MIN_LOT_RISK: 'Lote mínimo supera el riesgo',
-  JEV_NO_TRADE: 'Rechazadas por JEV'
+  JEV_NO_TRADE: `Rechazadas por ${modelName}`
 };
 const counts = Object.entries(summary.reasons || {})
   .filter(([key]) => key !== 'APPROVED')
@@ -21,7 +26,7 @@ const finalists = (summary.checked || [])
   .filter(item => item.reasons?.includes('JEV_NO_TRADE'))
   .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
   .slice(0, 3)
-  .map(item => `${item.symbol}: JEV ${item.jevExplanationCode || item.jevReason || 'NO_TRADE'}`
+  .map(item => `${item.symbol}: ${modelName} ${item.jevExplanationCode || item.jevReason || 'NO_TRADE'}`
     + (Number.isFinite(item.jevConfidence) ? `, confianza ${item.jevConfidence}` : '')
     + `, score ${Number(item.score || 0).toFixed(3)}`);
 const additionalSlot = Number(d.strategySlot) > 1;
@@ -33,7 +38,7 @@ const text = [
     'estrategia técnica'} · ${d.skipReason || 'NO_TRADE'}`,
   ...(d.universeSummary ? [`Analizados: ${Number(summary.scanned || 0)} de ${Number(summary.eligible || 0)} elegibles.`]
     : ['Escaneo omitido por control de estrategia.']),
-  ...(d.universeSummary ? [`Aptos para JEV: ${Number(summary.marketQualified || 0)}.`] : []),
+  ...(d.universeSummary ? [`Aptos para ${modelName}: ${Number(summary.marketQualified || 0)}.`] : []),
   ...counts.slice(0, 6),
   ...(finalists.length ? ['Mejores candidatos descartados:', ...finalists] : []),
   additionalSlot ? 'No se envió otra orden a Binance en este cupo.' : 'Sin orden enviada a Binance.'
